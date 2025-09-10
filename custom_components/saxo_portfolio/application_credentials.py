@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import (
     ENVIRONMENTS,
-    ENV_SIMULATION,
+    ENV_PRODUCTION,
     OAUTH_AUTHORIZE_ENDPOINT,
     OAUTH_TOKEN_ENDPOINT,
 )

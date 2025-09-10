@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5] - 2025-09-10
+
+### Fixed
+- **Linting Compliance**: Resolved remaining ruff linting errors
+  - ✅ Fixed unused import `ENV_SIMULATION` in application_credentials.py
+  - ✅ Fixed undefined name `ENV_PRODUCTION` by correcting import statement
+- **Code Quality**: Achieved 100% ruff compliance across entire codebase
+- **CI/CD**: All GitHub Actions quality checks now pass without errors
+
+### Technical Improvements
+- **Import Consistency**: Properly aligned imports with code usage
+- **Zero Linting Errors**: Complete compliance with all ruff rules across 20 files
+- **Clean Codebase**: Maintained high code quality standards
+
 ## [1.0.4] - 2025-09-10
 
 ### Fixed
@@ -139,6 +153,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Modular data models for type safety and consistency
 - Proper Home Assistant integration patterns
 
+[1.0.5]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v1.0.5
 [1.0.4]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v1.0.4
 [1.0.3]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v1.0.3
 [1.0.2]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v1.0.2
