@@ -1,0 +1,350 @@
+openapi: 3.0.0
+info:
+  title: Saxo Portfolio API Contract
+  description: Contract definition for Saxo OpenAPI endpoints used by Home Assistant integration
+  version: 1.0.0
+  
+servers:
+  - url: https://gateway.saxobank.com/openapi
+    description: Production Saxo OpenAPI server
+  - url: https://gateway.saxobank.com/sim/openapi  
+    description: Simulation Saxo OpenAPI server
+
+security:
+  - OAuth2: [read]
+
+paths:
+  /port/v1/balances/me:
+    get:
+      summary: Get account balances for authenticated user
+      description: Returns balance information for the authenticated user's portfolio
+      operationId: getAccountBalances
+      responses:
+        '200':
+          description: Successfully retrieved account balances
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountBalance'
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded
+          headers:
+            X-RateLimit-Limit:
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              schema:
+                type: integer
+            X-RateLimit-Reset:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /port/v1/positions:
+    get:
+      summary: Get portfolio positions
+      description: Returns all positions for the authenticated user's portfolio
+      operationId: getPositions
+      parameters:
+        - name: ClientKey
+          in: query
+          description: Client key for filtering positions
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successfully retrieved positions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PositionsResponse'
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /port/v1/accounts:
+    get:
+      summary: Get account information
+      description: Returns account information for the authenticated user
+      operationId: getAccounts
+      parameters:
+        - name: ClientKey
+          in: query
+          description: Client key for filtering accounts
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successfully retrieved account information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountsResponse'
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://sim.logonvalidation.net/authorize
+          tokenUrl: https://sim.logonvalidation.net/token
+          scopes:
+            read: Read access to portfolio data
+
+  schemas:
+    AccountBalance:
+      type: object
+      required:
+        - CashBalance
+        - Currency
+        - TotalValue
+      properties:
+        CashBalance:
+          type: number
+          format: double
+          description: Available cash balance
+          example: 123456.18
+        Currency:
+          type: string
+          description: Base currency code
+          example: "USD"
+        MarginAvailableForTrading:
+          type: number
+          format: double
+          description: Available margin for trading
+          example: 98915.91
+        NetEquityForMargin:
+          type: number
+          format: double
+          description: Net equity for margin calculation
+          example: 103635.2
+        TotalValue:
+          type: number
+          format: double
+          description: Total portfolio value
+          example: 125000.00
+        UnrealizedMarginProfitLoss:
+          type: number
+          format: double
+          description: Unrealized profit/loss on margin positions
+          example: 1543.82
+        OpenPositionsCount:
+          type: integer
+          description: Number of open positions
+          example: 5
+        ClosedPositionsCount:
+          type: integer
+          description: Number of closed positions
+          example: 0
+        CalculationReliability:
+          type: string
+          enum: [Ok, Delayed, Warning]
+          description: Reliability of balance calculation
+          example: "Ok"
+
+    Position:
+      type: object
+      required:
+        - NetPositionId
+        - PositionBase
+        - PositionView
+      properties:
+        NetPositionId:
+          type: string
+          description: Unique position identifier
+          example: "12345"
+        PositionBase:
+          $ref: '#/components/schemas/PositionBase'
+        PositionView:
+          $ref: '#/components/schemas/PositionView'
+
+    PositionBase:
+      type: object
+      required:
+        - AccountId
+        - Amount
+        - AssetType
+        - OpenPrice
+        - Status
+      properties:
+        AccountId:
+          type: string
+          description: Account ID for this position
+          example: "9073123"
+        Amount:
+          type: number
+          format: double
+          description: Position amount/quantity
+          example: 100000
+        AssetType:
+          type: string
+          enum: [FxSpot, Stock, Bond, Option, Future]
+          description: Type of asset
+          example: "FxSpot"
+        OpenPrice:
+          type: number
+          format: double
+          description: Average opening price
+          example: 1.2345
+        Status:
+          type: string
+          enum: [Open, Closed, Pending]
+          description: Position status
+          example: "Open"
+        Uic:
+          type: integer
+          description: Universal Instrument Code
+          example: 16
+        Symbol:
+          type: string
+          description: Trading symbol
+          example: "EURUSD"
+
+    PositionView:
+      type: object
+      required:
+        - CurrentPrice
+        - ProfitLossOnTrade
+      properties:
+        CurrentPrice:
+          type: number
+          format: double
+          description: Current market price
+          example: 1.2355
+        ProfitLossOnTrade:
+          type: number
+          format: double
+          description: Current profit/loss on trade
+          example: 100.00
+        ConversionRateCurrent:
+          type: number
+          format: double
+          description: Current conversion rate to base currency
+          example: 1.0
+        MarketValue:
+          type: number
+          format: double
+          description: Current market value of position
+          example: 123550.00
+
+    PositionsResponse:
+      type: object
+      required:
+        - __count
+        - Data
+      properties:
+        __count:
+          type: integer
+          description: Number of positions returned
+          example: 4
+        Data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Position'
+          description: Array of position objects
+
+    Account:
+      type: object
+      required:
+        - AccountId
+        - AccountKey
+        - Active
+        - AccountType
+      properties:
+        AccountGroupKey:
+          type: string
+          description: Account group identifier
+          example: "AG123456"
+        AccountId:
+          type: string
+          description: Unique account identifier
+          example: "9073123"
+        AccountKey:
+          type: string
+          description: Account key for API operations
+          example: "AK123456"
+        AccountType:
+          type: string
+          enum: [Normal, Margin, ISA, SIPP]
+          description: Type of trading account
+          example: "Normal"
+        Active:
+          type: boolean
+          description: Whether account is active
+          example: true
+        Currency:
+          type: string
+          description: Base currency of account
+          example: "USD"
+        DisplayName:
+          type: string
+          description: Display name for account
+          example: "Main Trading Account"
+
+    AccountsResponse:
+      type: object
+      required:
+        - __count
+        - Data
+      properties:
+        __count:
+          type: integer
+          description: Number of accounts returned
+          example: 2
+        Data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Account'
+          description: Array of account objects
+
+    Error:
+      type: object
+      required:
+        - ErrorCode
+        - Message
+      properties:
+        ErrorCode:
+          type: string
+          description: Specific error code
+          example: "InvalidSession"
+        Message:
+          type: string
+          description: Human-readable error message
+          example: "The access token has expired"
+        ModelState:
+          type: object
+          description: Additional error details
+          additionalProperties: true

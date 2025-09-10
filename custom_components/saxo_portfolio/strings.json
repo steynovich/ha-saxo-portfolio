@@ -1,0 +1,75 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Saxo Portfolio Setup",
+        "description": "Set up your Saxo Portfolio integration to monitor your investment portfolio in Home Assistant.",
+        "data": {
+          "environment": "Environment"
+        }
+      },
+      "auth": {
+        "title": "Authorize with Saxo Bank",
+        "description": "Click the link below to authorize Home Assistant to access your Saxo Bank portfolio data."
+      }
+    },
+    "error": {
+      "auth_error": "Authorization failed. Please try again.",
+      "invalid_auth": "Invalid authentication credentials.",
+      "cannot_connect": "Failed to connect to Saxo Bank. Please check your internet connection.",
+      "unknown": "Unexpected error occurred. Please try again."
+    },
+    "abort": {
+      "already_configured": "Saxo Portfolio is already configured for this account.",
+      "single_instance_allowed": "Only a single configuration of Saxo Portfolio is allowed."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Saxo Portfolio Options",
+        "description": "Configure options for your Saxo Portfolio integration.",
+        "data": {
+          "update_interval": "Update interval (minutes)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "total_value": {
+        "name": "Portfolio Total Value"
+      },
+      "cash_balance": {
+        "name": "Portfolio Cash Balance"
+      },
+      "unrealized_pnl": {
+        "name": "Portfolio Unrealized P&L"
+      },
+      "positions_count": {
+        "name": "Portfolio Positions Count"
+      },
+      "pnl_percentage": {
+        "name": "Portfolio P&L Percentage"
+      },
+      "account_balance": {
+        "name": "Account Balance"
+      },
+      "position_value": {
+        "name": "Position Value"
+      }
+    }
+  },
+  "issues": {
+    "deprecated_yaml": {
+      "title": "YAML configuration is deprecated",
+      "description": "Configuring Saxo Portfolio using YAML is deprecated. Please remove the YAML configuration from your configuration.yaml file and set up the integration using the UI."
+    }
+  },
+  "services": {
+    "refresh_data": {
+      "name": "Refresh Portfolio Data",
+      "description": "Manually refresh portfolio data from Saxo Bank API."
+    }
+  }
+}

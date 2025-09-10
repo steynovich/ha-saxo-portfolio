@@ -1,0 +1,446 @@
+openapi: 3.0.0
+info:
+  title: Home Assistant Saxo Portfolio Integration Contract
+  description: Contract definition for Home Assistant integration APIs and interfaces
+  version: 1.0.0
+
+# This contract defines the internal APIs and interfaces for the Home Assistant integration
+
+components:
+  schemas:
+    ConfigEntry:
+      type: object
+      description: Home Assistant configuration entry for Saxo Portfolio integration
+      required:
+        - entry_id
+        - domain
+        - title
+        - data
+      properties:
+        entry_id:
+          type: string
+          description: Unique identifier for this config entry
+          example: "01234567890abcdef"
+        domain:
+          type: string
+          description: Integration domain name
+          example: "saxo_portfolio"
+        title:
+          type: string
+          description: User-friendly title for the integration
+          example: "Saxo Portfolio"
+        data:
+          type: object
+          description: Configuration data including OAuth tokens
+          properties:
+            token:
+              $ref: '#/components/schemas/OAuthToken'
+            app_key:
+              type: string
+              description: Saxo application key
+            app_secret:
+              type: string  
+              description: Saxo application secret
+            base_url:
+              type: string
+              description: Saxo API base URL
+              example: "https://gateway.saxobank.com/openapi"
+
+    OAuthToken:
+      type: object
+      description: OAuth 2.0 token information
+      required:
+        - access_token
+        - token_type
+        - expires_in
+      properties:
+        access_token:
+          type: string
+          description: OAuth access token
+        refresh_token:
+          type: string
+          description: OAuth refresh token
+        token_type:
+          type: string
+          description: Token type (typically "Bearer")
+          example: "Bearer"
+        expires_in:
+          type: integer
+          description: Token lifetime in seconds
+          example: 1200
+        expires_at:
+          type: number
+          description: Unix timestamp when token expires
+          example: 1640995200
+
+    CoordinatorData:
+      type: object
+      description: Data structure managed by the DataUpdateCoordinator
+      required:
+        - portfolio
+        - accounts
+        - positions
+        - last_updated
+      properties:
+        portfolio:
+          $ref: '#/components/schemas/PortfolioData'
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountData'
+        positions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PositionData'
+        last_updated:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of last successful update
+
+    PortfolioData:
+      type: object
+      description: Aggregated portfolio information for Home Assistant sensors
+      required:
+        - total_value
+        - cash_balance
+        - currency
+        - positions_count
+      properties:
+        total_value:
+          type: number
+          format: double
+          description: Total portfolio value in base currency
+          example: 125000.00
+        cash_balance:
+          type: number
+          format: double
+          description: Total available cash across all accounts
+          example: 5000.00
+        currency:
+          type: string
+          description: Base currency for portfolio aggregation
+          example: "USD"
+        unrealized_pnl:
+          type: number
+          format: double
+          description: Total unrealized profit/loss
+          example: 2500.00
+        pnl_percentage:
+          type: number
+          format: double
+          description: Portfolio P&L as percentage
+          example: 2.04
+        positions_count:
+          type: integer
+          description: Total number of open positions
+          example: 12
+        margin_available:
+          type: number
+          format: double
+          description: Available margin for trading
+          example: 50000.00
+
+    AccountData:
+      type: object
+      description: Individual account data for sensors
+      required:
+        - account_id
+        - account_key
+        - balance
+        - currency
+      properties:
+        account_id:
+          type: string
+          description: Saxo account identifier
+          example: "9073123"
+        account_key:
+          type: string
+          description: Account key for API operations
+          example: "AK123456"
+        account_type:
+          type: string
+          description: Type of account
+          example: "Normal"
+        display_name:
+          type: string
+          description: User-friendly account name
+          example: "Main Trading Account"
+        balance:
+          type: number
+          format: double
+          description: Current account balance
+          example: 25000.00
+        currency:
+          type: string
+          description: Account base currency
+          example: "USD"
+        active:
+          type: boolean
+          description: Whether account is active
+          example: true
+
+    PositionData:
+      type: object
+      description: Individual position data for sensors
+      required:
+        - position_id
+        - account_id
+        - symbol
+        - quantity
+        - current_value
+      properties:
+        position_id:
+          type: string
+          description: Unique position identifier
+          example: "12345"
+        account_id:
+          type: string
+          description: Associated account ID
+          example: "9073123"
+        symbol:
+          type: string
+          description: Trading symbol
+          example: "AAPL"
+        asset_type:
+          type: string
+          description: Type of asset
+          example: "Stock"
+        quantity:
+          type: number
+          format: double
+          description: Number of units held
+          example: 100.0
+        open_price:
+          type: number
+          format: double
+          description: Average opening price
+          example: 150.00
+        current_price:
+          type: number
+          format: double
+          description: Current market price
+          example: 155.00
+        current_value:
+          type: number
+          format: double
+          description: Current market value of position
+          example: 15500.00
+        unrealized_pnl:
+          type: number
+          format: double
+          description: Unrealized profit/loss
+          example: 500.00
+        pnl_percentage:
+          type: number
+          format: double
+          description: P&L as percentage
+          example: 3.33
+        currency:
+          type: string
+          description: Position currency
+          example: "USD"
+
+    SensorState:
+      type: object
+      description: Home Assistant sensor state representation
+      required:
+        - entity_id
+        - state
+        - attributes
+      properties:
+        entity_id:
+          type: string
+          description: Home Assistant entity ID
+          example: "sensor.saxo_portfolio_total_value"
+        state:
+          type: string
+          description: Current sensor state (numeric value as string)
+          example: "125000.00"
+        attributes:
+          type: object
+          description: Additional sensor attributes
+          properties:
+            friendly_name:
+              type: string
+              description: Display name for the sensor
+              example: "Portfolio Total Value"
+            unit_of_measurement:
+              type: string
+              description: Unit of measurement
+              example: "USD"
+            device_class:
+              type: string
+              description: Home Assistant device class
+              example: "monetary"
+            state_class:
+              type: string
+              description: Home Assistant state class
+              example: "measurement"
+            currency:
+              type: string
+              description: Currency code for financial sensors
+              example: "USD"
+            last_updated:
+              type: string
+              format: date-time
+              description: Last update timestamp
+            attribution:
+              type: string
+              description: Data attribution
+              example: "Data provided by Saxo Bank"
+
+    ConfigFlowData:
+      type: object
+      description: Configuration flow data structure for OAuth setup
+      required:
+        - flow_id
+        - handler
+        - step_id
+      properties:
+        flow_id:
+          type: string
+          description: Unique flow identifier
+        handler:
+          type: string
+          description: Config flow handler name
+          example: "saxo_portfolio"
+        step_id:
+          type: string
+          description: Current configuration step
+          example: "user"
+        data_schema:
+          type: object
+          description: Schema for configuration form
+        errors:
+          type: object
+          description: Validation errors
+          additionalProperties:
+            type: string
+        description_placeholders:
+          type: object
+          description: Placeholders for configuration descriptions
+          additionalProperties:
+            type: string
+
+    IntegrationServices:
+      type: object
+      description: Services exposed by the integration
+      properties:
+        refresh_data:
+          type: object
+          description: Service to manually refresh portfolio data
+          properties:
+            name:
+              type: string
+              example: "Refresh Portfolio Data"
+            description:
+              type: string
+              example: "Force refresh of portfolio data from Saxo API"
+            fields:
+              type: object
+              properties:
+                entity_id:
+                  type: object
+                  properties:
+                    description:
+                      type: string
+                      example: "Entity ID to refresh (optional)"
+                    example:
+                      type: string
+                      example: "sensor.saxo_portfolio_total_value"
+
+    ApiError:
+      type: object
+      description: Integration API error response
+      required:
+        - error_code
+        - message
+      properties:
+        error_code:
+          type: string
+          description: Internal error code
+          enum: 
+            - "AUTH_FAILED"
+            - "API_RATE_LIMITED" 
+            - "API_UNAVAILABLE"
+            - "INVALID_CONFIG"
+            - "UPDATE_FAILED"
+          example: "AUTH_FAILED"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "OAuth token has expired, please reconfigure integration"
+        details:
+          type: object
+          description: Additional error details
+          additionalProperties: true
+        timestamp:
+          type: string
+          format: date-time
+          description: Error occurrence timestamp
+
+  # Integration-specific interfaces
+  interfaces:
+    DataUpdateCoordinator:
+      description: Interface contract for the DataUpdateCoordinator
+      methods:
+        async_config_entry_first_refresh:
+          description: Perform initial data fetch when integration loads
+          returns:
+            type: boolean
+            description: Success status of first refresh
+        async_request_refresh:
+          description: Request immediate data refresh
+          returns:
+            type: boolean
+            description: Success status of refresh request
+        _async_update_data:
+          description: Internal method to fetch data from Saxo API
+          returns:
+            $ref: '#/components/schemas/CoordinatorData'
+
+    SaxoApiClient:
+      description: Interface contract for Saxo API communication
+      methods:
+        authenticate:
+          description: Authenticate with Saxo API using OAuth token
+          parameters:
+            - name: token
+              schema:
+                $ref: '#/components/schemas/OAuthToken'
+          returns:
+            type: boolean
+            description: Authentication success status
+        get_portfolio_balance:
+          description: Fetch portfolio balance from Saxo API
+          returns:
+            $ref: '#/components/schemas/PortfolioData'
+        get_accounts:
+          description: Fetch account information
+          returns:
+            type: array
+            items:
+              $ref: '#/components/schemas/AccountData'
+        get_positions:
+          description: Fetch position information
+          returns:
+            type: array
+            items:
+              $ref: '#/components/schemas/PositionData'
+
+    ConfigFlow:
+      description: Interface contract for OAuth configuration flow
+      methods:
+        async_step_user:
+          description: Handle initial user configuration step
+          parameters:
+            - name: user_input
+              schema:
+                type: object
+                nullable: true
+          returns:
+            $ref: '#/components/schemas/ConfigFlowData'
+        async_step_oauth:
+          description: Handle OAuth authorization step
+          returns:
+            $ref: '#/components/schemas/ConfigFlowData'

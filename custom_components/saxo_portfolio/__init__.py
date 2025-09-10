@@ -1,0 +1,113 @@
+"""The Saxo Portfolio integration."""
+
+from __future__ import annotations
+
+import logging
+from datetime import timedelta
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+from .const import DATA_COORDINATOR, DATA_UNSUB, DOMAIN, PLATFORMS
+from .coordinator import SaxoCoordinator
+
+_LOGGER = logging.getLogger(__name__)
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Saxo Portfolio from a config entry."""
+    _LOGGER.debug("Setting up Saxo Portfolio integration for entry %s", entry.entry_id)
+    
+    # Initialize integration data storage
+    hass.data.setdefault(DOMAIN, {})
+    
+    try:
+        # Create the coordinator
+        coordinator = SaxoCoordinator(hass, entry)
+        
+        # Perform initial refresh to validate configuration
+        await coordinator.async_config_entry_first_refresh()
+        
+        # Store coordinator
+        hass.data[DOMAIN][entry.entry_id] = {
+            DATA_COORDINATOR: coordinator,
+        }
+        
+        # Set up platforms
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        
+        _LOGGER.info("Successfully set up Saxo Portfolio integration")
+        return True
+        
+    except Exception as e:
+        _LOGGER.error("Failed to set up Saxo Portfolio integration: %s", str(e))
+        # Clean up any partial setup
+        if entry.entry_id in hass.data.get(DOMAIN, {}):
+            coordinator = hass.data[DOMAIN][entry.entry_id].get(DATA_COORDINATOR)
+            if coordinator:
+                await coordinator.async_shutdown()
+            del hass.data[DOMAIN][entry.entry_id]
+        
+        # Re-raise as ConfigEntryNotReady if it's a temporary issue
+        if "auth" in str(e).lower() or "token" in str(e).lower():
+            raise ConfigEntryNotReady(f"Authentication error: {str(e)}") from e
+        elif "network" in str(e).lower() or "timeout" in str(e).lower():
+            raise ConfigEntryNotReady(f"Network error: {str(e)}") from e
+        else:
+            # For other errors, let the config entry fail
+            return False
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+    _LOGGER.debug("Unloading Saxo Portfolio integration for entry %s", entry.entry_id)
+    
+    # Unload platforms
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    
+    if unload_ok:
+        # Clean up coordinator and data
+        entry_data = hass.data[DOMAIN].get(entry.entry_id, {})
+        
+        # Shutdown coordinator
+        coordinator = entry_data.get(DATA_COORDINATOR)
+        if coordinator:
+            await coordinator.async_shutdown()
+        
+        # Remove update listeners
+        unsub = entry_data.get(DATA_UNSUB)
+        if unsub:
+            unsub()
+        
+        # Remove entry data
+        hass.data[DOMAIN].pop(entry.entry_id, None)
+        
+        # Remove domain data if no more entries
+        if not hass.data[DOMAIN]:
+            hass.data.pop(DOMAIN, None)
+        
+        _LOGGER.info("Successfully unloaded Saxo Portfolio integration")
+    
+    return unload_ok
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload config entry."""
+    await async_unload_entry(hass, entry)
+    await async_setup_entry(hass, entry)
+
+
+async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Migrate old entry."""
+    _LOGGER.debug("Migrating Saxo Portfolio entry from version %s", config_entry.version)
+    
+    if config_entry.version == 1:
+        # Migration logic for future versions
+        _LOGGER.info("Entry already at current version")
+        return True
+    
+    _LOGGER.error("Unknown configuration version: %s", config_entry.version)
+    return False
