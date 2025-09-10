@@ -52,7 +52,7 @@ SENSOR_TYPES: Final = {
         "device_class": None,  # Avoid device_class + state_class conflict
         "state_class": "measurement",
         "icon": "mdi:chart-line",
-        "entity_category": None
+        "entity_category": None,
     },
     "cash_balance": {
         "name": "Portfolio Cash Balance",
@@ -60,7 +60,7 @@ SENSOR_TYPES: Final = {
         "device_class": "monetary",
         "state_class": None,  # monetary device_class cannot have state_class
         "icon": "mdi:cash",
-        "entity_category": None
+        "entity_category": None,
     },
     "unrealized_pnl": {
         "name": "Portfolio Unrealized P&L",
@@ -68,7 +68,7 @@ SENSOR_TYPES: Final = {
         "device_class": None,
         "state_class": "measurement",
         "icon": "mdi:trending-up",
-        "entity_category": None
+        "entity_category": None,
     },
     "positions_count": {
         "name": "Portfolio Positions Count",
@@ -76,7 +76,7 @@ SENSOR_TYPES: Final = {
         "device_class": None,
         "state_class": "measurement",
         "icon": "mdi:format-list-numbered",
-        "entity_category": None
+        "entity_category": None,
     },
     "pnl_percentage": {
         "name": "Portfolio P&L Percentage",
@@ -84,8 +84,8 @@ SENSOR_TYPES: Final = {
         "device_class": None,
         "state_class": "measurement",
         "icon": "mdi:percent",
-        "entity_category": None
-    }
+        "entity_category": None,
+    },
 }
 
 # Account sensor configuration
@@ -96,7 +96,7 @@ ACCOUNT_SENSOR_TYPES: Final = {
         "device_class": "monetary",
         "state_class": None,
         "icon": "mdi:bank",
-        "entity_category": None
+        "entity_category": None,
     }
 }
 
@@ -108,7 +108,7 @@ POSITION_SENSOR_TYPES: Final = {
         "device_class": None,
         "state_class": "measurement",
         "icon": "mdi:cash-multiple",
-        "entity_category": None
+        "entity_category": None,
     },
     "pnl": {
         "name": "Position P&L",
@@ -116,8 +116,8 @@ POSITION_SENSOR_TYPES: Final = {
         "device_class": None,
         "state_class": "measurement",
         "icon": "mdi:trending-up",
-        "entity_category": None
-    }
+        "entity_category": None,
+    },
 }
 
 # Configuration flow
@@ -133,13 +133,13 @@ ENVIRONMENTS: Final = {
     ENV_SIMULATION: {
         "name": "Simulation",
         "api_base_url": SAXO_SIMULATION_BASE_URL,
-        "auth_base_url": SAXO_AUTH_SIMULATION_BASE_URL
+        "auth_base_url": SAXO_AUTH_SIMULATION_BASE_URL,
     },
     ENV_PRODUCTION: {
         "name": "Production",
         "api_base_url": SAXO_PRODUCTION_BASE_URL,
-        "auth_base_url": SAXO_AUTH_PRODUCTION_BASE_URL
-    }
+        "auth_base_url": SAXO_AUTH_PRODUCTION_BASE_URL,
+    },
 }
 
 # Entity configuration
@@ -174,13 +174,15 @@ SERVICE_REFRESH: Final = "refresh_data"
 DIAGNOSTICS_REDACTED: Final = "**REDACTED**"
 
 # Token management
-TOKEN_REFRESH_BUFFER: Final = timedelta(minutes=5)  # Refresh token 5 minutes before expiry
-TOKEN_MIN_VALIDITY: Final = timedelta(minutes=10)   # Minimum time token should be valid
+TOKEN_REFRESH_BUFFER: Final = timedelta(
+    minutes=5
+)  # Refresh token 5 minutes before expiry
+TOKEN_MIN_VALIDITY: Final = timedelta(minutes=10)  # Minimum time token should be valid
 
 # API timeouts
 API_TIMEOUT_CONNECT: Final = 10  # seconds
-API_TIMEOUT_READ: Final = 30     # seconds
-API_TIMEOUT_TOTAL: Final = 45    # seconds
+API_TIMEOUT_READ: Final = 30  # seconds
+API_TIMEOUT_TOTAL: Final = 45  # seconds
 
 # Coordinator configuration
 COORDINATOR_UPDATE_TIMEOUT: Final = 30  # seconds
@@ -191,9 +193,9 @@ LOGGER_NAME: Final = __name__
 
 # Security patterns for sensitive data masking
 SENSITIVE_URL_PATTERNS: Final = [
-    r'(token=)[^&\s]*',  # token parameters
-    r'(access_token=)[^&\s]*',  # access token parameters
-    r'(Authorization:\s*Bearer\s+)[^\s]*',  # authorization headers
-    r'(app_key=)[^&\s]*',  # app key parameters
-    r'(app_secret=)[^&\s]*',  # app secret parameters
+    r"(token=)[^&\s]*",  # token parameters
+    r"(access_token=)[^&\s]*",  # access token parameters
+    r"(Authorization:\s*Bearer\s+)[^\s]*",  # authorization headers
+    r"(app_key=)[^&\s]*",  # app key parameters
+    r"(app_secret=)[^&\s]*",  # app secret parameters
 ]

@@ -34,7 +34,9 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Saxo Portfolio sensors from a config entry."""
-    coordinator: SaxoCoordinator = hass.data[DOMAIN][config_entry.entry_id][DATA_COORDINATOR]
+    coordinator: SaxoCoordinator = hass.data[DOMAIN][config_entry.entry_id][
+        DATA_COORDINATOR
+    ]
 
     entities: list[SensorEntity] = []
 
@@ -117,12 +119,19 @@ class SaxoPortfolioSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
             if isinstance(value, int | float):
                 # Check for invalid numeric values
                 import math
+
                 if not math.isfinite(value):
-                    _LOGGER.warning("Invalid numeric value for %s: %s", self._sensor_type, value)
+                    _LOGGER.warning(
+                        "Invalid numeric value for %s: %s", self._sensor_type, value
+                    )
                     return None
 
                 # Round financial values to 2 decimal places
-                if self._sensor_type in ["total_value", "cash_balance", "unrealized_pnl"]:
+                if self._sensor_type in [
+                    "total_value",
+                    "cash_balance",
+                    "unrealized_pnl",
+                ]:
                     return round(float(value), 2)
                 # Round percentages to 2 decimal places
                 elif self._sensor_type == "pnl_percentage":
@@ -134,7 +143,11 @@ class SaxoPortfolioSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
             return value
 
         except Exception as e:
-            _LOGGER.error("Error getting native value for %s: %s", self._sensor_type, type(e).__name__)
+            _LOGGER.error(
+                "Error getting native value for %s: %s",
+                self._sensor_type,
+                type(e).__name__,
+            )
             return None
 
     @property
@@ -171,7 +184,9 @@ class SaxoPortfolioSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        return self.coordinator.last_update_success and self.coordinator.data is not None
+        return (
+            self.coordinator.last_update_success and self.coordinator.data is not None
+        )
 
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
@@ -180,7 +195,9 @@ class SaxoPortfolioSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         """When entity will be removed from hass."""
-        _LOGGER.debug("Portfolio sensor %s being removed from Home Assistant", self.entity_id)
+        _LOGGER.debug(
+            "Portfolio sensor %s being removed from Home Assistant", self.entity_id
+        )
         await super().async_will_remove_from_hass()
 
 
@@ -191,7 +208,9 @@ class SaxoAccountSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._account_id = account_id
-        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_account_{account_id}"
+        self._attr_unique_id = (
+            f"{coordinator.config_entry.entry_id}_account_{account_id}"
+        )
 
         # Get sensor configuration
         sensor_config = ACCOUNT_SENSOR_TYPES["balance"]
@@ -245,15 +264,24 @@ class SaxoAccountSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
             balance = account_data.get("balance")
             if balance is not None:
                 import math
+
                 if not math.isfinite(float(balance)):
-                    _LOGGER.warning("Invalid balance value for account %s: %s", self._account_id, balance)
+                    _LOGGER.warning(
+                        "Invalid balance value for account %s: %s",
+                        self._account_id,
+                        balance,
+                    )
                     return None
                 return round(float(balance), 2)
 
             return None
 
         except Exception as e:
-            _LOGGER.error("Error getting account balance for %s: %s", self._account_id, type(e).__name__)
+            _LOGGER.error(
+                "Error getting account balance for %s: %s",
+                self._account_id,
+                type(e).__name__,
+            )
             return None
 
     @property
@@ -289,7 +317,9 @@ class SaxoAccountSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         """When entity will be removed from hass."""
-        _LOGGER.debug("Account sensor %s being removed from Home Assistant", self.entity_id)
+        _LOGGER.debug(
+            "Account sensor %s being removed from Home Assistant", self.entity_id
+        )
         await super().async_will_remove_from_hass()
 
 
@@ -300,7 +330,9 @@ class SaxoPositionSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._position_id = position_id
-        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_position_{position_id}"
+        self._attr_unique_id = (
+            f"{coordinator.config_entry.entry_id}_position_{position_id}"
+        )
 
         # Get sensor configuration
         sensor_config = POSITION_SENSOR_TYPES["value"]
@@ -354,14 +386,21 @@ class SaxoPositionSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
             current_value = position_data.get("current_value")
             if current_value is not None:
                 import math
+
                 if not math.isfinite(float(current_value)):
-                    _LOGGER.warning("Invalid current value for position %s: %s", self._position_id, current_value)
+                    _LOGGER.warning(
+                        "Invalid current value for position %s: %s",
+                        self._position_id,
+                        current_value,
+                    )
                     return None
 
                 # Position values should generally be non-negative
                 value = float(current_value)
                 if value < 0:
-                    _LOGGER.warning("Negative position value for %s: %s", self._position_id, value)
+                    _LOGGER.warning(
+                        "Negative position value for %s: %s", self._position_id, value
+                    )
                     # Still return it as some positions might have negative values (shorts)
 
                 return round(value, 2)
@@ -369,7 +408,11 @@ class SaxoPositionSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
             return None
 
         except Exception as e:
-            _LOGGER.error("Error getting position value for %s: %s", self._position_id, type(e).__name__)
+            _LOGGER.error(
+                "Error getting position value for %s: %s",
+                self._position_id,
+                type(e).__name__,
+            )
             return None
 
     @property
@@ -418,5 +461,7 @@ class SaxoPositionSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         """When entity will be removed from hass."""
-        _LOGGER.debug("Position sensor %s being removed from Home Assistant", self.entity_id)
+        _LOGGER.debug(
+            "Position sensor %s being removed from Home Assistant", self.entity_id
+        )
         await super().async_will_remove_from_hass()

@@ -74,10 +74,7 @@ class TestOAuthAuthenticationFlow:
         config_flow.hass = mock_hass
 
         # Mock OAuth callback data
-        callback_data = {
-            "code": "test_auth_code",
-            "state": "test_state"
-        }
+        callback_data = {"code": "test_auth_code", "state": "test_state"}
 
         # Process OAuth callback
         result = await config_flow.async_step_oauth_callback(callback_data)
@@ -98,7 +95,7 @@ class TestOAuthAuthenticationFlow:
         """Test the token exchange process with Saxo API."""
         # This test MUST FAIL initially - no implementation exists
 
-        with patch('aiohttp.ClientSession.post') as mock_post:
+        with patch("aiohttp.ClientSession.post") as mock_post:
             # Mock token endpoint response
             mock_response = AsyncMock()
             mock_response.status = 200
@@ -106,7 +103,7 @@ class TestOAuthAuthenticationFlow:
                 "access_token": "saxo_access_token_123",
                 "refresh_token": "saxo_refresh_token_456",
                 "token_type": "Bearer",
-                "expires_in": 1200
+                "expires_in": 1200,
             }
             mock_post.return_value = mock_response
 
@@ -115,8 +112,7 @@ class TestOAuthAuthenticationFlow:
 
             # Exchange authorization code for tokens
             token_data = await config_flow._exchange_code_for_token(
-                "test_auth_code",
-                mock_oauth_implementation
+                "test_auth_code", mock_oauth_implementation
             )
 
             # Should get valid token response
@@ -134,9 +130,9 @@ class TestOAuthAuthenticationFlow:
                 "access_token": "test_token",
                 "refresh_token": "test_refresh",
                 "expires_at": 1640995200,
-                "token_type": "Bearer"
+                "token_type": "Bearer",
             },
-            "auth_implementation": DOMAIN
+            "auth_implementation": DOMAIN,
         }
 
         config_flow = SaxoPortfolioFlowHandler()
@@ -163,12 +159,12 @@ class TestOAuthAuthenticationFlow:
         config_flow.hass = mock_hass
 
         # Test invalid authorization code
-        with patch('aiohttp.ClientSession.post') as mock_post:
+        with patch("aiohttp.ClientSession.post") as mock_post:
             mock_response = AsyncMock()
             mock_response.status = 400
             mock_response.json.return_value = {
                 "error": "invalid_grant",
-                "error_description": "Authorization code is invalid"
+                "error_description": "Authorization code is invalid",
             }
             mock_post.return_value = mock_response
 
@@ -187,17 +183,17 @@ class TestOAuthAuthenticationFlow:
             "access_token": "expired_token",
             "refresh_token": "valid_refresh_token",
             "expires_at": 1640000000,  # Past timestamp
-            "token_type": "Bearer"
+            "token_type": "Bearer",
         }
 
-        with patch('aiohttp.ClientSession.post') as mock_post:
+        with patch("aiohttp.ClientSession.post") as mock_post:
             # Mock refresh token response
             mock_response = AsyncMock()
             mock_response.status = 200
             mock_response.json.return_value = {
                 "access_token": "new_access_token",
                 "refresh_token": "new_refresh_token",
-                "expires_in": 1200
+                "expires_in": 1200,
             }
             mock_post.return_value = mock_response
 
@@ -241,20 +237,17 @@ class TestOAuthAuthenticationFlow:
         config_flow._oauth_state = "expected_state_123"
 
         # Valid state should succeed
-        valid_callback = {
-            "code": "auth_code",
-            "state": "expected_state_123"
-        }
+        valid_callback = {"code": "auth_code", "state": "expected_state_123"}
 
         # Should not raise exception for valid state
         result = await config_flow.async_step_oauth_callback(valid_callback)
-        assert result["type"] in [data_entry_flow.RESULT_TYPE_CREATE_ENTRY, data_entry_flow.RESULT_TYPE_EXTERNAL_STEP]
+        assert result["type"] in [
+            data_entry_flow.RESULT_TYPE_CREATE_ENTRY,
+            data_entry_flow.RESULT_TYPE_EXTERNAL_STEP,
+        ]
 
         # Invalid state should fail
-        invalid_callback = {
-            "code": "auth_code",
-            "state": "wrong_state_456"
-        }
+        invalid_callback = {"code": "auth_code", "state": "wrong_state_456"}
 
         with pytest.raises(Exception) as exc_info:
             await config_flow.async_step_oauth_callback(invalid_callback)
@@ -270,13 +263,17 @@ class TestOAuthAuthenticationFlow:
         config_flow.hass = mock_hass
 
         # Mock network error during token exchange
-        with patch('aiohttp.ClientSession.post', side_effect=Exception("Network error")):
-
+        with patch(
+            "aiohttp.ClientSession.post", side_effect=Exception("Network error")
+        ):
             with pytest.raises(Exception) as exc_info:
                 await config_flow._exchange_code_for_token("test_code", Mock())
 
             # Should propagate network error appropriately
-            assert "network" in str(exc_info.value).lower() or "error" in str(exc_info.value).lower()
+            assert (
+                "network" in str(exc_info.value).lower()
+                or "error" in str(exc_info.value).lower()
+            )
 
     @pytest.mark.asyncio
     async def test_application_credentials_integration(self, mock_hass):
@@ -285,23 +282,20 @@ class TestOAuthAuthenticationFlow:
 
         from homeassistant.components.application_credentials import (
             ClientCredential,
-            async_import_client_credential
+            async_import_client_credential,
         )
 
         # Mock application credentials
-        credentials = ClientCredential(
-            "test_app_key",
-            "test_app_secret"
-        )
+        credentials = ClientCredential("test_app_key", "test_app_secret")
 
-        with patch('homeassistant.components.application_credentials.async_import_client_credential') as mock_import:
+        with patch(
+            "homeassistant.components.application_credentials.async_import_client_credential"
+        ) as mock_import:
             mock_import.return_value = True
 
             # Should be able to import credentials
             result = await async_import_client_credential(
-                mock_hass,
-                DOMAIN,
-                credentials
+                mock_hass, DOMAIN, credentials
             )
 
             assert result is True

@@ -84,6 +84,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Get base URL from environment config
             environment = self.config_entry.data.get("environment", "simulation")
             from .const import ENVIRONMENTS
+
             base_url = ENVIRONMENTS[environment]["api_base_url"]
 
             session = async_get_clientsession(self.hass)
@@ -104,7 +105,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             # Get current time and convert to Eastern Time
             now_utc = dt_util.utcnow()
-            eastern = pytz.timezone('US/Eastern')
+            eastern = pytz.timezone("US/Eastern")
             now_et = now_utc.astimezone(eastern)
 
             # Check if it's a weekday (Monday = 0, Sunday = 6)
@@ -123,7 +124,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "Market hours check: %s ET, weekday: %s, is_open: %s",
                 current_time.strftime("%H:%M:%S"),
                 now_et.weekday(),
-                is_open
+                is_open,
             )
 
             return is_open
@@ -152,7 +153,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.debug(
                     "Token needs refresh (expires at %s, refresh buffer %s)",
                     expiry_time.isoformat(),
-                    TOKEN_REFRESH_BUFFER
+                    TOKEN_REFRESH_BUFFER,
                 )
 
                 # Validate token still has minimum validity
@@ -184,6 +185,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Get environment configuration
             environment = self.config_entry.data.get("environment", "simulation")
             from .const import ENVIRONMENTS, OAUTH_TOKEN_ENDPOINT
+
             auth_base_url = ENVIRONMENTS[environment]["auth_base_url"]
 
             # Prepare refresh request
@@ -204,15 +206,20 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             auth = None
             if app_key and app_secret:
                 import aiohttp
+
                 auth = aiohttp.BasicAuth(app_key, app_secret)
 
-            async with session.post(token_url, data=refresh_data, auth=auth) as response:
+            async with session.post(
+                token_url, data=refresh_data, auth=auth
+            ) as response:
                 if response.status == 200:
                     new_token_data = await response.json()
 
                     # Calculate expiry time
                     expires_in = new_token_data.get("expires_in", 1200)
-                    expires_at = (datetime.now() + timedelta(seconds=expires_in)).timestamp()
+                    expires_at = (
+                        datetime.now() + timedelta(seconds=expires_in)
+                    ).timestamp()
                     new_token_data["expires_at"] = expires_at
 
                     # Update config entry with new token
@@ -230,7 +237,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     token_expires = datetime.fromtimestamp(new_token_data["expires_at"])
                     _LOGGER.info(
                         "Successfully refreshed OAuth token (expires: %s)",
-                        token_expires.isoformat()
+                        token_expires.isoformat(),
                     )
 
                     return new_token_data
@@ -282,22 +289,28 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     first_position = positions_data["Data"][0]
                     account_id = first_position["PositionBase"]["AccountId"]
                     try:
-                        accounts_task = asyncio.create_task(client.get_accounts(account_id))
+                        accounts_task = asyncio.create_task(
+                            client.get_accounts(account_id)
+                        )
                         accounts_data = await accounts_task
                     except Exception as e:
-                        _LOGGER.warning("Could not fetch accounts data: %s", type(e).__name__)
+                        _LOGGER.warning(
+                            "Could not fetch accounts data: %s", type(e).__name__
+                        )
                         # Fallback: Create minimal account data from position information
                         # This ensures sensors work even if accounts endpoint is restricted
                         accounts_data = {
                             "__count": 1,
-                            "Data": [{
-                                "AccountId": account_id,
-                                "AccountKey": f"ak_{account_id}",
-                                "AccountType": "Normal",
-                                "Active": True,
-                                "Currency": balance_data.get("Currency", "USD"),
-                                "DisplayName": f"Account {account_id}"
-                            }]
+                            "Data": [
+                                {
+                                    "AccountId": account_id,
+                                    "AccountKey": f"ak_{account_id}",
+                                    "AccountType": "Normal",
+                                    "Active": True,
+                                    "Currency": balance_data.get("Currency", "USD"),
+                                    "DisplayName": f"Account {account_id}",
+                                }
+                            ],
                         }
 
                 # Create coordinated data model
@@ -348,7 +361,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "Switched to %s mode - updating refresh interval from %s to %s",
                 market_status,
                 self.update_interval,
-                new_interval
+                new_interval,
             )
             self.update_interval = new_interval
 
@@ -383,7 +396,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "cash_balance": "cash_balance",
             "unrealized_pnl": "unrealized_pnl",
             "positions_count": "positions_count",
-            "pnl_percentage": "pnl_percentage"
+            "pnl_percentage": "pnl_percentage",
         }
 
         field_name = sensor_map.get(sensor_type)
@@ -460,6 +473,6 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "Manual interval check: Switched to %s mode - updating refresh interval from %s to %s",
                 market_status,
                 self.update_interval,
-                new_interval
+                new_interval,
             )
             self.update_interval = new_interval

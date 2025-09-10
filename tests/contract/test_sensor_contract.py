@@ -13,7 +13,7 @@ from datetime import datetime
 from custom_components.saxo_portfolio.sensor import (
     SaxoPortfolioSensor,
     SaxoAccountSensor,
-    SaxoPositionSensor
+    SaxoPositionSensor,
 )
 from custom_components.saxo_portfolio.coordinator import SaxoCoordinator
 
@@ -32,14 +32,14 @@ class TestSaxoSensorContract:
                 "cash_balance": 5000.00,
                 "currency": "USD",
                 "unrealized_pnl": 2500.00,
-                "positions_count": 5
+                "positions_count": 5,
             },
             "accounts": [
                 {
                     "account_id": "ACC001",
                     "balance": 50000.00,
                     "currency": "USD",
-                    "display_name": "Main Account"
+                    "display_name": "Main Account",
                 }
             ],
             "positions": [
@@ -48,10 +48,10 @@ class TestSaxoSensorContract:
                     "symbol": "AAPL",
                     "current_value": 15000.00,
                     "unrealized_pnl": 500.00,
-                    "currency": "USD"
+                    "currency": "USD",
                 }
             ],
-            "last_updated": datetime.now().isoformat()
+            "last_updated": datetime.now().isoformat(),
         }
         return coordinator
 
@@ -77,9 +77,9 @@ class TestSaxoSensorContract:
         """Test that portfolio sensor state matches SensorState schema."""
         # This test MUST FAIL initially - no implementation exists
         # Validate sensor has required properties
-        assert hasattr(portfolio_sensor, 'entity_id')
-        assert hasattr(portfolio_sensor, 'state')
-        assert hasattr(portfolio_sensor, 'extra_state_attributes')
+        assert hasattr(portfolio_sensor, "entity_id")
+        assert hasattr(portfolio_sensor, "state")
+        assert hasattr(portfolio_sensor, "extra_state_attributes")
 
         # Validate entity_id format
         entity_id = portfolio_sensor.entity_id
@@ -121,7 +121,7 @@ class TestSaxoSensorContract:
         """Test that portfolio sensor has correct device class."""
         # This test MUST FAIL initially - no implementation exists
         # Financial sensors should have appropriate device class
-        assert hasattr(portfolio_sensor, 'device_class')
+        assert hasattr(portfolio_sensor, "device_class")
 
         # For financial data, device class should be None or monetary
         # (due to Home Assistant limitation with monetary + state_class)
@@ -131,7 +131,7 @@ class TestSaxoSensorContract:
     def test_portfolio_sensor_state_class(self, portfolio_sensor):
         """Test that portfolio sensor has correct state class."""
         # This test MUST FAIL initially - no implementation exists
-        if hasattr(portfolio_sensor, 'state_class'):
+        if hasattr(portfolio_sensor, "state_class"):
             state_class = portfolio_sensor.state_class
             if state_class is not None:
                 # If state_class is set, should be measurement for financial tracking
@@ -142,7 +142,7 @@ class TestSaxoSensorContract:
     def test_account_sensor_unique_id(self, account_sensor):
         """Test that account sensor has unique ID."""
         # This test MUST FAIL initially - no implementation exists
-        assert hasattr(account_sensor, 'unique_id')
+        assert hasattr(account_sensor, "unique_id")
         unique_id = account_sensor.unique_id
         assert isinstance(unique_id, str)
         assert len(unique_id) > 0
@@ -160,6 +160,7 @@ class TestSaxoSensorContract:
 
             # Should be finite (not NaN or infinity)
             import math
+
             assert math.isfinite(numeric_state)
 
             # Position value should be non-negative
@@ -168,7 +169,7 @@ class TestSaxoSensorContract:
     def test_sensor_availability(self, portfolio_sensor):
         """Test that sensor correctly reports availability."""
         # This test MUST FAIL initially - no implementation exists
-        assert hasattr(portfolio_sensor, 'available')
+        assert hasattr(portfolio_sensor, "available")
 
         # Should be available when coordinator has data
         availability = portfolio_sensor.available
@@ -184,13 +185,13 @@ class TestSaxoSensorContract:
         assert isinstance(portfolio_sensor, CoordinatorEntity)
 
         # Should have coordinator reference
-        assert hasattr(portfolio_sensor, 'coordinator')
+        assert hasattr(portfolio_sensor, "coordinator")
         assert portfolio_sensor.coordinator is not None
 
     def test_sensor_icon_assignment(self, portfolio_sensor):
         """Test that sensor has appropriate icon."""
         # This test MUST FAIL initially - no implementation exists
-        if hasattr(portfolio_sensor, 'icon'):
+        if hasattr(portfolio_sensor, "icon"):
             icon = portfolio_sensor.icon
             if icon is not None:
                 # Should be Material Design icon
@@ -209,7 +210,7 @@ class TestSaxoSensorContract:
         entity_ids = {
             total_value_sensor.entity_id,
             cash_balance_sensor.entity_id,
-            pnl_sensor.entity_id
+            pnl_sensor.entity_id,
         }
         assert len(entity_ids) == 3  # All unique
 
@@ -217,11 +218,11 @@ class TestSaxoSensorContract:
         """Test that sensor has proper update method."""
         # This test MUST FAIL initially - no implementation exists
         # Should have async_update method or rely on coordinator
-        if hasattr(portfolio_sensor, 'async_update'):
+        if hasattr(portfolio_sensor, "async_update"):
             assert callable(portfolio_sensor.async_update)
         else:
             # Should rely on coordinator updates
-            assert hasattr(portfolio_sensor, 'coordinator')
+            assert hasattr(portfolio_sensor, "coordinator")
 
     def test_sensor_error_state_handling(self, mock_coordinator):
         """Test that sensor handles coordinator error states."""
@@ -255,9 +256,9 @@ class TestSaxoSensorContract:
         """Test that sensor provides entity registry information."""
         # This test MUST FAIL initially - no implementation exists
         # Should have registry-related properties
-        assert hasattr(portfolio_sensor, 'entity_registry_enabled_default')
+        assert hasattr(portfolio_sensor, "entity_registry_enabled_default")
 
         # Default enabled state should be boolean
-        if hasattr(portfolio_sensor, 'entity_registry_enabled_default'):
+        if hasattr(portfolio_sensor, "entity_registry_enabled_default"):
             enabled_default = portfolio_sensor.entity_registry_enabled_default
             assert isinstance(enabled_default, bool)

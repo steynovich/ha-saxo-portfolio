@@ -37,14 +37,14 @@ class TestSaxoConfigFlowContract:
     def test_config_flow_domain(self, config_flow):
         """Test that config flow has correct domain."""
         # This test MUST FAIL initially - no implementation exists
-        assert hasattr(config_flow, 'DOMAIN')
+        assert hasattr(config_flow, "DOMAIN")
         assert config_flow.DOMAIN == DOMAIN
         assert DOMAIN == "saxo_portfolio"
 
     def test_config_flow_version(self, config_flow):
         """Test that config flow has version defined."""
         # This test MUST FAIL initially - no implementation exists
-        assert hasattr(config_flow, 'VERSION')
+        assert hasattr(config_flow, "VERSION")
         assert isinstance(config_flow.VERSION, int)
         assert config_flow.VERSION >= 1
 
@@ -54,7 +54,9 @@ class TestSaxoConfigFlowContract:
         from homeassistant.helpers import config_entry_oauth2_flow
 
         # Should inherit from AbstractOAuth2FlowHandler
-        assert isinstance(config_flow, config_entry_oauth2_flow.AbstractOAuth2FlowHandler)
+        assert isinstance(
+            config_flow, config_entry_oauth2_flow.AbstractOAuth2FlowHandler
+        )
 
     @pytest.mark.asyncio
     async def test_config_flow_user_step_schema(self, config_flow):
@@ -85,12 +87,12 @@ class TestSaxoConfigFlowContract:
         """Test that OAuth redirect is handled correctly."""
         # This test MUST FAIL initially - no implementation exists
         # Mock OAuth implementation selector
-        with patch.object(config_flow, 'async_step_pick_implementation') as mock_pick:
+        with patch.object(config_flow, "async_step_pick_implementation") as mock_pick:
             mock_pick.return_value = {
                 "type": data_entry_flow.RESULT_TYPE_EXTERNAL_STEP,
                 "flow_id": "test_flow_id",
                 "handler": DOMAIN,
-                "step_id": "auth"
+                "step_id": "auth",
             }
 
             await config_flow.async_step_user()
@@ -107,9 +109,9 @@ class TestSaxoConfigFlowContract:
                 "access_token": "mock_access_token",
                 "refresh_token": "mock_refresh_token",
                 "expires_at": 1640995200,
-                "token_type": "Bearer"
+                "token_type": "Bearer",
             },
-            "auth_implementation": "saxo_portfolio"
+            "auth_implementation": "saxo_portfolio",
         }
 
         result = await config_flow.async_oauth_create_entry(mock_oauth_data)
@@ -135,10 +137,10 @@ class TestSaxoConfigFlowContract:
         """Test that config flow properly handles and reports errors."""
         # This test MUST FAIL initially - no implementation exists
         # Should have error handling capability
-        assert hasattr(config_flow, '_errors') or hasattr(config_flow, 'errors')
+        assert hasattr(config_flow, "_errors") or hasattr(config_flow, "errors")
 
         # Should be able to set errors
-        if hasattr(config_flow, '_errors'):
+        if hasattr(config_flow, "_errors"):
             config_flow._errors = {"base": "auth_error"}
             assert config_flow._errors["base"] == "auth_error"
 
@@ -148,7 +150,7 @@ class TestSaxoConfigFlowContract:
         import voluptuous as vol
 
         # Should have schema for validation
-        if hasattr(config_flow, '_get_schema'):
+        if hasattr(config_flow, "_get_schema"):
             schema = config_flow._get_schema()
             assert isinstance(schema, vol.Schema)
 
@@ -163,7 +165,7 @@ class TestSaxoConfigFlowContract:
         ]
 
         # Should abort if already configured (single instance)
-        with patch.object(config_flow, '_async_in_progress', return_value=False):
+        with patch.object(config_flow, "_async_in_progress", return_value=False):
             result = await config_flow.async_step_user()
 
             # May abort with already_configured
@@ -175,7 +177,7 @@ class TestSaxoConfigFlowContract:
         """Test that config flow supports reauthentication."""
         # This test MUST FAIL initially - no implementation exists
         # Should have reauth step for token refresh
-        if hasattr(config_flow, 'async_step_reauth'):
+        if hasattr(config_flow, "async_step_reauth"):
             mock_entry = Mock()
             mock_entry.data = {"token": {"access_token": "old_token"}}
 
@@ -188,28 +190,32 @@ class TestSaxoConfigFlowContract:
     def test_config_flow_logger(self, config_flow):
         """Test that config flow has proper logging."""
         # This test MUST FAIL initially - no implementation exists
-        assert hasattr(config_flow, 'logger')
+        assert hasattr(config_flow, "logger")
 
         # Logger should be configured
         logger = config_flow.logger
         assert logger is not None
-        assert hasattr(logger, 'debug')
-        assert hasattr(logger, 'error')
+        assert hasattr(logger, "debug")
+        assert hasattr(logger, "error")
 
     @pytest.mark.asyncio
     async def test_config_flow_application_credentials(self, config_flow):
         """Test that config flow works with application credentials."""
         # This test MUST FAIL initially - no implementation exists
         from homeassistant.components.application_credentials import (
-            async_get_auth_implementation
+            async_get_auth_implementation,
         )
 
         # Should be able to get auth implementation for our domain
-        with patch('homeassistant.components.application_credentials.async_get_auth_implementation') as mock_get:
+        with patch(
+            "homeassistant.components.application_credentials.async_get_auth_implementation"
+        ) as mock_get:
             mock_get.return_value = Mock()
 
             # Config flow should work with application credentials
-            implementation = await async_get_auth_implementation(config_flow.hass, DOMAIN, "saxo")
+            implementation = await async_get_auth_implementation(
+                config_flow.hass, DOMAIN, "saxo"
+            )
 
             # Should not raise exception
             assert implementation is not None
@@ -220,7 +226,7 @@ class TestSaxoConfigFlowContract:
         # Should set unique ID during OAuth flow
 
         # Config flow should be able to set unique ID
-        if hasattr(config_flow, '_set_unique_id'):
+        if hasattr(config_flow, "_set_unique_id"):
             config_flow._set_unique_id("saxo_user_123")
             assert config_flow.unique_id == "saxo_user_123"
 
@@ -229,7 +235,11 @@ class TestSaxoConfigFlowContract:
         """Test OAuth error handling in config flow."""
         # This test MUST FAIL initially - no implementation exists
         # Mock OAuth error
-        with patch.object(config_flow, 'async_step_pick_implementation', side_effect=Exception("OAuth Error")):
+        with patch.object(
+            config_flow,
+            "async_step_pick_implementation",
+            side_effect=Exception("OAuth Error"),
+        ):
             result = await config_flow.async_step_user()
 
             # Should handle error gracefully
@@ -240,8 +250,9 @@ class TestSaxoConfigFlowContract:
         """Test that config flow supports options."""
         # This test MUST FAIL initially - no implementation exists
         # Should indicate if options flow is supported
-        supports_options = hasattr(config_flow, 'async_step_init') or \
-                          hasattr(config_flow, 'OPTIONS_FLOW')
+        supports_options = hasattr(config_flow, "async_step_init") or hasattr(
+            config_flow, "OPTIONS_FLOW"
+        )
 
         # For OAuth integrations, options may not be needed
         # This test just validates the structure exists if implemented
@@ -256,7 +267,7 @@ class TestSaxoConfigFlowContract:
             "token": {
                 "access_token": "test_token",
                 "refresh_token": "test_refresh",
-                "expires_at": 1640995200
+                "expires_at": 1640995200,
             }
         }
 

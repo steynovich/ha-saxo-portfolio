@@ -1,4 +1,5 @@
 """Basic structure tests that don't require Home Assistant."""
+
 import json
 from pathlib import Path
 
@@ -12,7 +13,14 @@ def test_manifest_exists():
         manifest = json.load(f)
 
     # Required fields
-    required_fields = ["domain", "name", "codeowners", "documentation", "issue_tracker", "version"]
+    required_fields = [
+        "domain",
+        "name",
+        "codeowners",
+        "documentation",
+        "issue_tracker",
+        "version",
+    ]
     for field in required_fields:
         assert field in manifest, f"manifest.json should have {field} field"
 
@@ -33,7 +41,7 @@ def test_required_files_exist():
         "README.md",
         "hacs.json",
         "LICENSE",
-        "CHANGELOG.md"
+        "CHANGELOG.md",
     ]
 
     for file_path in required_files:
@@ -55,10 +63,7 @@ def test_hacs_json_valid():
 
 def test_github_workflows_exist():
     """Test that GitHub workflows exist."""
-    workflow_files = [
-        ".github/workflows/hacs.yml",
-        ".github/workflows/hassfest.yml"
-    ]
+    workflow_files = [".github/workflows/hacs.yml", ".github/workflows/hassfest.yml"]
 
     for workflow in workflow_files:
         assert Path(workflow).exists(), f"{workflow} should exist"
@@ -72,7 +77,7 @@ def test_basic_python_syntax():
         "custom_components/saxo_portfolio/config_flow.py",
         "custom_components/saxo_portfolio/coordinator.py",
         "custom_components/saxo_portfolio/const.py",
-        "custom_components/saxo_portfolio/models.py"
+        "custom_components/saxo_portfolio/models.py",
     ]
 
     for file_path in python_files:
@@ -81,6 +86,6 @@ def test_basic_python_syntax():
 
         # Basic syntax check - compile the code
         try:
-            compile(content, file_path, 'exec')
+            compile(content, file_path, "exec")
         except SyntaxError as e:
             assert False, f"Syntax error in {file_path}: {e}"

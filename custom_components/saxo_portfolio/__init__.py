@@ -40,7 +40,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return True
 
     except Exception as e:
-        _LOGGER.error("Failed to set up Saxo Portfolio integration: %s", type(e).__name__)
+        _LOGGER.error(
+            "Failed to set up Saxo Portfolio integration: %s", type(e).__name__
+        )
         # Clean up any partial setup
         if entry.entry_id in hass.data.get(DOMAIN, {}):
             coordinator = hass.data[DOMAIN][entry.entry_id].get(DATA_COORDINATOR)
@@ -99,7 +101,9 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Migrate old entry."""
-    _LOGGER.debug("Migrating Saxo Portfolio entry from version %s", config_entry.version)
+    _LOGGER.debug(
+        "Migrating Saxo Portfolio entry from version %s", config_entry.version
+    )
 
     if config_entry.version == 1:
         # Migration logic for future versions

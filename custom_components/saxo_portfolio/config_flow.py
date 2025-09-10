@@ -47,10 +47,7 @@ class SaxoPortfolioFlowHandler(
         """Extra data that needs to be appended to the authorize url."""
         # Generate cryptographically secure state parameter for CSRF protection
         self._oauth_state = secrets.token_urlsafe(32)
-        return {
-            "scope": "openapi",
-            "state": self._oauth_state
-        }
+        return {"scope": "openapi", "state": self._oauth_state}
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -67,9 +64,7 @@ class SaxoPortfolioFlowHandler(
         if user_input is not None:
             try:
                 # Exchange authorization code for access token
-                token_data = await self._exchange_code_for_token(
-                    user_input["code"]
-                )
+                token_data = await self._exchange_code_for_token(user_input["code"])
 
                 # Store OAuth data for entry creation
                 self._oauth_data = {
@@ -151,8 +146,11 @@ class SaxoPortfolioFlowHandler(
 
                     # Add expiry timestamp
                     from datetime import datetime, timedelta
+
                     expires_in = token_response.get("expires_in", 1200)
-                    expires_at = (datetime.now() + timedelta(seconds=expires_in)).timestamp()
+                    expires_at = (
+                        datetime.now() + timedelta(seconds=expires_in)
+                    ).timestamp()
                     token_response["expires_at"] = expires_at
 
                     return token_response
@@ -167,7 +165,7 @@ class SaxoPortfolioFlowHandler(
     async def async_step_oauth_callback(self, user_input: dict[str, Any]) -> FlowResult:
         """Handle OAuth callback."""
         # Validate state parameter for security
-        if hasattr(self, '_oauth_state') and self._oauth_state:
+        if hasattr(self, "_oauth_state") and self._oauth_state:
             received_state = user_input.get("state")
             if received_state != self._oauth_state:
                 raise Exception("OAuth state parameter mismatch")
@@ -219,14 +217,19 @@ class SaxoPortfolioFlowHandler(
 
         try:
             auth = aiohttp.BasicAuth(app_key, app_secret)
-            async with session.post(token_url, data=refresh_data, auth=auth) as response:
+            async with session.post(
+                token_url, data=refresh_data, auth=auth
+            ) as response:
                 if response.status == 200:
                     new_token_data = await response.json()
 
                     # Add expiry timestamp
                     from datetime import datetime, timedelta
+
                     expires_in = new_token_data.get("expires_in", 1200)
-                    expires_at = (datetime.now() + timedelta(seconds=expires_in)).timestamp()
+                    expires_at = (
+                        datetime.now() + timedelta(seconds=expires_in)
+                    ).timestamp()
                     new_token_data["expires_at"] = expires_at
 
                     return new_token_data

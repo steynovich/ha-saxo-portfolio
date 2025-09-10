@@ -33,7 +33,7 @@ class TestSaxoCoordinatorContract:
             "token": {
                 "access_token": "test_token",
                 "refresh_token": "test_refresh_token",
-                "expires_at": (datetime.now() + timedelta(hours=1)).timestamp()
+                "expires_at": (datetime.now() + timedelta(hours=1)).timestamp(),
             }
         }
         return config_entry
@@ -49,11 +49,11 @@ class TestSaxoCoordinatorContract:
         """Test that coordinator initializes with correct properties."""
         # This test MUST FAIL initially - no implementation exists
         # Validate coordinator has required attributes
-        assert hasattr(coordinator, 'hass')
-        assert hasattr(coordinator, 'config_entry')
-        assert hasattr(coordinator, 'data')
-        assert hasattr(coordinator, 'last_update_success')
-        assert hasattr(coordinator, 'update_interval')
+        assert hasattr(coordinator, "hass")
+        assert hasattr(coordinator, "config_entry")
+        assert hasattr(coordinator, "data")
+        assert hasattr(coordinator, "last_update_success")
+        assert hasattr(coordinator, "update_interval")
 
         # Validate initial state
         assert coordinator.data is None or isinstance(coordinator.data, dict)
@@ -166,11 +166,12 @@ class TestSaxoCoordinatorContract:
         await coordinator.async_config_entry_first_refresh()
 
         # Coordinator should have update_interval attribute
-        assert hasattr(coordinator, 'update_interval')
+        assert hasattr(coordinator, "update_interval")
         assert coordinator.update_interval is not None
 
         # Update interval should be timedelta
         from datetime import timedelta
+
         assert isinstance(coordinator.update_interval, timedelta)
 
         # Should be either 5 minutes (market hours) or 30 minutes (after hours)
@@ -182,7 +183,9 @@ class TestSaxoCoordinatorContract:
         """Test that coordinator handles API errors gracefully."""
         # This test MUST FAIL initially - no implementation exists
         # Mock API failure
-        with patch.object(coordinator, '_async_update_data', side_effect=Exception("API Error")):
+        with patch.object(
+            coordinator, "_async_update_data", side_effect=Exception("API Error")
+        ):
             # Should not raise exception, but set error state
             await coordinator._async_update_data()
 
@@ -194,10 +197,12 @@ class TestSaxoCoordinatorContract:
         """Test that coordinator handles OAuth token refresh."""
         # This test MUST FAIL initially - no implementation exists
         # Mock expired token
-        coordinator.config_entry.data["token"]["expires_at"] = (datetime.now() - timedelta(hours=1)).timestamp()
+        coordinator.config_entry.data["token"]["expires_at"] = (
+            datetime.now() - timedelta(hours=1)
+        ).timestamp()
 
         # Should attempt token refresh during update
-        with patch.object(coordinator, '_refresh_oauth_token') as mock_refresh:
+        with patch.object(coordinator, "_refresh_oauth_token") as mock_refresh:
             await coordinator._async_update_data()
             mock_refresh.assert_called_once()
 
@@ -206,7 +211,9 @@ class TestSaxoCoordinatorContract:
         """Test that coordinator respects API rate limits."""
         # This test MUST FAIL initially - no implementation exists
         # Should have rate limiting mechanism
-        assert hasattr(coordinator, '_rate_limiter') or hasattr(coordinator, '_last_request_time')
+        assert hasattr(coordinator, "_rate_limiter") or hasattr(
+            coordinator, "_last_request_time"
+        )
 
         # Multiple rapid requests should be throttled
         start_time = datetime.now()
@@ -231,7 +238,9 @@ class TestSaxoCoordinatorContract:
 
         # Structure should be consistent
         assert set(first_data.keys()) == set(second_data.keys())
-        assert set(first_data["portfolio"].keys()).issubset(set(second_data["portfolio"].keys()))
+        assert set(first_data["portfolio"].keys()).issubset(
+            set(second_data["portfolio"].keys())
+        )
 
     def test_coordinator_implements_interface(self, coordinator):
         """Test that coordinator implements required DataUpdateCoordinator interface."""
@@ -242,9 +251,9 @@ class TestSaxoCoordinatorContract:
         assert isinstance(coordinator, DataUpdateCoordinator)
 
         # Should have required methods
-        assert hasattr(coordinator, 'async_config_entry_first_refresh')
-        assert hasattr(coordinator, 'async_request_refresh')
-        assert hasattr(coordinator, '_async_update_data')
+        assert hasattr(coordinator, "async_config_entry_first_refresh")
+        assert hasattr(coordinator, "async_request_refresh")
+        assert hasattr(coordinator, "_async_update_data")
 
         # Methods should be callable
         assert callable(coordinator.async_config_entry_first_refresh)

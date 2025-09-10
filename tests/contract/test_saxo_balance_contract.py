@@ -91,14 +91,16 @@ class TestSaxoBalanceContract:
         mock_client._session.get.return_value.headers = {
             "X-RateLimit-Limit": "120",
             "X-RateLimit-Remaining": "0",
-            "X-RateLimit-Reset": "1640995200"
+            "X-RateLimit-Reset": "1640995200",
         }
 
         with pytest.raises(Exception) as exc_info:
             await mock_client.get_account_balance()
 
         # Should raise rate limit exception
-        assert "rate limit" in str(exc_info.value).lower() or "429" in str(exc_info.value)
+        assert "rate limit" in str(exc_info.value).lower() or "429" in str(
+            exc_info.value
+        )
 
     @pytest.mark.asyncio
     async def test_balance_data_types_strict(self, mock_client):

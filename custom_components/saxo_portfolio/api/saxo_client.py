@@ -54,7 +54,11 @@ class APIError(Exception):
 class RateLimiter:
     """Rate limiter for API requests."""
 
-    def __init__(self, max_requests: int = API_RATE_LIMIT_PER_MINUTE, window: int = API_RATE_LIMIT_WINDOW):
+    def __init__(
+        self,
+        max_requests: int = API_RATE_LIMIT_PER_MINUTE,
+        window: int = API_RATE_LIMIT_WINDOW,
+    ):
         """Initialize rate limiter.
 
         Args:
@@ -76,25 +80,35 @@ class RateLimiter:
             # Check if we're in a rate-limited state from server response
             if self._rate_limited_until > now:
                 sleep_time = self._rate_limited_until - now
-                _LOGGER.debug("Server rate limit active, waiting %.2f seconds", sleep_time)
+                _LOGGER.debug(
+                    "Server rate limit active, waiting %.2f seconds", sleep_time
+                )
                 await asyncio.sleep(sleep_time)
                 self._rate_limited_until = 0
 
             window_start = now - self.window
 
             # Remove old requests
-            self.requests = [req_time for req_time in self.requests if req_time > window_start]
+            self.requests = [
+                req_time for req_time in self.requests if req_time > window_start
+            ]
 
             # Check if we need to wait for client-side rate limiting
             if len(self.requests) >= self.max_requests:
                 sleep_time = self.window - (now - self.requests[0])
                 if sleep_time > 0:
-                    _LOGGER.debug("Client rate limit reached, waiting %.2f seconds", sleep_time)
+                    _LOGGER.debug(
+                        "Client rate limit reached, waiting %.2f seconds", sleep_time
+                    )
                     await asyncio.sleep(sleep_time)
                     # Clean up after waiting
                     now = time.time()
                     window_start = now - self.window
-                    self.requests = [req_time for req_time in self.requests if req_time > window_start]
+                    self.requests = [
+                        req_time
+                        for req_time in self.requests
+                        if req_time > window_start
+                    ]
 
             # Record this request
             self.requests.append(now)
@@ -107,7 +121,12 @@ class RateLimiter:
 class SaxoApiClient:
     """Client for Saxo OpenAPI endpoints."""
 
-    def __init__(self, access_token: str, base_url: str = None, session: aiohttp.ClientSession = None):
+    def __init__(
+        self,
+        access_token: str,
+        base_url: str = None,
+        session: aiohttp.ClientSession = None,
+    ):
         """Initialize Saxo API client.
 
         Args:
@@ -138,13 +157,13 @@ class SaxoApiClient:
             timeout = aiohttp.ClientTimeout(
                 connect=API_TIMEOUT_CONNECT,
                 sock_read=API_TIMEOUT_READ,
-                total=API_TIMEOUT_TOTAL
+                total=API_TIMEOUT_TOTAL,
             )
             # Create SSL-secure connector (explicit SSL verification)
             connector = aiohttp.TCPConnector(
                 ssl=True,  # Ensure SSL verification is enabled
                 limit=100,  # Connection pool limit
-                limit_per_host=30  # Per-host connection limit
+                limit_per_host=30,  # Per-host connection limit
             )
 
             self._session = aiohttp.ClientSession(
@@ -153,12 +172,14 @@ class SaxoApiClient:
                 headers={
                     "Authorization": f"Bearer {self.access_token}",
                     "Content-Type": "application/json",
-                    "User-Agent": "HomeAssistant-SaxoPortfolio/1.0"
-                }
+                    "User-Agent": "HomeAssistant-SaxoPortfolio/1.0",
+                },
             )
         return self._session
 
-    async def _make_request(self, endpoint: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def _make_request(
+        self, endpoint: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Make authenticated request to Saxo API.
 
         Args:
@@ -187,9 +208,12 @@ class SaxoApiClient:
                 async with async_timeout.timeout(API_TIMEOUT_TOTAL):
                     async with self.session.get(url, params=params) as response:
                         from ..models import mask_url_for_logging
+
                         _LOGGER.debug(
                             "API request: %s %s -> %d",
-                            "GET", mask_url_for_logging(url), response.status
+                            "GET",
+                            mask_url_for_logging(url),
+                            response.status,
                         )
 
                         if response.status == 200:
@@ -204,7 +228,9 @@ class SaxoApiClient:
 
                             _LOGGER.warning(
                                 "Rate limited (attempt %d/%d), retry after %d seconds",
-                                attempt + 1, MAX_RETRIES, retry_after
+                                attempt + 1,
+                                MAX_RETRIES,
+                                retry_after,
                             )
 
                             # Update rate limiter with server response
@@ -212,11 +238,15 @@ class SaxoApiClient:
 
                             if attempt < MAX_RETRIES - 1:
                                 # Use exponential backoff with server retry time as base
-                                backoff_time = min(retry_after * (RETRY_BACKOFF_FACTOR ** attempt), 300)
+                                backoff_time = min(
+                                    retry_after * (RETRY_BACKOFF_FACTOR**attempt), 300
+                                )
                                 await asyncio.sleep(backoff_time)
                                 continue
                             else:
-                                error_msg = f"{ERROR_RATE_LIMITED} (reset: {rate_limit_reset})"
+                                error_msg = (
+                                    f"{ERROR_RATE_LIMITED} (reset: {rate_limit_reset})"
+                                )
                                 raise RateLimitError(error_msg)
                         else:
                             error_text = await response.text()
@@ -224,10 +254,14 @@ class SaxoApiClient:
 
             except TimeoutError:
                 if attempt < MAX_RETRIES - 1:
-                    backoff_time = min(RETRY_BACKOFF_FACTOR ** attempt, 30)  # Cap at 30 seconds
+                    backoff_time = min(
+                        RETRY_BACKOFF_FACTOR**attempt, 30
+                    )  # Cap at 30 seconds
                     _LOGGER.warning(
                         "Request timeout (attempt %d/%d), retrying in %d seconds",
-                        attempt + 1, MAX_RETRIES, backoff_time
+                        attempt + 1,
+                        MAX_RETRIES,
+                        backoff_time,
                     )
                     await asyncio.sleep(backoff_time)
                     continue
@@ -242,13 +276,16 @@ class SaxoApiClient:
                     # Different backoff for different error types
                     error_msg = str(e)
                     if "DNS" in error_msg or "resolve" in error_msg.lower():
-                        backoff_time = min(5 * (RETRY_BACKOFF_FACTOR ** attempt), 60)
+                        backoff_time = min(5 * (RETRY_BACKOFF_FACTOR**attempt), 60)
                     else:
-                        backoff_time = min(RETRY_BACKOFF_FACTOR ** attempt, 30)
+                        backoff_time = min(RETRY_BACKOFF_FACTOR**attempt, 30)
 
                     _LOGGER.warning(
                         "Network error %s (attempt %d/%d), retrying in %d seconds",
-                        error_type, attempt + 1, MAX_RETRIES, backoff_time
+                        error_type,
+                        attempt + 1,
+                        MAX_RETRIES,
+                        backoff_time,
                     )
                     await asyncio.sleep(backoff_time)
                     continue
@@ -287,6 +324,7 @@ class SaxoApiClient:
 
             # Validate financial data
             import math
+
             if not math.isfinite(response["CashBalance"]):
                 raise APIError("CashBalance is not finite")
             if not math.isfinite(response["TotalValue"]):
@@ -347,7 +385,13 @@ class SaxoApiClient:
                 position_view = position["PositionView"]
 
                 # Validate required fields
-                required_base_fields = ["AccountId", "Amount", "AssetType", "OpenPrice", "Status"]
+                required_base_fields = [
+                    "AccountId",
+                    "Amount",
+                    "AssetType",
+                    "OpenPrice",
+                    "Status",
+                ]
                 for field in required_base_fields:
                     if field not in position_base:
                         raise APIError(f"Missing PositionBase field: {field}")
@@ -365,9 +409,16 @@ class SaxoApiClient:
 
                 # Validate numeric data
                 import math
-                if not math.isfinite(position_base["OpenPrice"]) or position_base["OpenPrice"] <= 0:
+
+                if (
+                    not math.isfinite(position_base["OpenPrice"])
+                    or position_base["OpenPrice"] <= 0
+                ):
                     raise APIError("Invalid OpenPrice")
-                if not math.isfinite(position_view["CurrentPrice"]) or position_view["CurrentPrice"] <= 0:
+                if (
+                    not math.isfinite(position_view["CurrentPrice"])
+                    or position_view["CurrentPrice"] <= 0
+                ):
                     raise APIError("Invalid CurrentPrice")
                 if not math.isfinite(position_view["ProfitLossOnTrade"]):
                     raise APIError("Invalid ProfitLossOnTrade")
@@ -423,9 +474,15 @@ class SaxoApiClient:
                         raise APIError(f"Missing account field: {field}")
 
                 # Validate data types
-                if not isinstance(account["AccountId"], str) or not account["AccountId"]:
+                if (
+                    not isinstance(account["AccountId"], str)
+                    or not account["AccountId"]
+                ):
                     raise APIError("AccountId must be non-empty string")
-                if not isinstance(account["AccountKey"], str) or not account["AccountKey"]:
+                if (
+                    not isinstance(account["AccountKey"], str)
+                    or not account["AccountKey"]
+                ):
                     raise APIError("AccountKey must be non-empty string")
                 if not isinstance(account["Active"], bool):
                     raise APIError("Active must be boolean")
@@ -435,7 +492,11 @@ class SaxoApiClient:
                 # Validate currency if present
                 if "Currency" in account:
                     currency = account["Currency"]
-                    if not isinstance(currency, str) or len(currency) != 3 or not currency.isupper():
+                    if (
+                        not isinstance(currency, str)
+                        or len(currency) != 3
+                        or not currency.isupper()
+                    ):
                         raise APIError(f"Invalid currency format: {currency}")
 
                 # Check for duplicates

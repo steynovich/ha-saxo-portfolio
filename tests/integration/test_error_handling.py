@@ -42,7 +42,7 @@ class TestErrorHandlingAndRecovery:
                 "access_token": "test_token",
                 "refresh_token": "test_refresh",
                 "expires_at": (datetime.now() + timedelta(hours=1)).timestamp(),
-                "token_type": "Bearer"
+                "token_type": "Bearer",
             }
         }
         return config_entry
@@ -57,7 +57,7 @@ class TestErrorHandlingAndRecovery:
                 "access_token": "expired_token",
                 "refresh_token": "test_refresh",
                 "expires_at": (datetime.now() - timedelta(hours=1)).timestamp(),
-                "token_type": "Bearer"
+                "token_type": "Bearer",
             }
         }
         return config_entry
@@ -72,15 +72,14 @@ class TestErrorHandlingAndRecovery:
 
         coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
 
-        with patch('custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient') as mock_client_class:
+        with patch(
+            "custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient"
+        ) as mock_client_class:
             mock_client = AsyncMock()
 
             # Mock 401 authentication error
             auth_error = aiohttp.ClientResponseError(
-                request_info=Mock(),
-                history=(),
-                status=401,
-                message="Unauthorized"
+                request_info=Mock(), history=(), status=401, message="Unauthorized"
             )
             mock_client.get_account_balance.side_effect = auth_error
             mock_client_class.return_value = mock_client
@@ -93,7 +92,9 @@ class TestErrorHandlingAndRecovery:
             assert coordinator.last_update_success is False
 
     @pytest.mark.asyncio
-    async def test_network_connectivity_failure_recovery(self, mock_hass, mock_config_entry):
+    async def test_network_connectivity_failure_recovery(
+        self, mock_hass, mock_config_entry
+    ):
         """Test handling of network connectivity issues.
 
         This validates troubleshooting: 'Data not updating'
@@ -102,7 +103,9 @@ class TestErrorHandlingAndRecovery:
 
         coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
 
-        with patch('custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient') as mock_client_class:
+        with patch(
+            "custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient"
+        ) as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
 
@@ -122,7 +125,7 @@ class TestErrorHandlingAndRecovery:
             mock_client.get_account_balance.return_value = {
                 "CashBalance": 5000.00,
                 "Currency": "USD",
-                "TotalValue": 125000.00
+                "TotalValue": 125000.00,
             }
             mock_client.get_positions.return_value = {"__count": 0, "Data": []}
             mock_client.get_accounts.return_value = {"__count": 0, "Data": []}
@@ -133,7 +136,9 @@ class TestErrorHandlingAndRecovery:
             assert coordinator.last_update_success is True
 
     @pytest.mark.asyncio
-    async def test_rate_limit_error_handling_with_backoff(self, mock_hass, mock_config_entry):
+    async def test_rate_limit_error_handling_with_backoff(
+        self, mock_hass, mock_config_entry
+    ):
         """Test handling of API rate limits (429 errors).
 
         This validates troubleshooting: Rate limit handling
@@ -142,7 +147,9 @@ class TestErrorHandlingAndRecovery:
 
         coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
 
-        with patch('custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient') as mock_client_class:
+        with patch(
+            "custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient"
+        ) as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
 
@@ -152,13 +159,13 @@ class TestErrorHandlingAndRecovery:
                 history=(),
                 status=429,
                 message="Too Many Requests",
-                headers={"Retry-After": "60", "X-RateLimit-Reset": "1640995200"}
+                headers={"Retry-After": "60", "X-RateLimit-Reset": "1640995200"},
             )
 
             # First attempt: Rate limited
             mock_client.get_account_balance.side_effect = rate_limit_error
 
-            with patch('asyncio.sleep') as mock_sleep:
+            with patch("asyncio.sleep") as mock_sleep:
                 # Should handle rate limit with backoff
                 try:
                     await coordinator._async_update_data()
@@ -170,19 +177,21 @@ class TestErrorHandlingAndRecovery:
                         assert sleep_duration >= 60 or sleep_duration >= 1
 
     @pytest.mark.asyncio
-    async def test_oauth_token_refresh_failure_handling(self, mock_hass, mock_expired_config_entry):
+    async def test_oauth_token_refresh_failure_handling(
+        self, mock_hass, mock_expired_config_entry
+    ):
         """Test handling of OAuth token refresh failures."""
         # This test MUST FAIL initially - no implementation exists
 
         coordinator = SaxoCoordinator(mock_hass, mock_expired_config_entry)
 
-        with patch.object(coordinator, '_refresh_oauth_token') as mock_refresh:
+        with patch.object(coordinator, "_refresh_oauth_token") as mock_refresh:
             # Token refresh fails
             refresh_error = aiohttp.ClientResponseError(
                 request_info=Mock(),
                 history=(),
                 status=400,
-                message="Invalid refresh token"
+                message="Invalid refresh token",
             )
             mock_refresh.side_effect = refresh_error
 
@@ -197,7 +206,9 @@ class TestErrorHandlingAndRecovery:
 
         coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
 
-        with patch('custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient') as mock_client_class:
+        with patch(
+            "custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient"
+        ) as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
 
@@ -205,16 +216,18 @@ class TestErrorHandlingAndRecovery:
             mock_client.get_account_balance.return_value = {
                 "CashBalance": 5000.00,
                 "Currency": "USD",
-                "TotalValue": 125000.00
+                "TotalValue": 125000.00,
             }
 
             # Positions endpoint fails
-            mock_client.get_positions.side_effect = Exception("Positions service unavailable")
+            mock_client.get_positions.side_effect = Exception(
+                "Positions service unavailable"
+            )
 
             # Accounts endpoint succeeds
             mock_client.get_accounts.return_value = {
                 "__count": 1,
-                "Data": [{"AccountId": "acc_001", "Active": True}]
+                "Data": [{"AccountId": "acc_001", "Active": True}],
             }
 
             # Should handle partial failure gracefully
@@ -239,12 +252,12 @@ class TestErrorHandlingAndRecovery:
         config_flow.hass = mock_hass
 
         # Mock OAuth error during authorization
-        with patch('aiohttp.ClientSession.post') as mock_post:
+        with patch("aiohttp.ClientSession.post") as mock_post:
             oauth_error_response = AsyncMock()
             oauth_error_response.status = 400
             oauth_error_response.json.return_value = {
                 "error": "invalid_client",
-                "error_description": "Invalid client credentials"
+                "error_description": "Invalid client credentials",
             }
             mock_post.return_value = oauth_error_response
 
@@ -255,7 +268,9 @@ class TestErrorHandlingAndRecovery:
             assert result is None or "error" in str(result).lower()
 
     @pytest.mark.asyncio
-    async def test_sensor_unavailable_state_during_errors(self, mock_hass, mock_config_entry):
+    async def test_sensor_unavailable_state_during_errors(
+        self, mock_hass, mock_config_entry
+    ):
         """Test that sensors show unavailable state during coordinator errors."""
         # This test MUST FAIL initially - no implementation exists
 
@@ -275,14 +290,18 @@ class TestErrorHandlingAndRecovery:
         assert sensor.state in [None, "unavailable", "unknown"]
 
     @pytest.mark.asyncio
-    async def test_integration_setup_failure_handling(self, mock_hass, mock_config_entry):
+    async def test_integration_setup_failure_handling(
+        self, mock_hass, mock_config_entry
+    ):
         """Test integration setup failure handling."""
         # This test MUST FAIL initially - no implementation exists
 
         from custom_components.saxo_portfolio import async_setup_entry
 
         # Mock coordinator creation failure
-        with patch('custom_components.saxo_portfolio.coordinator.SaxoCoordinator') as mock_coordinator_class:
+        with patch(
+            "custom_components.saxo_portfolio.coordinator.SaxoCoordinator"
+        ) as mock_coordinator_class:
             mock_coordinator_class.side_effect = Exception("Coordinator init failed")
 
             # Setup should handle failure gracefully
@@ -298,13 +317,13 @@ class TestErrorHandlingAndRecovery:
 
         coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
 
-        with patch.object(coordinator, '_async_update_data') as mock_update:
+        with patch.object(coordinator, "_async_update_data") as mock_update:
             # Some requests succeed, some fail
             results = [
                 {"portfolio": {"total_value": 100000}},
                 Exception("Network error"),
                 {"portfolio": {"total_value": 105000}},
-                Exception("Rate limited")
+                Exception("Rate limited"),
             ]
 
             mock_update.side_effect = results
@@ -314,7 +333,7 @@ class TestErrorHandlingAndRecovery:
                 asyncio.create_task(coordinator.async_request_refresh()),
                 asyncio.create_task(coordinator.async_request_refresh()),
                 asyncio.create_task(coordinator.async_request_refresh()),
-                asyncio.create_task(coordinator.async_request_refresh())
+                asyncio.create_task(coordinator.async_request_refresh()),
             ]
 
             # Should not crash, handle errors gracefully
@@ -331,7 +350,9 @@ class TestErrorHandlingAndRecovery:
 
         coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
 
-        with patch('custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient') as mock_client_class:
+        with patch(
+            "custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient"
+        ) as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
 
@@ -362,7 +383,9 @@ class TestErrorHandlingAndRecovery:
 
         coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
 
-        with patch('custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient') as mock_client_class:
+        with patch(
+            "custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient"
+        ) as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
 
@@ -389,17 +412,21 @@ class TestErrorHandlingAndRecovery:
             "portfolio": {"total_value": 100000.00},
             "accounts": [],
             "positions": [],
-            "last_updated": datetime.now().isoformat()
+            "last_updated": datetime.now().isoformat(),
         }
         coordinator.last_update_success = True
 
-        with patch('custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient') as mock_client_class:
+        with patch(
+            "custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient"
+        ) as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
 
             # Extended outage - multiple failed attempts
             for _ in range(5):
-                mock_client.get_account_balance.side_effect = Exception("Service unavailable")
+                mock_client.get_account_balance.side_effect = Exception(
+                    "Service unavailable"
+                )
                 await coordinator.async_request_refresh()
                 assert coordinator.last_update_success is False
 
@@ -408,7 +435,7 @@ class TestErrorHandlingAndRecovery:
             mock_client.get_account_balance.return_value = {
                 "CashBalance": 6000.00,
                 "Currency": "USD",
-                "TotalValue": 135000.00
+                "TotalValue": 135000.00,
             }
             mock_client.get_positions.return_value = {"__count": 0, "Data": []}
             mock_client.get_accounts.return_value = {"__count": 0, "Data": []}
@@ -425,17 +452,24 @@ class TestErrorHandlingAndRecovery:
 
         coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
 
-        with patch('custom_components.saxo_portfolio.coordinator._LOGGER') as mock_logger:
+        with patch(
+            "custom_components.saxo_portfolio.coordinator._LOGGER"
+        ) as mock_logger:
             # Mock API error
             api_error = Exception("API connection failed")
 
-            with patch.object(coordinator, '_fetch_portfolio_data', side_effect=api_error):
+            with patch.object(
+                coordinator, "_fetch_portfolio_data", side_effect=api_error
+            ):
                 await coordinator._async_update_data()
 
                 # Should log error for diagnostics
                 assert mock_logger.error.called or mock_logger.exception.called
 
                 # Log message should include useful diagnostic info
-                log_calls = mock_logger.error.call_args_list + mock_logger.exception.call_args_list
+                log_calls = (
+                    mock_logger.error.call_args_list
+                    + mock_logger.exception.call_args_list
+                )
                 log_message = str(log_calls[0][0][0]) if log_calls else ""
                 assert "API" in log_message or "error" in log_message.lower()

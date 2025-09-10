@@ -31,7 +31,9 @@ def mask_sensitive_data(text: str) -> str:
 
     masked_text = text
     for pattern in SENSITIVE_URL_PATTERNS:
-        masked_text = re.sub(pattern, r'\1' + DIAGNOSTICS_REDACTED, masked_text, flags=re.IGNORECASE)
+        masked_text = re.sub(
+            pattern, r"\1" + DIAGNOSTICS_REDACTED, masked_text, flags=re.IGNORECASE
+        )
 
     return masked_text
 
@@ -50,8 +52,8 @@ def mask_url_for_logging(url: str) -> str:
         return url
 
     # Extract just the path and mask any query parameters that might be sensitive
-    if '?' in url:
-        base_url, query_params = url.split('?', 1)
+    if "?" in url:
+        base_url, query_params = url.split("?", 1)
         return f"{base_url}?{mask_sensitive_data(query_params)}"
 
     return url
@@ -142,16 +144,24 @@ class PositionData:
             raise ValueError("Current value cannot be negative")
 
         # Calculate P&L percentage if prices available
-        if (self.open_price is not None and
-            self.current_price is not None and
-            self.open_price > 0):
-            self.pnl_percentage = ((self.current_price - self.open_price) / self.open_price) * 100
+        if (
+            self.open_price is not None
+            and self.current_price is not None
+            and self.open_price > 0
+        ):
+            self.pnl_percentage = (
+                (self.current_price - self.open_price) / self.open_price
+            ) * 100
 
         # Calculate unrealized P&L if not provided
-        if (self.unrealized_pnl is None and
-            self.open_price is not None and
-            self.current_price is not None):
-            self.unrealized_pnl = (self.current_price - self.open_price) * abs(self.quantity)
+        if (
+            self.unrealized_pnl is None
+            and self.open_price is not None
+            and self.current_price is not None
+        ):
+            self.unrealized_pnl = (self.current_price - self.open_price) * abs(
+                self.quantity
+            )
 
 
 @dataclass
@@ -172,7 +182,7 @@ class CoordinatorData:
                 _LOGGER.warning(
                     "Position %s references unknown account %s",
                     position.position_id,
-                    position.account_id
+                    position.account_id,
                 )
 
         # Validate position count consistency
@@ -181,15 +191,12 @@ class CoordinatorData:
             _LOGGER.debug(
                 "Portfolio positions count (%d) differs from actual positions (%d)",
                 self.portfolio.positions_count,
-                actual_positions_count
+                actual_positions_count,
             )
 
     @classmethod
     def from_api_responses(
-        cls,
-        balance_response: dict,
-        positions_response: dict,
-        accounts_response: dict
+        cls, balance_response: dict, positions_response: dict, accounts_response: dict
     ) -> CoordinatorData:
         """Create CoordinatorData from Saxo API responses."""
 
@@ -200,7 +207,7 @@ class CoordinatorData:
             currency=balance_response.get("Currency", "USD"),
             positions_count=int(balance_response.get("OpenPositionsCount", 0)),
             unrealized_pnl=balance_response.get("UnrealizedMarginProfitLoss"),
-            margin_available=balance_response.get("MarginAvailableForTrading")
+            margin_available=balance_response.get("MarginAvailableForTrading"),
         )
 
         # Parse accounts data
@@ -213,7 +220,7 @@ class CoordinatorData:
                 currency=account_data.get("Currency", "USD"),
                 account_type=account_data.get("AccountType"),
                 display_name=account_data.get("DisplayName"),
-                active=account_data.get("Active", True)
+                active=account_data.get("Active", True),
             )
             accounts.append(account)
 
@@ -233,7 +240,7 @@ class CoordinatorData:
                 open_price=float(position_base["OpenPrice"]),
                 current_price=float(position_view["CurrentPrice"]),
                 unrealized_pnl=float(position_view["ProfitLossOnTrade"]),
-                currency=portfolio.currency  # Use portfolio currency for consistency
+                currency=portfolio.currency,  # Use portfolio currency for consistency
             )
             positions.append(position)
 
@@ -252,7 +259,7 @@ class CoordinatorData:
             portfolio=portfolio,
             accounts=accounts,
             positions=positions,
-            last_updated=datetime.now()
+            last_updated=datetime.now(),
         )
 
     def to_dict(self) -> dict:
@@ -265,7 +272,7 @@ class CoordinatorData:
                 "unrealized_pnl": self.portfolio.unrealized_pnl,
                 "pnl_percentage": self.portfolio.pnl_percentage,
                 "positions_count": self.portfolio.positions_count,
-                "margin_available": self.portfolio.margin_available
+                "margin_available": self.portfolio.margin_available,
             },
             "accounts": [
                 {
@@ -275,7 +282,7 @@ class CoordinatorData:
                     "currency": account.currency,
                     "account_type": account.account_type,
                     "display_name": account.display_name,
-                    "active": account.active
+                    "active": account.active,
                 }
                 for account in self.accounts
             ],
@@ -291,11 +298,11 @@ class CoordinatorData:
                     "current_price": position.current_price,
                     "unrealized_pnl": position.unrealized_pnl,
                     "pnl_percentage": position.pnl_percentage,
-                    "currency": position.currency
+                    "currency": position.currency,
                 }
                 for position in self.positions
             ],
-            "last_updated": self.last_updated.isoformat()
+            "last_updated": self.last_updated.isoformat(),
         }
 
 
@@ -319,6 +326,7 @@ def sanitize_financial_value(value: str | int | float) -> float:
 
         # Check for invalid values
         import math
+
         if math.isnan(float_value) or math.isinf(float_value):
             _LOGGER.warning("Invalid financial value received: %s", value)
             return 0.0
@@ -342,5 +350,5 @@ def calculate_portfolio_totals(positions: list[PositionData]) -> dict[str, float
         "total_value": total_value,
         "total_pnl": total_pnl,
         "pnl_percentage": pnl_percentage,
-        "positions_count": len([p for p in positions if p.quantity != 0])
+        "positions_count": len([p for p in positions if p.quantity != 0]),
     }

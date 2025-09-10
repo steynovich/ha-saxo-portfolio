@@ -76,6 +76,7 @@ select = [
 ]
 
 ignore = [
+    "C901", # Complex functions - acceptable for production API clients
     "D202", # No blank lines allowed after function docstring
     "D203", # 1 blank line required before class docstring
     "D213", # Multi-line docstring summary should start at the second line
@@ -83,6 +84,7 @@ ignore = [
     "D407", # Section name underlining
     "E501", # line too long
     "E731", # do not assign a lambda expression, use a def
+    "SIM117", # Nested with statements - acceptable for async timeout patterns
 ]
 
 [tool.ruff.lint.flake8-pytest-style]
