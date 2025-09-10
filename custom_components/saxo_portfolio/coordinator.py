@@ -92,7 +92,9 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 access_token = self._oauth_session.token["access_token"]
             except (KeyError, TypeError) as e:
                 _LOGGER.error("No access token in OAuth2 session: %s", e)
-                _LOGGER.debug("Available config entry data: %s", self.config_entry.data.keys())
+                _LOGGER.debug(
+                    "Available config entry data: %s", self.config_entry.data.keys()
+                )
                 raise ConfigEntryAuthFailed("No access token available") from e
 
             # Get base URL from environment config (default to simulation)
