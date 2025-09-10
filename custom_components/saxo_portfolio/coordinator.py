@@ -16,6 +16,7 @@ import async_timeout
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers import config_entry_oauth2_flow
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -70,19 +71,32 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_token_check = datetime.now()
         self._token_refresh_lock = asyncio.Lock()
         self._last_successful_update = None
+        self._oauth_session: config_entry_oauth2_flow.OAuth2Session | None = None
 
     @property
     def api_client(self) -> SaxoApiClient:
         """Get or create API client."""
         if self._api_client is None:
-            token_data = self.config_entry.data.get("token", {})
-            access_token = token_data.get("access_token")
+            # Get OAuth2 session for automatic token management
+            if self._oauth_session is None:
+                try:
+                    self._oauth_session = config_entry_oauth2_flow.OAuth2Session(
+                        self.hass, self.config_entry
+                    )
+                except Exception as e:
+                    _LOGGER.error("Failed to create OAuth2 session: %s", e)
+                    raise ConfigEntryAuthFailed("OAuth2 session creation failed") from e
 
-            if not access_token:
-                raise ConfigEntryAuthFailed("No access token available")
+            # Get access token from OAuth2 session
+            try:
+                access_token = self._oauth_session.token["access_token"]
+            except (KeyError, TypeError) as e:
+                _LOGGER.error("No access token in OAuth2 session: %s", e)
+                _LOGGER.debug("Available config entry data: %s", self.config_entry.data.keys())
+                raise ConfigEntryAuthFailed("No access token available") from e
 
-            # Get base URL from environment config
-            environment = self.config_entry.data.get("environment", "simulation")
+            # Get base URL from environment config (default to simulation)
+            environment = self.config_entry.options.get("environment", "simulation")
             from .const import ENVIRONMENTS
 
             base_url = ENVIRONMENTS[environment]["api_base_url"]

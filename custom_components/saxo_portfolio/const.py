@@ -11,8 +11,8 @@ INTEGRATION_VERSION: Final = "1.0.0"
 # Saxo API endpoints
 SAXO_SIMULATION_BASE_URL: Final = "https://gateway.saxobank.com/sim/openapi"
 SAXO_PRODUCTION_BASE_URL: Final = "https://gateway.saxobank.com/openapi"
-SAXO_AUTH_SIMULATION_BASE_URL: Final = "https://sim.logonvalidation.net"
-SAXO_AUTH_PRODUCTION_BASE_URL: Final = "https://logonvalidation.net"
+SAXO_AUTH_SIMULATION_BASE_URL: Final = "https://live.logonvalidation.net"
+SAXO_AUTH_PRODUCTION_BASE_URL: Final = "https://live.logonvalidation.net"
 
 # OAuth endpoints
 OAUTH_AUTHORIZE_ENDPOINT: Final = "/authorize"

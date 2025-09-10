@@ -41,10 +41,13 @@ async def async_get_description_placeholders(hass: HomeAssistant) -> dict[str, s
         "redirect_uri": "https://my.home-assistant.io/redirect/oauth",
         "more_info_url": "https://www.developer.saxo/openapi/learn/security",
         "setup_instructions": (
+            "IMPORTANT: Set the redirect URI in your Saxo app to exactly:\n"
+            "https://my.home-assistant.io/redirect/oauth\n\n"
+            "Steps:\n"
             "1. Go to the Saxo Developer Portal\n"
-            "2. Create a new application\n"
-            "3. Set the redirect URI to the provided URL\n"
-            "4. Copy the App Key and App Secret\n"
+            "2. Create a new application or edit existing one\n"
+            "3. Set redirect URI to: https://my.home-assistant.io/redirect/oauth\n"
+            "4. Copy the App Key (Client ID) and App Secret (Client Secret)\n"
             "5. Paste them into the fields below"
         ),
     }
