@@ -42,7 +42,7 @@ class SaxoPortfolioFlowHandler(
         """Create an entry for the flow."""
         _LOGGER.info("Creating Saxo Portfolio entry with OAuth data")
         _LOGGER.debug("OAuth data keys: %s", data.keys())
-        
+
         return self.async_create_entry(
             title="Saxo Portfolio",
             data=data,
