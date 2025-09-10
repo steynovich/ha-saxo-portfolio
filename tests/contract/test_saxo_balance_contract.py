@@ -26,22 +26,22 @@ class TestSaxoBalanceContract:
         """Test that balance response matches contract schema."""
         # This test MUST FAIL initially - no implementation exists
         response = await mock_client.get_account_balance()
-        
+
         # Validate required fields from contract
         assert "CashBalance" in response
-        assert "Currency" in response  
+        assert "Currency" in response
         assert "TotalValue" in response
-        
+
         # Validate field types
-        assert isinstance(response["CashBalance"], (int, float))
+        assert isinstance(response["CashBalance"], int | float)
         assert isinstance(response["Currency"], str)
-        assert isinstance(response["TotalValue"], (int, float))
-        
+        assert isinstance(response["TotalValue"], int | float)
+
         # Validate optional fields if present
         if "MarginAvailableForTrading" in response:
-            assert isinstance(response["MarginAvailableForTrading"], (int, float))
+            assert isinstance(response["MarginAvailableForTrading"], int | float)
         if "UnrealizedMarginProfitLoss" in response:
-            assert isinstance(response["UnrealizedMarginProfitLoss"], (int, float))
+            assert isinstance(response["UnrealizedMarginProfitLoss"], int | float)
         if "OpenPositionsCount" in response:
             assert isinstance(response["OpenPositionsCount"], int)
 
@@ -50,7 +50,7 @@ class TestSaxoBalanceContract:
         """Test that currency code is valid ISO 4217."""
         # This test MUST FAIL initially - no implementation exists
         response = await mock_client.get_account_balance()
-        
+
         currency = response["Currency"]
         # Basic validation - should be 3-letter uppercase code
         assert len(currency) == 3
@@ -62,7 +62,7 @@ class TestSaxoBalanceContract:
         """Test that CalculationReliability field has valid values."""
         # This test MUST FAIL initially - no implementation exists
         response = await mock_client.get_account_balance()
-        
+
         if "CalculationReliability" in response:
             reliability = response["CalculationReliability"]
             assert reliability in ["Ok", "Delayed", "Warning"]
@@ -74,10 +74,10 @@ class TestSaxoBalanceContract:
         # Mock an authentication error
         mock_client._session.get = AsyncMock()
         mock_client._session.get.return_value.status = 401
-        
+
         with pytest.raises(Exception) as exc_info:
             await mock_client.get_account_balance()
-        
+
         # Should raise authentication-related exception
         assert "auth" in str(exc_info.value).lower() or "401" in str(exc_info.value)
 
@@ -93,10 +93,10 @@ class TestSaxoBalanceContract:
             "X-RateLimit-Remaining": "0",
             "X-RateLimit-Reset": "1640995200"
         }
-        
+
         with pytest.raises(Exception) as exc_info:
             await mock_client.get_account_balance()
-        
+
         # Should raise rate limit exception
         assert "rate limit" in str(exc_info.value).lower() or "429" in str(exc_info.value)
 
@@ -105,17 +105,17 @@ class TestSaxoBalanceContract:
         """Test strict type validation for financial data."""
         # This test MUST FAIL initially - no implementation exists
         response = await mock_client.get_account_balance()
-        
+
         # Financial values must be finite numbers (not NaN or infinity)
         import math
-        
+
         cash_balance = response["CashBalance"]
         assert math.isfinite(cash_balance)
-        
+
         total_value = response["TotalValue"]
         assert math.isfinite(total_value)
         assert total_value >= 0  # Total value cannot be negative
-        
+
         # Positions count must be non-negative integer
         if "OpenPositionsCount" in response:
             positions_count = response["OpenPositionsCount"]

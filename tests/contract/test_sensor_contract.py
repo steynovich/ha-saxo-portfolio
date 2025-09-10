@@ -7,12 +7,12 @@ Home Assistant sensor interface and state schema.
 """
 
 import pytest
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import Mock
 from datetime import datetime
 
 from custom_components.saxo_portfolio.sensor import (
     SaxoPortfolioSensor,
-    SaxoAccountSensor, 
+    SaxoAccountSensor,
     SaxoPositionSensor
 )
 from custom_components.saxo_portfolio.coordinator import SaxoCoordinator
@@ -44,7 +44,7 @@ class TestSaxoSensorContract:
             ],
             "positions": [
                 {
-                    "position_id": "POS001", 
+                    "position_id": "POS001",
                     "symbol": "AAPL",
                     "current_value": 15000.00,
                     "unrealized_pnl": 500.00,
@@ -61,7 +61,7 @@ class TestSaxoSensorContract:
         # This MUST FAIL initially - no implementation exists
         return SaxoPortfolioSensor(mock_coordinator, "total_value")
 
-    @pytest.fixture 
+    @pytest.fixture
     def account_sensor(self, mock_coordinator):
         """Create an account balance sensor."""
         # This MUST FAIL initially - no implementation exists
@@ -80,15 +80,15 @@ class TestSaxoSensorContract:
         assert hasattr(portfolio_sensor, 'entity_id')
         assert hasattr(portfolio_sensor, 'state')
         assert hasattr(portfolio_sensor, 'extra_state_attributes')
-        
+
         # Validate entity_id format
         entity_id = portfolio_sensor.entity_id
         assert entity_id.startswith("sensor.saxo_portfolio_")
         assert "." in entity_id
-        
+
         # Validate state is numeric string
         state = portfolio_sensor.state
-        assert isinstance(state, (str, int, float))
+        assert isinstance(state, str | int | float)
         if isinstance(state, str):
             # Should be convertible to float
             float(state)
@@ -98,20 +98,20 @@ class TestSaxoSensorContract:
         # This test MUST FAIL initially - no implementation exists
         attributes = portfolio_sensor.extra_state_attributes
         assert isinstance(attributes, dict)
-        
+
         # Required attributes from SensorState schema
         assert "friendly_name" in attributes
         assert "unit_of_measurement" in attributes
         assert "currency" in attributes
         assert "last_updated" in attributes
         assert "attribution" in attributes
-        
+
         # Validate attribute types
         assert isinstance(attributes["friendly_name"], str)
         assert isinstance(attributes["unit_of_measurement"], str)
         assert isinstance(attributes["currency"], str)
         assert isinstance(attributes["attribution"], str)
-        
+
         # Currency should be ISO 4217
         currency = attributes["currency"]
         assert len(currency) == 3
@@ -122,7 +122,7 @@ class TestSaxoSensorContract:
         # This test MUST FAIL initially - no implementation exists
         # Financial sensors should have appropriate device class
         assert hasattr(portfolio_sensor, 'device_class')
-        
+
         # For financial data, device class should be None or monetary
         # (due to Home Assistant limitation with monetary + state_class)
         device_class = portfolio_sensor.device_class
@@ -130,7 +130,7 @@ class TestSaxoSensorContract:
 
     def test_portfolio_sensor_state_class(self, portfolio_sensor):
         """Test that portfolio sensor has correct state class."""
-        # This test MUST FAIL initially - no implementation exists  
+        # This test MUST FAIL initially - no implementation exists
         if hasattr(portfolio_sensor, 'state_class'):
             state_class = portfolio_sensor.state_class
             if state_class is not None:
@@ -153,15 +153,15 @@ class TestSaxoSensorContract:
         """Test that position sensor state is valid financial data."""
         # This test MUST FAIL initially - no implementation exists
         state = position_sensor.state
-        
+
         if state is not None and state != "unavailable":
             # Should be numeric
             numeric_state = float(state)
-            
+
             # Should be finite (not NaN or infinity)
             import math
             assert math.isfinite(numeric_state)
-            
+
             # Position value should be non-negative
             assert numeric_state >= 0
 
@@ -169,7 +169,7 @@ class TestSaxoSensorContract:
         """Test that sensor correctly reports availability."""
         # This test MUST FAIL initially - no implementation exists
         assert hasattr(portfolio_sensor, 'available')
-        
+
         # Should be available when coordinator has data
         availability = portfolio_sensor.available
         assert isinstance(availability, bool)
@@ -179,10 +179,10 @@ class TestSaxoSensorContract:
         """Test that sensor properly depends on coordinator."""
         # This test MUST FAIL initially - no implementation exists
         from homeassistant.helpers.update_coordinator import CoordinatorEntity
-        
+
         # Should inherit from CoordinatorEntity
         assert isinstance(portfolio_sensor, CoordinatorEntity)
-        
+
         # Should have coordinator reference
         assert hasattr(portfolio_sensor, 'coordinator')
         assert portfolio_sensor.coordinator is not None
@@ -204,7 +204,7 @@ class TestSaxoSensorContract:
         total_value_sensor = SaxoPortfolioSensor(mock_coordinator, "total_value")
         cash_balance_sensor = SaxoPortfolioSensor(mock_coordinator, "cash_balance")
         pnl_sensor = SaxoPortfolioSensor(mock_coordinator, "unrealized_pnl")
-        
+
         # Should have different entity IDs
         entity_ids = {
             total_value_sensor.entity_id,
@@ -229,9 +229,9 @@ class TestSaxoSensorContract:
         # Mock coordinator error state
         mock_coordinator.data = None
         mock_coordinator.last_update_success = False
-        
+
         sensor = SaxoPortfolioSensor(mock_coordinator, "total_value")
-        
+
         # Sensor should handle missing data gracefully
         state = sensor.state
         # Should be None, "unavailable", or "unknown"
@@ -243,10 +243,10 @@ class TestSaxoSensorContract:
         # Get state multiple times
         state1 = portfolio_sensor.state
         state2 = portfolio_sensor.state
-        
+
         # Type should be consistent
-        assert type(state1) == type(state2)
-        
+        assert type(state1) is type(state2)
+
         # Value should be consistent (unless data changed)
         if portfolio_sensor.coordinator.data is not None:
             assert state1 == state2
@@ -256,7 +256,7 @@ class TestSaxoSensorContract:
         # This test MUST FAIL initially - no implementation exists
         # Should have registry-related properties
         assert hasattr(portfolio_sensor, 'entity_registry_enabled_default')
-        
+
         # Default enabled state should be boolean
         if hasattr(portfolio_sensor, 'entity_registry_enabled_default'):
             enabled_default = portfolio_sensor.entity_registry_enabled_default

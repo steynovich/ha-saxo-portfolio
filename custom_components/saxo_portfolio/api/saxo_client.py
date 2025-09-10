@@ -55,6 +55,13 @@ class RateLimiter:
     """Rate limiter for API requests."""
 
     def __init__(self, max_requests: int = API_RATE_LIMIT_PER_MINUTE, window: int = API_RATE_LIMIT_WINDOW):
+        """Initialize rate limiter.
+
+        Args:
+            max_requests: Maximum requests allowed per window
+            window: Time window in seconds
+
+        """
         self.max_requests = max_requests
         self.window = window
         self.requests = []
@@ -102,7 +109,7 @@ class SaxoApiClient:
 
     def __init__(self, access_token: str, base_url: str = None, session: aiohttp.ClientSession = None):
         """Initialize Saxo API client.
-        
+
         Args:
             access_token: OAuth access token
             base_url: Base URL for API endpoints
@@ -153,14 +160,14 @@ class SaxoApiClient:
 
     async def _make_request(self, endpoint: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """Make authenticated request to Saxo API.
-        
+
         Args:
             endpoint: API endpoint path
             params: Optional query parameters
-            
+
         Returns:
             API response data
-            
+
         Raises:
             AuthenticationError: For 401 errors
             RateLimitError: For 429 errors
@@ -252,10 +259,10 @@ class SaxoApiClient:
 
     async def get_account_balance(self) -> dict[str, Any]:
         """Get account balance from Saxo API.
-        
+
         Returns:
             Balance data matching contract schema
-            
+
         Raises:
             AuthenticationError: For authentication failures
             APIError: For other API errors
@@ -271,9 +278,9 @@ class SaxoApiClient:
                     raise APIError(f"Missing required field: {field}")
 
             # Validate data types
-            if not isinstance(response["CashBalance"], (int, float)):
+            if not isinstance(response["CashBalance"], int | float):
                 raise APIError("CashBalance must be numeric")
-            if not isinstance(response["TotalValue"], (int, float)):
+            if not isinstance(response["TotalValue"], int | float):
                 raise APIError("TotalValue must be numeric")
             if not isinstance(response["Currency"], str):
                 raise APIError("Currency must be string")
@@ -297,13 +304,13 @@ class SaxoApiClient:
 
     async def get_positions(self, client_key: str | None = None) -> dict[str, Any]:
         """Get positions from Saxo API.
-        
+
         Args:
             client_key: Optional client key for filtering
-            
+
         Returns:
             Positions data matching contract schema
-            
+
         Raises:
             AuthenticationError: For authentication failures
             APIError: For other API errors
@@ -375,13 +382,13 @@ class SaxoApiClient:
 
     async def get_accounts(self, client_key: str) -> dict[str, Any]:
         """Get accounts from Saxo API.
-        
+
         Args:
             client_key: Required client key parameter
-            
+
         Returns:
             Accounts data matching contract schema
-            
+
         Raises:
             AuthenticationError: For authentication failures
             APIError: For other API errors

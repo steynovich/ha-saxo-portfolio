@@ -15,7 +15,7 @@ from .const import (
 
 async def async_get_authorization_server(hass: HomeAssistant) -> AuthorizationServer:
     """Return authorization server for OAuth flow.
-    
+
     This provides the OAuth endpoints for Home Assistant's
     application credentials system.
     """
@@ -32,7 +32,7 @@ async def async_get_authorization_server(hass: HomeAssistant) -> AuthorizationSe
 
 async def async_get_description_placeholders(hass: HomeAssistant) -> dict[str, str]:
     """Return description placeholders for the credentials dialog.
-    
+
     These placeholders are used in the Home Assistant UI to guide users
     through the application credentials setup process.
     """

@@ -16,10 +16,10 @@ _LOGGER = logging.getLogger(__name__)
 
 def mask_sensitive_data(text: str) -> str:
     """Mask sensitive data in strings for safe logging.
-    
+
     Args:
         text: Input string that may contain sensitive data
-        
+
     Returns:
         String with sensitive data masked with '**REDACTED**'
 
@@ -38,10 +38,10 @@ def mask_sensitive_data(text: str) -> str:
 
 def mask_url_for_logging(url: str) -> str:
     """Mask sensitive parts of URLs for safe logging.
-    
+
     Args:
         url: URL that may contain sensitive parameters
-        
+
     Returns:
         URL with sensitive parameters masked
 

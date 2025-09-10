@@ -44,7 +44,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
         """Initialize the coordinator.
-        
+
         Args:
             hass: Home Assistant instance
             config_entry: Configuration entry with OAuth token
@@ -93,10 +93,10 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _is_market_hours(self) -> bool:
         """Check if current time is during market hours.
-        
+
         Market hours: Monday-Friday, 9:30 AM - 4:00 PM ET
         Properly handles Eastern Time with DST conversion.
-        
+
         Returns:
             True if market is currently open
 
@@ -166,10 +166,10 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _refresh_oauth_token(self) -> dict[str, Any]:
         """Refresh OAuth access token using refresh token.
-        
+
         Returns:
             New token data
-            
+
         Raises:
             ConfigEntryAuthFailed: If token refresh fails
 
@@ -235,7 +235,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                     return new_token_data
                 else:
-                    error_data = await response.text()
+                    await response.text()
                     _LOGGER.error("Token refresh failed: HTTP %d", response.status)
                     raise ConfigEntryAuthFailed("Failed to refresh access token")
 
@@ -245,10 +245,10 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _fetch_portfolio_data(self) -> dict[str, Any]:
         """Fetch portfolio data from Saxo API.
-        
+
         Returns:
             Portfolio data dictionary
-            
+
         Raises:
             ConfigEntryAuthFailed: For authentication errors
             UpdateFailed: For other errors
@@ -325,10 +325,10 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data from Saxo API.
-        
+
         This is called by the DataUpdateCoordinator on the configured interval.
         Dynamically adjusts update frequency based on market hours.
-        
+
         Returns:
             Updated portfolio data
 
@@ -365,10 +365,10 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def get_portfolio_sensor_data(self, sensor_type: str) -> Any:
         """Get data for portfolio-level sensors.
-        
+
         Args:
             sensor_type: Type of sensor data to retrieve
-            
+
         Returns:
             Sensor value or None if not available
 
@@ -394,10 +394,10 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def get_account_sensor_data(self, account_id: str) -> dict[str, Any] | None:
         """Get data for account-specific sensors.
-        
+
         Args:
             account_id: Account identifier
-            
+
         Returns:
             Account data or None if not found
 
@@ -413,10 +413,10 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def get_position_sensor_data(self, position_id: str) -> dict[str, Any] | None:
         """Get data for position-specific sensors.
-        
+
         Args:
             position_id: Position identifier
-            
+
         Returns:
             Position data or None if not found
 
@@ -432,7 +432,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def get_currency(self) -> str:
         """Get the portfolio base currency.
-        
+
         Returns:
             Currency code or USD as default
 
@@ -443,8 +443,8 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_update_interval_if_needed(self) -> None:
         """Check and update the refresh interval based on current market status.
-        
-        This can be called manually to force an interval check without waiting 
+
+        This can be called manually to force an interval check without waiting
         for the next scheduled update.
         """
         is_market_open = self._is_market_hours()

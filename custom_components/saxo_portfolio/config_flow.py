@@ -101,13 +101,13 @@ class SaxoPortfolioFlowHandler(
 
     async def _exchange_code_for_token(self, authorization_code: str) -> dict[str, Any]:
         """Exchange authorization code for access token.
-        
+
         Args:
             authorization_code: OAuth authorization code
-            
+
         Returns:
             Token data dictionary
-            
+
         Raises:
             Exception: If token exchange fails
 
@@ -186,13 +186,13 @@ class SaxoPortfolioFlowHandler(
 
     async def _refresh_token(self, token_data: dict[str, Any]) -> dict[str, Any]:
         """Refresh OAuth access token.
-        
+
         Args:
             token_data: Current token data with refresh_token
-            
+
         Returns:
             New token data
-            
+
         Raises:
             Exception: If token refresh fails
 

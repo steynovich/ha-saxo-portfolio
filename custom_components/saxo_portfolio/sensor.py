@@ -114,7 +114,7 @@ class SaxoPortfolioSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
                 return None
 
             # Validate and format numeric values
-            if isinstance(value, (int, float)):
+            if isinstance(value, int | float):
                 # Check for invalid numeric values
                 import math
                 if not math.isfinite(value):

@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import DATA_COORDINATOR, DATA_UNSUB, DOMAIN, PLATFORMS
 from .coordinator import SaxoCoordinator
