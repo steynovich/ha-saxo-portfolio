@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2025-09-10
+
+### Fixed
+- **Linting Compliance**: Fixed ruff linting and formatting errors
+  - Removed trailing whitespace in config_flow.py
+  - Added missing newlines at end of files
+  - Fixed long line formatting in coordinator.py
+- **Code Quality**: All files now pass ruff check and format validation
+- **CI/CD**: GitHub Actions quality workflow now passes successfully
+
+### Technical Improvements
+- Enhanced code formatting consistency across all Python files
+- Improved readability of debug logging statements
+- Maintained 100% compliance with ruff linting standards
+
+## [1.0.2] - 2025-09-10
+
+### Fixed
+- **OAuth2 Authentication**: Complete overhaul of OAuth2 flow implementation
+  - Fixed "Invalid or unknown client_id" errors
+  - Resolved KeyError exceptions in OAuth callback handling
+  - Eliminated duplicate callback URL prompts
+- **Saxo API Endpoints**: Corrected OAuth endpoints to use `live.logonvalidation.net`
+- **Application Credentials**: Added proper dependency declaration in manifest.json
+- **Token Management**: Implemented OAuth2Session for automatic token refresh
+
+### Enhanced
+- **Config Flow Simplification**: Streamlined to use Home Assistant's standard OAuth2 implementation
+- **Error Handling**: Improved OAuth2 debugging and error messages
+- **Setup Instructions**: Clear redirect URI guidance in Application Credentials setup
+- **Code Cleanup**: Removed 200+ lines of custom OAuth code in favor of HA standards
+
+### Technical Changes
+- Updated OAuth endpoints from `/oauth/authorize` to `/authorize`
+- Fixed OAuth base URLs to use correct Saxo authentication server
+- Enhanced coordinator with proper OAuth2Session integration
+- Improved application credentials placeholder instructions
+
 ## [1.0.1] - 2025-09-10
 
 ### Enhanced
@@ -81,4 +119,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Modular data models for type safety and consistency
 - Proper Home Assistant integration patterns
 
+[1.0.3]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v1.0.3
+[1.0.2]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v1.0.2
+[1.0.1]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v1.0.1
 [1.0.0]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v1.0.0
