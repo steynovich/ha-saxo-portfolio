@@ -19,9 +19,9 @@ async def async_get_authorization_server(hass: HomeAssistant) -> AuthorizationSe
     This provides the OAuth endpoints for Home Assistant's
     application credentials system.
     """
-    # Default to simulation environment for setup
-    # Users can switch to production in the config flow
-    environment = ENV_SIMULATION
+    # Default to production environment for setup
+    # Users can switch to simulation in the config flow if needed
+    environment = ENV_PRODUCTION
     auth_base_url = ENVIRONMENTS[environment]["auth_base_url"]
 
     return AuthorizationServer(
