@@ -23,7 +23,7 @@ async def async_get_authorization_server(hass: HomeAssistant) -> AuthorizationSe
     # Users can switch to production in the config flow
     environment = ENV_SIMULATION
     auth_base_url = ENVIRONMENTS[environment]["auth_base_url"]
-    
+
     return AuthorizationServer(
         authorize_url=f"{auth_base_url}{OAUTH_AUTHORIZE_ENDPOINT}",
         token_url=f"{auth_base_url}{OAUTH_TOKEN_ENDPOINT}",
@@ -42,7 +42,7 @@ async def async_get_description_placeholders(hass: HomeAssistant) -> dict[str, s
         "more_info_url": "https://www.developer.saxo/openapi/learn/security",
         "setup_instructions": (
             "1. Go to the Saxo Developer Portal\n"
-            "2. Create a new application\n"  
+            "2. Create a new application\n"
             "3. Set the redirect URI to the provided URL\n"
             "4. Copy the App Key and App Secret\n"
             "5. Paste them into the fields below"

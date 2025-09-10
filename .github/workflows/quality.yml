@@ -1,0 +1,37 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install ruff mypy
+    
+    - name: Lint with ruff
+      run: |
+        ruff check .
+    
+    - name: Format check with ruff
+      run: |
+        ruff format --check .
+    
+    - name: Type check with mypy (allow failure for now)
+      run: |
+        mypy custom_components/saxo_portfolio/ || echo "MyPy check completed with issues - this is expected for HA integrations"
+      continue-on-error: true

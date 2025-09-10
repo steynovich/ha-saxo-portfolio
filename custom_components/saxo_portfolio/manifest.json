@@ -1,12 +1,12 @@
 {
   "domain": "saxo_portfolio",
   "name": "Saxo Portfolio",
-  "codeowners": ["@homeassistant"],
+  "codeowners": ["@steynovich"],
   "config_flow": true,
-  "documentation": "https://github.com/your-username/ha-saxo-portfolio",
-  "issue_tracker": "https://github.com/your-username/ha-saxo-portfolio/issues",
+  "documentation": "https://github.com/steynovich/ha-saxo-portfolio",
+  "issue_tracker": "https://github.com/steynovich/ha-saxo-portfolio/issues",
   "integration_type": "service",
   "iot_class": "cloud_polling",
-  "requirements": ["saxo-openapi>=1.0.0"],
+  "requirements": ["saxo-openapi>=0.6.0"],
   "version": "1.0.0"
 }

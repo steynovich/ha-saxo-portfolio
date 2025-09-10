@@ -55,7 +55,7 @@ SENSOR_TYPES: Final = {
         "entity_category": None
     },
     "cash_balance": {
-        "name": "Portfolio Cash Balance", 
+        "name": "Portfolio Cash Balance",
         "unit": None,  # Will use currency code
         "device_class": "monetary",
         "state_class": None,  # monetary device_class cannot have state_class
@@ -74,7 +74,7 @@ SENSOR_TYPES: Final = {
         "name": "Portfolio Positions Count",
         "unit": "positions",
         "device_class": None,
-        "state_class": "measurement", 
+        "state_class": "measurement",
         "icon": "mdi:format-list-numbered",
         "entity_category": None
     },
@@ -93,7 +93,7 @@ ACCOUNT_SENSOR_TYPES: Final = {
     "balance": {
         "name": "Account Balance",
         "unit": None,  # Will use currency code
-        "device_class": "monetary", 
+        "device_class": "monetary",
         "state_class": None,
         "icon": "mdi:bank",
         "entity_category": None
@@ -114,7 +114,7 @@ POSITION_SENSOR_TYPES: Final = {
         "name": "Position P&L",
         "unit": None,  # Will use currency code
         "device_class": None,
-        "state_class": "measurement", 
+        "state_class": "measurement",
         "icon": "mdi:trending-up",
         "entity_category": None
     }
@@ -136,7 +136,7 @@ ENVIRONMENTS: Final = {
         "auth_base_url": SAXO_AUTH_SIMULATION_BASE_URL
     },
     ENV_PRODUCTION: {
-        "name": "Production", 
+        "name": "Production",
         "api_base_url": SAXO_PRODUCTION_BASE_URL,
         "auth_base_url": SAXO_AUTH_PRODUCTION_BASE_URL
     }
@@ -188,3 +188,12 @@ COORDINATOR_REQUEST_REFRESH_DELAY: Final = 1  # second
 
 # Logging
 LOGGER_NAME: Final = __name__
+
+# Security patterns for sensitive data masking
+SENSITIVE_URL_PATTERNS: Final = [
+    r'(token=)[^&\s]*',  # token parameters
+    r'(access_token=)[^&\s]*',  # access token parameters
+    r'(Authorization:\s*Bearer\s+)[^\s]*',  # authorization headers
+    r'(app_key=)[^&\s]*',  # app key parameters
+    r'(app_secret=)[^&\s]*',  # app secret parameters
+]

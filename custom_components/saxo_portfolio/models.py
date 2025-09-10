@@ -8,24 +8,67 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional, Union
 import logging
+import re
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def mask_sensitive_data(text: str) -> str:
+    """Mask sensitive data in strings for safe logging.
+    
+    Args:
+        text: Input string that may contain sensitive data
+        
+    Returns:
+        String with sensitive data masked with '**REDACTED**'
+
+    """
+    from .const import SENSITIVE_URL_PATTERNS, DIAGNOSTICS_REDACTED
+
+    if not text:
+        return text
+
+    masked_text = text
+    for pattern in SENSITIVE_URL_PATTERNS:
+        masked_text = re.sub(pattern, r'\1' + DIAGNOSTICS_REDACTED, masked_text, flags=re.IGNORECASE)
+
+    return masked_text
+
+
+def mask_url_for_logging(url: str) -> str:
+    """Mask sensitive parts of URLs for safe logging.
+    
+    Args:
+        url: URL that may contain sensitive parameters
+        
+    Returns:
+        URL with sensitive parameters masked
+
+    """
+    if not url:
+        return url
+
+    # Extract just the path and mask any query parameters that might be sensitive
+    if '?' in url:
+        base_url, query_params = url.split('?', 1)
+        return f"{base_url}?{mask_sensitive_data(query_params)}"
+
+    return url
 
 
 @dataclass
 class PortfolioData:
     """Portfolio data model for aggregated portfolio information."""
-    
+
     total_value: float
     cash_balance: float
     currency: str
     positions_count: int
-    unrealized_pnl: Optional[float] = None
-    pnl_percentage: Optional[float] = None
-    margin_available: Optional[float] = None
-    
+    unrealized_pnl: float | None = None
+    pnl_percentage: float | None = None
+    margin_available: float | None = None
+
     def __post_init__(self):
         """Validate portfolio data after initialization."""
         # Validate required fields
@@ -37,7 +80,7 @@ class PortfolioData:
             raise ValueError("Currency must be 3-letter ISO code")
         if not self.currency.isupper():
             raise ValueError("Currency must be uppercase")
-            
+
         # Calculate P&L percentage if both values available
         if self.unrealized_pnl is not None and self.total_value > 0:
             cost_basis = self.total_value - self.unrealized_pnl
@@ -48,15 +91,15 @@ class PortfolioData:
 @dataclass
 class AccountData:
     """Account data model for individual Saxo trading accounts."""
-    
+
     account_id: str
     account_key: str
     balance: float
     currency: str
-    account_type: Optional[str] = None
-    display_name: Optional[str] = None
+    account_type: str | None = None
+    display_name: str | None = None
     active: bool = True
-    
+
     def __post_init__(self):
         """Validate account data after initialization."""
         if not self.account_id:
@@ -72,19 +115,19 @@ class AccountData:
 @dataclass
 class PositionData:
     """Position data model for individual investment holdings."""
-    
+
     position_id: str
     account_id: str
     symbol: str
     quantity: float
     current_value: float
-    asset_type: Optional[str] = None
-    open_price: Optional[float] = None
-    current_price: Optional[float] = None
-    unrealized_pnl: Optional[float] = None
-    pnl_percentage: Optional[float] = None
+    asset_type: str | None = None
+    open_price: float | None = None
+    current_price: float | None = None
+    unrealized_pnl: float | None = None
+    pnl_percentage: float | None = None
     currency: str = "USD"
-    
+
     def __post_init__(self):
         """Validate position data after initialization."""
         if not self.position_id:
@@ -97,16 +140,16 @@ class PositionData:
             raise ValueError("Quantity cannot be zero")
         if self.current_value < 0:
             raise ValueError("Current value cannot be negative")
-            
+
         # Calculate P&L percentage if prices available
-        if (self.open_price is not None and 
-            self.current_price is not None and 
+        if (self.open_price is not None and
+            self.current_price is not None and
             self.open_price > 0):
             self.pnl_percentage = ((self.current_price - self.open_price) / self.open_price) * 100
-            
+
         # Calculate unrealized P&L if not provided
-        if (self.unrealized_pnl is None and 
-            self.open_price is not None and 
+        if (self.unrealized_pnl is None and
+            self.open_price is not None and
             self.current_price is not None):
             self.unrealized_pnl = (self.current_price - self.open_price) * abs(self.quantity)
 
@@ -114,12 +157,12 @@ class PositionData:
 @dataclass
 class CoordinatorData:
     """Main data structure managed by DataUpdateCoordinator."""
-    
+
     portfolio: PortfolioData
-    accounts: List[AccountData]
-    positions: List[PositionData]
+    accounts: list[AccountData]
+    positions: list[PositionData]
     last_updated: datetime
-    
+
     def __post_init__(self):
         """Validate coordinator data consistency."""
         # Validate data consistency
@@ -131,7 +174,7 @@ class CoordinatorData:
                     position.position_id,
                     position.account_id
                 )
-        
+
         # Validate position count consistency
         actual_positions_count = len([p for p in self.positions if p.quantity != 0])
         if abs(self.portfolio.positions_count - actual_positions_count) > 0:
@@ -140,16 +183,16 @@ class CoordinatorData:
                 self.portfolio.positions_count,
                 actual_positions_count
             )
-    
+
     @classmethod
     def from_api_responses(
         cls,
-        balance_response: Dict,
-        positions_response: Dict,
-        accounts_response: Dict
+        balance_response: dict,
+        positions_response: dict,
+        accounts_response: dict
     ) -> CoordinatorData:
         """Create CoordinatorData from Saxo API responses."""
-        
+
         # Parse portfolio data from balance response
         portfolio = PortfolioData(
             total_value=float(balance_response.get("TotalValue", 0)),
@@ -159,7 +202,7 @@ class CoordinatorData:
             unrealized_pnl=balance_response.get("UnrealizedMarginProfitLoss"),
             margin_available=balance_response.get("MarginAvailableForTrading")
         )
-        
+
         # Parse accounts data
         accounts = []
         for account_data in accounts_response.get("Data", []):
@@ -173,13 +216,13 @@ class CoordinatorData:
                 active=account_data.get("Active", True)
             )
             accounts.append(account)
-        
+
         # Parse positions data
         positions = []
         for position_data in positions_response.get("Data", []):
             position_base = position_data["PositionBase"]
             position_view = position_data["PositionView"]
-            
+
             position = PositionData(
                 position_id=position_data["NetPositionId"],
                 account_id=position_base["AccountId"],
@@ -193,26 +236,26 @@ class CoordinatorData:
                 currency=portfolio.currency  # Use portfolio currency for consistency
             )
             positions.append(position)
-        
+
         # Calculate account balances from positions
         account_balances = {}
         for position in positions:
             if position.account_id not in account_balances:
                 account_balances[position.account_id] = 0.0
             account_balances[position.account_id] += position.current_value
-        
+
         # Update account balances
         for account in accounts:
             account.balance = account_balances.get(account.account_id, 0.0)
-        
+
         return cls(
             portfolio=portfolio,
             accounts=accounts,
             positions=positions,
             last_updated=datetime.now()
         )
-    
-    def to_dict(self) -> Dict:
+
+    def to_dict(self) -> dict:
         """Convert to dictionary for Home Assistant storage."""
         return {
             "portfolio": {
@@ -269,32 +312,32 @@ def validate_iso_currency_code(currency: str) -> bool:
     return True
 
 
-def sanitize_financial_value(value: Union[str, int, float]) -> float:
+def sanitize_financial_value(value: str | int | float) -> float:
     """Sanitize and validate financial values from API responses."""
     try:
         float_value = float(value)
-        
+
         # Check for invalid values
         import math
         if math.isnan(float_value) or math.isinf(float_value):
             _LOGGER.warning("Invalid financial value received: %s", value)
             return 0.0
-            
+
         return float_value
     except (ValueError, TypeError):
         _LOGGER.warning("Could not convert value to float: %s", value)
         return 0.0
 
 
-def calculate_portfolio_totals(positions: List[PositionData]) -> Dict[str, float]:
+def calculate_portfolio_totals(positions: list[PositionData]) -> dict[str, float]:
     """Calculate portfolio totals from positions data."""
     total_value = sum(position.current_value for position in positions)
     total_pnl = sum(position.unrealized_pnl or 0.0 for position in positions)
-    
+
     # Calculate overall P&L percentage
     cost_basis = total_value - total_pnl
     pnl_percentage = (total_pnl / cost_basis * 100) if cost_basis > 0 else 0.0
-    
+
     return {
         "total_value": total_value,
         "total_pnl": total_pnl,
