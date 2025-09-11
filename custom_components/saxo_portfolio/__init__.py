@@ -24,12 +24,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.entry_id,
         entry.title,
         entity_prefix,
-        has_token
+        has_token,
     )
 
     # Initialize integration data storage
     hass.data.setdefault(DOMAIN, {})
-
 
     try:
         # Create the coordinator

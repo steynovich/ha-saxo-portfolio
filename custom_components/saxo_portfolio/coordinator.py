@@ -94,13 +94,13 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     token_type,
                     expires_datetime.isoformat(),
                     is_expired,
-                    has_refresh_token
+                    has_refresh_token,
                 )
             else:
                 _LOGGER.debug(
                     "Token details - type: %s, no expiry info, has_refresh: %s",
                     token_type,
-                    has_refresh_token
+                    has_refresh_token,
                 )
 
             # Get base URL - always use production
@@ -111,7 +111,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.debug(
                 "Creating API client for production environment, base_url: %s, token_length: %d",
                 base_url,
-                len(access_token) if access_token else 0
+                len(access_token) if access_token else 0,
             )
 
             # Don't pass session - let API client create its own with auth headers
@@ -212,13 +212,14 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         masked_token_data = {}
         for key, value in token_data.items():
             if key in ["access_token", "refresh_token"]:
-                masked_token_data[key] = f"***{value[-4:]}" if value and len(str(value)) > 4 else "***"
+                masked_token_data[key] = (
+                    f"***{value[-4:]}" if value and len(str(value)) > 4 else "***"
+                )
             else:
                 masked_token_data[key] = value
 
         _LOGGER.debug(
-            "Starting token refresh: token_data_keys=%s",
-            list(masked_token_data.keys())
+            "Starting token refresh: token_data_keys=%s", list(masked_token_data.keys())
         )
         _LOGGER.debug("Token data structure: %s", masked_token_data)
 
@@ -244,7 +245,9 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 refresh_data["redirect_uri"] = redirect_uri
                 _LOGGER.debug("Added redirect_uri to refresh request")
             else:
-                _LOGGER.warning("No redirect_uri found in config entry - this may cause refresh to fail")
+                _LOGGER.warning(
+                    "No redirect_uri found in config entry - this may cause refresh to fail"
+                )
 
             # Get client credentials for HTTP Basic Auth (Saxo's preferred method)
             auth = None
@@ -258,8 +261,12 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.hass, self.config_entry
                 )
                 if implementation:
-                    auth = aiohttp.BasicAuth(implementation.client_id, implementation.client_secret)
-                    _LOGGER.debug("Using HTTP Basic Auth for token refresh (Saxo preferred method)")
+                    auth = aiohttp.BasicAuth(
+                        implementation.client_id, implementation.client_secret
+                    )
+                    _LOGGER.debug(
+                        "Using HTTP Basic Auth for token refresh (Saxo preferred method)"
+                    )
                 else:
                     _LOGGER.warning("Could not get OAuth implementation for Basic Auth")
             except Exception as e:
@@ -271,7 +278,11 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Debug logging with masked sensitive data
             masked_data = refresh_data.copy()
             if "refresh_token" in masked_data:
-                masked_data["refresh_token"] = f"***{masked_data['refresh_token'][-4:]}" if len(masked_data["refresh_token"]) > 4 else "***"
+                masked_data["refresh_token"] = (
+                    f"***{masked_data['refresh_token'][-4:]}"
+                    if len(masked_data["refresh_token"]) > 4
+                    else "***"
+                )
             if "client_secret" in masked_data:
                 masked_data["client_secret"] = "***MASKED***"
 
@@ -280,7 +291,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 token_url,
                 auth is not None,
                 {"Content-Type": "application/x-www-form-urlencoded"},
-                masked_data
+                masked_data,
             )
 
             # Token refresh requests should use application/x-www-form-urlencoded
@@ -292,7 +303,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.debug(
                     "Token refresh response: status=%d, headers=%s",
                     response.status,
-                    dict(response.headers)
+                    dict(response.headers),
                 )
 
                 if response.status in [200, 201]:  # Accept both 200 OK and 201 Created
@@ -334,7 +345,11 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     masked_new_token_data = {}
                     for key, value in new_token_data.items():
                         if key in ["access_token", "refresh_token"]:
-                            masked_new_token_data[key] = f"***{value[-4:]}" if value and len(str(value)) > 4 else "***"
+                            masked_new_token_data[key] = (
+                                f"***{value[-4:]}"
+                                if value and len(str(value)) > 4
+                                else "***"
+                            )
                         else:
                             masked_new_token_data[key] = value
                     _LOGGER.debug("New token data structure: %s", masked_new_token_data)
@@ -345,7 +360,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     _LOGGER.error(
                         "Token refresh failed: HTTP %d - %s",
                         response.status,
-                        error_text[:500] if error_text else "No error details"
+                        error_text[:500] if error_text else "No error details",
                     )
                     raise ConfigEntryAuthFailed("Failed to refresh access token")
 
@@ -373,7 +388,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             _LOGGER.debug(
                 "Starting data fetch with client base_url: %s (production)",
-                client.base_url
+                client.base_url,
             )
 
             # Validate we're using the expected production URL
@@ -382,13 +397,13 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.error(
                     "API client base URL mismatch! Expected: %s, Got: %s",
                     expected_base_url,
-                    client.base_url
+                    client.base_url,
                 )
 
             _LOGGER.debug(
                 "About to fetch balance from: %s%s",
                 client.base_url,
-                "/port/v1/balances/me"
+                "/port/v1/balances/me",
             )
 
             # Fetch balance data only
@@ -397,13 +412,16 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 balance_data = await client.get_account_balance()
                 _LOGGER.debug(
                     "Balance data keys: %s",
-                    list(balance_data.keys()) if balance_data else "No balance data"
+                    list(balance_data.keys()) if balance_data else "No balance data",
                 )
                 import json
-                del balance_data['MarginCollateralNotAvailableDetail']
+
+                del balance_data["MarginCollateralNotAvailableDetail"]
                 _LOGGER.debug(
                     "Balance data: %s",
-                    json.dumps(balance_data, indent=4, sort_keys=True) if balance_data else "No balance data"
+                    json.dumps(balance_data, indent=4, sort_keys=True)
+                    if balance_data
+                    else "No balance data",
                 )
 
                 # Try to fetch client details and performance data
@@ -420,33 +438,53 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         _LOGGER.debug("Found client details - ClientId: %s", client_id)
 
                         if client_key:
-                            _LOGGER.debug("Found ClientKey from client details, attempting performance fetch")
+                            _LOGGER.debug(
+                                "Found ClientKey from client details, attempting performance fetch"
+                            )
                             try:
-                                performance_data = await client.get_performance(client_key)
+                                performance_data = await client.get_performance(
+                                    client_key
+                                )
 
                                 # Extract AccumulatedProfitLoss from BalancePerformance
-                                balance_performance = performance_data.get("BalancePerformance", {})
-                                accumulated_profit_loss = balance_performance.get("AccumulatedProfitLoss", 0.0)
+                                balance_performance = performance_data.get(
+                                    "BalancePerformance", {}
+                                )
+                                accumulated_profit_loss = balance_performance.get(
+                                    "AccumulatedProfitLoss", 0.0
+                                )
 
                                 # Use AccumulatedProfitLoss as YTD earnings percentage
                                 ytd_earnings_percentage = accumulated_profit_loss
-                                _LOGGER.debug("Retrieved performance data, AccumulatedProfitLoss: %s", accumulated_profit_loss)
+                                _LOGGER.debug(
+                                    "Retrieved performance data, AccumulatedProfitLoss: %s",
+                                    accumulated_profit_loss,
+                                )
 
                             except Exception as perf_e:
-                                _LOGGER.debug("Could not fetch performance data: %s", type(perf_e).__name__)
+                                _LOGGER.debug(
+                                    "Could not fetch performance data: %s",
+                                    type(perf_e).__name__,
+                                )
                         else:
-                            _LOGGER.debug("No ClientKey found from client details endpoint, performance data not available")
+                            _LOGGER.debug(
+                                "No ClientKey found from client details endpoint, performance data not available"
+                            )
                     else:
                         _LOGGER.debug("No client details available")
                 except Exception as client_e:
-                    _LOGGER.debug("Could not fetch client details: %s", type(client_e).__name__)
+                    _LOGGER.debug(
+                        "Could not fetch client details: %s", type(client_e).__name__
+                    )
 
                 # Create simple data structure for balance sensors
                 return {
                     "cash_balance": balance_data.get("CashBalance", 0.0),
                     "currency": balance_data.get("Currency", "USD"),
                     "total_value": balance_data.get("TotalValue", 0.0),
-                    "non_margin_positions_value": balance_data.get("NonMarginPositionsValue", 0.0),
+                    "non_margin_positions_value": balance_data.get(
+                        "NonMarginPositionsValue", 0.0
+                    ),
                     "ytd_earnings_percentage": ytd_earnings_percentage,
                     "client_id": client_id,
                     "last_updated": balance_data.get("LastUpdated"),
@@ -456,7 +494,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.error(
                 "Authentication error for production environment: %s. "
                 "Check that OAuth credentials are valid production credentials.",
-                type(e).__name__
+                type(e).__name__,
             )
             raise ConfigEntryAuthFailed(
                 "Authentication failed for production environment. "

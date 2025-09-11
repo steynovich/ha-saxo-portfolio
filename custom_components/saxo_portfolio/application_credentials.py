@@ -19,6 +19,7 @@ async def async_get_authorization_server(hass: HomeAssistant) -> AuthorizationSe
     application credentials system. Always uses production endpoints.
     """
     import logging
+
     _LOGGER = logging.getLogger(__name__)
 
     authorize_url = f"{SAXO_AUTH_BASE_URL}{OAUTH_AUTHORIZE_ENDPOINT}"
@@ -27,7 +28,7 @@ async def async_get_authorization_server(hass: HomeAssistant) -> AuthorizationSe
     _LOGGER.debug(
         "Application credentials OAuth server - authorize_url: %s, token_url: %s",
         authorize_url,
-        token_url
+        token_url,
     )
 
     return AuthorizationServer(

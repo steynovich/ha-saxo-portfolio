@@ -176,7 +176,7 @@ class SaxoApiClient:
             _LOGGER.debug(
                 "Creating API session with auth header length: %d, user-agent: %s",
                 len(auth_header),
-                headers["User-Agent"]
+                headers["User-Agent"],
             )
 
             self._session = aiohttp.ClientSession(
@@ -229,13 +229,17 @@ class SaxoApiClient:
                             # Log additional details for 401 errors (without exposing sensitive data)
                             auth_header = self.session.headers.get("Authorization", "")
                             has_bearer = auth_header.startswith("Bearer ")
-                            token_length = len(auth_header.replace("Bearer ", "")) if has_bearer else 0
+                            token_length = (
+                                len(auth_header.replace("Bearer ", ""))
+                                if has_bearer
+                                else 0
+                            )
 
                             _LOGGER.debug(
                                 "401 Unauthorized - has_bearer_token: %s, token_length: %d, user_agent: %s",
                                 has_bearer,
                                 token_length,
-                                self.session.headers.get("User-Agent", "unknown")
+                                self.session.headers.get("User-Agent", "unknown"),
                             )
 
                             # Log response headers that might give us clues
@@ -254,7 +258,7 @@ class SaxoApiClient:
                             _LOGGER.error(
                                 "400 Bad Request for %s: %s",
                                 mask_url_for_logging(url),
-                                error_text[:500] if error_text else "No error details"
+                                error_text[:500] if error_text else "No error details",
                             )
                             raise APIError(f"HTTP 400 Bad Request: {error_text}")
                         elif response.status == 429:
@@ -400,9 +404,14 @@ class SaxoApiClient:
             client_id = response.get("ClientId")
 
             if client_key:
-                _LOGGER.debug("Found ClientKey from client details endpoint: %s", client_key[:10] + "..." if len(client_key) > 10 else client_key)
+                _LOGGER.debug(
+                    "Found ClientKey from client details endpoint: %s",
+                    client_key[:10] + "..." if len(client_key) > 10 else client_key,
+                )
             if client_id:
-                _LOGGER.debug("Found ClientId from client details endpoint: %s", client_id)
+                _LOGGER.debug(
+                    "Found ClientId from client details endpoint: %s", client_id
+                )
 
             return response
 
@@ -428,9 +437,7 @@ class SaxoApiClient:
         """
         try:
             endpoint = f"{API_PERFORMANCE_ENDPOINT}{client_key}"
-            params = {
-                "StandardPeriod": "AllTime"
-            }
+            params = {"StandardPeriod": "AllTime"}
 
             response = await self._make_request(endpoint, params)
 
@@ -438,7 +445,10 @@ class SaxoApiClient:
             if not isinstance(response, dict):
                 raise APIError("Invalid performance response format")
 
-            _LOGGER.debug("Performance API response structure: %s", list(response.keys()) if response else "empty")
+            _LOGGER.debug(
+                "Performance API response structure: %s",
+                list(response.keys()) if response else "empty",
+            )
 
             return response
 

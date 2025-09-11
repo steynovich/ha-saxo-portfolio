@@ -47,10 +47,14 @@ async def async_setup_entry(
         SaxoCashBalanceSensor(coordinator),
         SaxoTotalValueSensor(coordinator),
         SaxoNonMarginPositionsValueSensor(coordinator),
-        SaxoAccumulatedProfitLossSensor(coordinator)
+        SaxoAccumulatedProfitLossSensor(coordinator),
     ]
 
-    _LOGGER.info("Setting up %d Saxo Portfolio sensors for entry %s", len(entities), config_entry.entry_id)
+    _LOGGER.info(
+        "Setting up %d Saxo Portfolio sensors for entry %s",
+        len(entities),
+        config_entry.entry_id,
+    )
     async_add_entities(entities, True)
 
 
@@ -110,9 +114,7 @@ class SaxoCashBalanceSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
                 import math
 
                 if not math.isfinite(cash_balance):
-                    _LOGGER.warning(
-                        "Invalid cash balance value: %s", cash_balance
-                    )
+                    _LOGGER.warning("Invalid cash balance value: %s", cash_balance)
                     return None
 
                 # Round financial value to 2 decimal places
@@ -227,9 +229,7 @@ class SaxoTotalValueSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
                 import math
 
                 if not math.isfinite(total_value):
-                    _LOGGER.warning(
-                        "Invalid total value: %s", total_value
-                    )
+                    _LOGGER.warning("Invalid total value: %s", total_value)
                     return None
 
                 # Round financial value to 2 decimal places
@@ -288,7 +288,9 @@ class SaxoTotalValueSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
         await super().async_will_remove_from_hass()
 
 
-class SaxoNonMarginPositionsValueSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+class SaxoNonMarginPositionsValueSensor(
+    CoordinatorEntity[SaxoCoordinator], SensorEntity
+):
     """Representation of a Saxo Portfolio Non-Margin Positions Value sensor."""
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
@@ -399,15 +401,18 @@ class SaxoNonMarginPositionsValueSensor(CoordinatorEntity[SaxoCoordinator], Sens
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
-        _LOGGER.debug("Non-margin positions value sensor %s added to Home Assistant", self.entity_id)
+        _LOGGER.debug(
+            "Non-margin positions value sensor %s added to Home Assistant",
+            self.entity_id,
+        )
 
     async def async_will_remove_from_hass(self) -> None:
         """When entity will be removed from hass."""
         _LOGGER.debug(
-            "Non-margin positions value sensor %s being removed from Home Assistant", self.entity_id
+            "Non-margin positions value sensor %s being removed from Home Assistant",
+            self.entity_id,
         )
         await super().async_will_remove_from_hass()
-
 
 
 class SaxoAccumulatedProfitLossSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
@@ -497,11 +502,14 @@ class SaxoAccumulatedProfitLossSensor(CoordinatorEntity[SaxoCoordinator], Sensor
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
-        _LOGGER.debug("Accumulated profit/loss sensor %s added to Home Assistant", self.entity_id)
+        _LOGGER.debug(
+            "Accumulated profit/loss sensor %s added to Home Assistant", self.entity_id
+        )
 
     async def async_will_remove_from_hass(self) -> None:
         """When entity will be removed from hass."""
         _LOGGER.debug(
-            "Accumulated profit/loss sensor %s being removed from Home Assistant", self.entity_id
+            "Accumulated profit/loss sensor %s being removed from Home Assistant",
+            self.entity_id,
         )
         await super().async_will_remove_from_hass()

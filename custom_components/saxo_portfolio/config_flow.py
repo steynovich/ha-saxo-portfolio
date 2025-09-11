@@ -26,8 +26,6 @@ class SaxoPortfolioFlowHandler(
     DOMAIN = DOMAIN
     VERSION = 1
 
-
-
     def __init__(self) -> None:
         """Initialize the config flow."""
         super().__init__()
@@ -53,13 +51,15 @@ class SaxoPortfolioFlowHandler(
             return await super().async_step_pick_implementation(user_input)
 
         # Check if application credentials are configured
-        from homeassistant.helpers.config_entry_oauth2_flow import async_get_implementations
+        from homeassistant.helpers.config_entry_oauth2_flow import (
+            async_get_implementations,
+        )
 
         implementations = await async_get_implementations(self.hass, DOMAIN)
 
         _LOGGER.debug(
             "Pick implementation step - found implementations: %d",
-            len(implementations) if implementations else 0
+            len(implementations) if implementations else 0,
         )
 
         if implementations:
@@ -67,15 +67,15 @@ class SaxoPortfolioFlowHandler(
                 _LOGGER.debug(
                     "Available OAuth implementation - ID: %s, domain: %s, name: %s",
                     impl_id,
-                    getattr(impl, 'domain', 'unknown'),
-                    getattr(impl, 'name', 'unknown')
+                    getattr(impl, "domain", "unknown"),
+                    getattr(impl, "name", "unknown"),
                 )
 
         if not implementations:
             # No application credentials configured - abort with instructions
             _LOGGER.debug(
                 "No OAuth implementations found for domain: %s, aborting with credentials setup instructions",
-                DOMAIN
+                DOMAIN,
             )
 
             return self.async_abort(
@@ -86,13 +86,14 @@ class SaxoPortfolioFlowHandler(
                     "token_url": f"{SAXO_AUTH_BASE_URL}{OAUTH_TOKEN_ENDPOINT}",
                     "setup_url": "/config/application_credentials",
                     "domain": DOMAIN,
-                }
+                },
             )
 
         # Continue with standard OAuth implementation selection
-        _LOGGER.debug("Proceeding with OAuth implementation selection using parent class")
+        _LOGGER.debug(
+            "Proceeding with OAuth implementation selection using parent class"
+        )
         return await super().async_step_pick_implementation(user_input)
-
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -131,5 +132,3 @@ class SaxoPortfolioFlowHandler(
     async def async_step_reauth(self, entry_data: dict[str, Any]) -> FlowResult:
         """Handle reauthorization request."""
         return await self.async_step_user()
-
-
