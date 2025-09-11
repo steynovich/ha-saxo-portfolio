@@ -6,36 +6,37 @@
 [![HACS Action](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hacs.yml/badge.svg)](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hacs.yml)
 [![Hassfest](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hassfest.yml/badge.svg)](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hassfest.yml)
 
-A **Platinum-grade** Home Assistant integration for monitoring your Saxo Bank portfolio data through their OpenAPI. Features OAuth 2.0 authentication, intelligent update scheduling based on market hours, and comprehensive portfolio tracking with supreme technical excellence.
+A **Platinum-grade** Home Assistant integration for monitoring your Saxo Bank portfolio through their OpenAPI. Features OAuth 2.0 authentication, intelligent update scheduling based on market hours, automatic entity naming based on your Saxo Client ID, and comprehensive performance tracking.
 
 ## Features
 
 - 🔐 **Enterprise-Grade Security**: OAuth 2.0 with Home Assistant credential management, encrypted token storage, and comprehensive data masking
-- 📊 **Complete Portfolio Monitoring**: Total value, cash balance, unrealized P&L, position count, and percentage performance
-- 💰 **Multi-Account Support**: Individual account balances and details across multiple trading accounts
-- 📈 **Position-Level Tracking**: Individual position values, P&L, and performance metrics
+- 💰 **Comprehensive Portfolio Tracking**: Real-time balance monitoring and performance tracking from multiple Saxo API endpoints
+- 🏷️ **Automatic Entity Naming**: Entity names auto-generated using your Saxo Client ID (e.g., `saxo_123456_cash_balance`)
 - 🕒 **Intelligent Scheduling**: Dynamic update intervals (5 min during market hours, 30 min after hours) with Eastern Time market detection
-- 🌍 **Environment Flexibility**: Full support for Saxo's simulation and production environments
+- 📊 **Performance Analytics**: All-time profit/loss tracking with accumulated performance metrics
+- 🏭 **Production Ready**: Uses production Saxo API endpoints for live data
 - 🔄 **Robust API Handling**: Advanced rate limiting, exponential backoff, and automatic retry logic
 - 🛡️ **Security-First Design**: CSRF protection, SSL certificate verification, and sanitized logging
-- ✅ **Production Ready**: HACS compliant with comprehensive testing and GitHub Actions workflows
-- 🏆 **Platinum Quality**: Meets Home Assistant Quality Scale Platinum tier with fully typed codebase, comprehensive documentation, and optimal performance
+- ✅ **HACS Compliant**: Comprehensive testing and GitHub Actions workflows
+- 🏆 **Platinum Quality**: Meets Home Assistant Quality Scale Platinum tier with fully typed codebase and comprehensive documentation
 
-## Supported Sensor Types
+## Supported Sensors
 
-### Portfolio Sensors
-- **Total Portfolio Value**: Current total value of all holdings
-- **Cash Balance**: Available cash in the portfolio
-- **Unrealized P&L**: Profit/loss on open positions
-- **Position Count**: Number of open positions
-- **P&L Percentage**: Portfolio performance as percentage
+The integration provides **4 core sensors** that automatically use your Saxo Client ID for unique entity naming:
 
-### Account Sensors  
-- **Account Balance**: Balance per individual account
+### Balance & Portfolio Sensors
+- **Cash Balance**: Available cash in your Saxo portfolio (`sensor.saxo_{clientid}_cash_balance`)
+- **Total Value**: Total portfolio value including cash and investments (`sensor.saxo_{clientid}_total_value`) 
+- **Non-Margin Positions Value**: Value of non-margin trading positions (`sensor.saxo_{clientid}_non_margin_positions_value`)
 
-### Position Sensors
-- **Position Value**: Market value per position
-- **Position P&L**: Profit/loss per position
+### Performance Analytics
+- **Accumulated Profit/Loss**: All-time performance tracking from Saxo's historical API (`sensor.saxo_{clientid}_accumulated_profit_loss`)
+
+### Key Features
+- **API Endpoints Used**: `/port/v1/balances/me`, `/port/v1/clients/me`, `/hist/v3/perf/`
+- **Currency Support**: Automatically detects and displays the appropriate currency unit
+- **Client ID Integration**: Entity names automatically use your actual Saxo Client ID for unique identification
 
 ## Prerequisites
 
@@ -74,27 +75,34 @@ A **Platinum-grade** Home Assistant integration for monitoring your Saxo Bank po
 
 1. Go to Settings → Devices & Services
 2. Click "Add Integration" and search for "Saxo Portfolio"
-3. Follow the OAuth authentication flow
-4. Choose your environment (Simulation recommended for testing)
+3. Follow the OAuth authentication flow with Saxo's production environment
+4. The integration will automatically fetch your Client ID and create appropriately named entities
 
 ## Configuration Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| Environment | Simulation or Production | Simulation |
 | Update Interval (Market Hours) | How often to fetch data during market hours | 5 minutes |
 | Update Interval (After Hours) | How often to fetch data after market hours | 30 minutes |
 
+**Note**: Entity prefixes are now automatically generated using your Saxo Client ID, eliminating the need for manual configuration.
+
 ## Entities Created
 
-The integration creates entities with the following naming pattern:
-- `sensor.saxo_portfolio_total_value`
-- `sensor.saxo_portfolio_cash_balance` 
-- `sensor.saxo_portfolio_unrealized_pnl`
-- `sensor.saxo_portfolio_positions_count`
-- `sensor.saxo_portfolio_pnl_percentage`
-- `sensor.saxo_account_{account_id}`
-- `sensor.saxo_position_{position_id}`
+The integration automatically creates **4 sensors** using your Saxo Client ID:
+
+### Automatic Entity Naming (Example: Client ID "123456")
+- `sensor.saxo_123456_cash_balance` - Available cash balance
+- `sensor.saxo_123456_total_value` - Total portfolio value
+- `sensor.saxo_123456_non_margin_positions_value` - Non-margin positions value
+- `sensor.saxo_123456_accumulated_profit_loss` - All-time profit/loss performance
+
+### Entity Attributes
+- **Currency**: Portfolio currency (EUR, USD, etc.) - automatically detected
+- **Cross-Reference**: Sensors include related values for context
+- **Last Updated**: Timestamp of last data refresh
+- **Performance Data**: Historical profit/loss calculations
+- **Attribution**: Data source identification
 
 ## Security & Privacy
 
@@ -132,7 +140,7 @@ The integration automatically detects market hours (Monday-Friday, 9:30 AM - 4:0
 
 **Missing Data**
 - Ensure your Saxo account has the required permissions for portfolio data
-- Check if you're using the correct environment (simulation vs production)
+- Verify your production application credentials are correctly configured
 
 ### Enable Debug Logging
 

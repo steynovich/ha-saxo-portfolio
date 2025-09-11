@@ -8,7 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from .const import DATA_COORDINATOR, DATA_UNSUB, DOMAIN, PLATFORMS
+from .const import DATA_COORDINATOR, DATA_UNSUB, DOMAIN, PLATFORMS, CONF_ENTITY_PREFIX
 from .coordinator import SaxoCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -16,17 +16,27 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Saxo Portfolio from a config entry."""
-    _LOGGER.debug("Setting up Saxo Portfolio integration for entry %s", entry.entry_id)
+    entity_prefix = entry.data.get(CONF_ENTITY_PREFIX, "unknown")
+    has_token = bool(entry.data.get("token", {}).get("access_token"))
+
+    _LOGGER.debug(
+        "Setting up Saxo Portfolio integration - entry_id: %s, title: %s, prefix: %s, has_token: %s",
+        entry.entry_id,
+        entry.title,
+        entity_prefix,
+        has_token
+    )
 
     # Initialize integration data storage
     hass.data.setdefault(DOMAIN, {})
+
 
     try:
         # Create the coordinator
         coordinator = SaxoCoordinator(hass, entry)
 
         # Perform initial refresh to validate configuration
-        await coordinator.async_config_entry_first_refresh()
+        await coordinator.async_refresh()
 
         # Store coordinator
         hass.data[DOMAIN][entry.entry_id] = {
@@ -35,6 +45,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         # Set up platforms
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+        # Add update listener for options changes
+        entry.async_on_unload(entry.add_update_listener(async_options_updated))
 
         _LOGGER.info("Successfully set up Saxo Portfolio integration")
         return True
@@ -91,6 +104,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.info("Successfully unloaded Saxo Portfolio integration")
 
     return unload_ok
+
+
+async def async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Handle options update."""
+    _LOGGER.debug("Options updated for entry %s, triggering reload", entry.entry_id)
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:

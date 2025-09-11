@@ -9,9 +9,10 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timedelta, time
-import pytz
+import zoneinfo
 from typing import Any
 
+import aiohttp
 import async_timeout
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -34,7 +35,6 @@ from .const import (
     TOKEN_MIN_VALIDITY,
     TOKEN_REFRESH_BUFFER,
 )
-from .models import CoordinatorData
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -81,14 +81,41 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if not access_token:
                 raise ConfigEntryAuthFailed("No access token available")
 
-            # Get base URL from environment config
-            environment = self.config_entry.data.get("environment", "simulation")
-            from .const import ENVIRONMENTS
+            # Debug token details (without exposing the actual token)
+            token_type = token_data.get("token_type", "unknown")
+            expires_at = token_data.get("expires_at")
+            has_refresh_token = bool(token_data.get("refresh_token"))
 
-            base_url = ENVIRONMENTS[environment]["api_base_url"]
+            if expires_at:
+                expires_datetime = datetime.fromtimestamp(expires_at)
+                is_expired = datetime.now() > expires_datetime
+                _LOGGER.debug(
+                    "Token details - type: %s, expires_at: %s, is_expired: %s, has_refresh: %s",
+                    token_type,
+                    expires_datetime.isoformat(),
+                    is_expired,
+                    has_refresh_token
+                )
+            else:
+                _LOGGER.debug(
+                    "Token details - type: %s, no expiry info, has_refresh: %s",
+                    token_type,
+                    has_refresh_token
+                )
 
-            session = async_get_clientsession(self.hass)
-            self._api_client = SaxoApiClient(access_token, base_url, session)
+            # Get base URL - always use production
+            from .const import SAXO_API_BASE_URL
+
+            base_url = SAXO_API_BASE_URL
+
+            _LOGGER.debug(
+                "Creating API client for production environment, base_url: %s, token_length: %d",
+                base_url,
+                len(access_token) if access_token else 0
+            )
+
+            # Don't pass session - let API client create its own with auth headers
+            self._api_client = SaxoApiClient(access_token, base_url)
 
         return self._api_client
 
@@ -105,7 +132,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             # Get current time and convert to Eastern Time
             now_utc = dt_util.utcnow()
-            eastern = pytz.timezone("US/Eastern")
+            eastern = zoneinfo.ZoneInfo("America/New_York")
             now_et = now_utc.astimezone(eastern)
 
             # Check if it's a weekday (Monday = 0, Sunday = 6)
@@ -181,38 +208,94 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not refresh_token:
             raise ConfigEntryAuthFailed("No refresh token available")
 
-        try:
-            # Get environment configuration
-            environment = self.config_entry.data.get("environment", "simulation")
-            from .const import ENVIRONMENTS, OAUTH_TOKEN_ENDPOINT
+        # Debug token data structure (with sensitive data masked)
+        masked_token_data = {}
+        for key, value in token_data.items():
+            if key in ["access_token", "refresh_token"]:
+                masked_token_data[key] = f"***{value[-4:]}" if value and len(str(value)) > 4 else "***"
+            else:
+                masked_token_data[key] = value
 
-            auth_base_url = ENVIRONMENTS[environment]["auth_base_url"]
+        _LOGGER.debug(
+            "Starting token refresh: token_data_keys=%s",
+            list(masked_token_data.keys())
+        )
+        _LOGGER.debug("Token data structure: %s", masked_token_data)
+
+        try:
+            # Use production endpoints
+            from .const import SAXO_AUTH_BASE_URL, OAUTH_TOKEN_ENDPOINT
 
             # Prepare refresh request
-            token_url = f"{auth_base_url}{OAUTH_TOKEN_ENDPOINT}"
+            token_url = f"{SAXO_AUTH_BASE_URL}{OAUTH_TOKEN_ENDPOINT}"
 
             # Use Home Assistant's aiohttp session
             session = async_get_clientsession(self.hass)
 
+            # Saxo requires: grant_type, refresh_token, and redirect_uri
             refresh_data = {
                 "grant_type": "refresh_token",
                 "refresh_token": refresh_token,
             }
 
-            # Add client credentials if available
-            app_key = self.config_entry.data.get("app_key")
-            app_secret = self.config_entry.data.get("app_secret")
+            # Get redirect_uri from the original OAuth flow (required by Saxo)
+            redirect_uri = self.config_entry.data.get("redirect_uri")
+            if redirect_uri:
+                refresh_data["redirect_uri"] = redirect_uri
+                _LOGGER.debug("Added redirect_uri to refresh request")
+            else:
+                _LOGGER.warning("No redirect_uri found in config entry - this may cause refresh to fail")
 
+            # Get client credentials for HTTP Basic Auth (Saxo's preferred method)
             auth = None
-            if app_key and app_secret:
-                import aiohttp
+            try:
+                from homeassistant.helpers.config_entry_oauth2_flow import (
+                    async_get_config_entry_implementation,
+                )
 
-                auth = aiohttp.BasicAuth(app_key, app_secret)
+                # Get the OAuth implementation from the config entry
+                implementation = await async_get_config_entry_implementation(
+                    self.hass, self.config_entry
+                )
+                if implementation:
+                    auth = aiohttp.BasicAuth(implementation.client_id, implementation.client_secret)
+                    _LOGGER.debug("Using HTTP Basic Auth for token refresh (Saxo preferred method)")
+                else:
+                    _LOGGER.warning("Could not get OAuth implementation for Basic Auth")
+            except Exception as e:
+                _LOGGER.error("Failed to set up HTTP Basic Auth: %s", type(e).__name__)
+                _LOGGER.debug("Exception details: %s", str(e))
+
+            _LOGGER.debug("Attempting Saxo-compliant token refresh")
+
+            # Debug logging with masked sensitive data
+            masked_data = refresh_data.copy()
+            if "refresh_token" in masked_data:
+                masked_data["refresh_token"] = f"***{masked_data['refresh_token'][-4:]}" if len(masked_data["refresh_token"]) > 4 else "***"
+            if "client_secret" in masked_data:
+                masked_data["client_secret"] = "***MASKED***"
+
+            _LOGGER.debug(
+                "Token refresh request: URL=%s, has_basic_auth=%s, headers=%s, data=%s",
+                token_url,
+                auth is not None,
+                {"Content-Type": "application/x-www-form-urlencoded"},
+                masked_data
+            )
+
+            # Token refresh requests should use application/x-www-form-urlencoded
+            headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
             async with session.post(
-                token_url, data=refresh_data, auth=auth
+                token_url, data=refresh_data, headers=headers, auth=auth
             ) as response:
-                if response.status == 200:
+                _LOGGER.debug(
+                    "Token refresh response: status=%d, headers=%s",
+                    response.status,
+                    dict(response.headers)
+                )
+
+                if response.status in [200, 201]:  # Accept both 200 OK and 201 Created
                     new_token_data = await response.json()
 
                     # Calculate expiry time
@@ -222,9 +305,16 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     ).timestamp()
                     new_token_data["expires_at"] = expires_at
 
-                    # Update config entry with new token
+                    # Preserve any existing data from original token (like redirect_uri)
+                    # Saxo may provide a new refresh_token, so we use the response data
                     new_data = self.config_entry.data.copy()
-                    new_data["token"] = new_token_data
+
+                    # Update with new token data while preserving config data
+                    if "token" in new_data:
+                        # Keep any non-token config data, update token data
+                        new_data["token"] = new_token_data
+                    else:
+                        new_data["token"] = new_token_data
 
                     self.hass.config_entries.async_update_entry(
                         self.config_entry, data=new_data
@@ -233,17 +323,30 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     # Update API client with new token
                     self._api_client = None  # Force recreation with new token
 
-                    # Store refresh success info
+                    # Store refresh success info with debug details
                     token_expires = datetime.fromtimestamp(new_token_data["expires_at"])
                     _LOGGER.info(
                         "Successfully refreshed OAuth token (expires: %s)",
                         token_expires.isoformat(),
                     )
 
+                    # Debug log new token data structure (with sensitive data masked)
+                    masked_new_token_data = {}
+                    for key, value in new_token_data.items():
+                        if key in ["access_token", "refresh_token"]:
+                            masked_new_token_data[key] = f"***{value[-4:]}" if value and len(str(value)) > 4 else "***"
+                        else:
+                            masked_new_token_data[key] = value
+                    _LOGGER.debug("New token data structure: %s", masked_new_token_data)
+
                     return new_token_data
                 else:
-                    await response.text()
-                    _LOGGER.error("Token refresh failed: HTTP %d", response.status)
+                    error_text = await response.text()
+                    _LOGGER.error(
+                        "Token refresh failed: HTTP %d - %s",
+                        response.status,
+                        error_text[:500] if error_text else "No error details"
+                    )
                     raise ConfigEntryAuthFailed("Failed to refresh access token")
 
         except Exception as e:
@@ -268,61 +371,97 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Get API client
             client = self.api_client
 
-            # Fetch data from multiple endpoints concurrently
-            async with async_timeout.timeout(COORDINATOR_UPDATE_TIMEOUT):
-                # Get balance data (required)
-                balance_task = asyncio.create_task(client.get_account_balance())
+            _LOGGER.debug(
+                "Starting data fetch with client base_url: %s (production)",
+                client.base_url
+            )
 
-                # Get positions data
-                positions_task = asyncio.create_task(client.get_positions())
-
-                # Get accounts data - need a client key
-                # Extract account ID from positions to fetch detailed account information
-                # This follows Saxo API pattern where positions contain account references
-                balance_data = await balance_task
-                positions_data = await positions_task
-
-                # Try to get accounts data if we have positions
-                accounts_data = {"__count": 0, "Data": []}
-                if positions_data.get("Data"):
-                    # Use first position's account ID as client key approximation
-                    first_position = positions_data["Data"][0]
-                    account_id = first_position["PositionBase"]["AccountId"]
-                    try:
-                        accounts_task = asyncio.create_task(
-                            client.get_accounts(account_id)
-                        )
-                        accounts_data = await accounts_task
-                    except Exception as e:
-                        _LOGGER.warning(
-                            "Could not fetch accounts data: %s", type(e).__name__
-                        )
-                        # Fallback: Create minimal account data from position information
-                        # This ensures sensors work even if accounts endpoint is restricted
-                        accounts_data = {
-                            "__count": 1,
-                            "Data": [
-                                {
-                                    "AccountId": account_id,
-                                    "AccountKey": f"ak_{account_id}",
-                                    "AccountType": "Normal",
-                                    "Active": True,
-                                    "Currency": balance_data.get("Currency", "USD"),
-                                    "DisplayName": f"Account {account_id}",
-                                }
-                            ],
-                        }
-
-                # Create coordinated data model
-                coordinator_data = CoordinatorData.from_api_responses(
-                    balance_data, positions_data, accounts_data
+            # Validate we're using the expected production URL
+            expected_base_url = "https://gateway.saxobank.com/openapi"
+            if client.base_url != expected_base_url:
+                _LOGGER.error(
+                    "API client base URL mismatch! Expected: %s, Got: %s",
+                    expected_base_url,
+                    client.base_url
                 )
 
-                return coordinator_data.to_dict()
+            _LOGGER.debug(
+                "About to fetch balance from: %s%s",
+                client.base_url,
+                "/port/v1/balances/me"
+            )
+
+            # Fetch balance data only
+            async with async_timeout.timeout(COORDINATOR_UPDATE_TIMEOUT):
+                # Get balance data (only required endpoint)
+                balance_data = await client.get_account_balance()
+                _LOGGER.debug(
+                    "Balance data keys: %s",
+                    list(balance_data.keys()) if balance_data else "No balance data"
+                )
+                import json
+                del balance_data['MarginCollateralNotAvailableDetail']
+                _LOGGER.debug(
+                    "Balance data: %s",
+                    json.dumps(balance_data, indent=4, sort_keys=True) if balance_data else "No balance data"
+                )
+
+                # Try to fetch client details and performance data
+                ytd_earnings_percentage = 0.0
+                client_id = "unknown"
+
+                # Get client details (ClientKey, ClientId, etc.)
+                try:
+                    client_details = await client.get_client_details()
+                    if client_details:
+                        client_key = client_details.get("ClientKey")
+                        client_id = client_details.get("ClientId", "unknown")
+
+                        _LOGGER.debug("Found client details - ClientId: %s", client_id)
+
+                        if client_key:
+                            _LOGGER.debug("Found ClientKey from client details, attempting performance fetch")
+                            try:
+                                performance_data = await client.get_performance(client_key)
+
+                                # Extract AccumulatedProfitLoss from BalancePerformance
+                                balance_performance = performance_data.get("BalancePerformance", {})
+                                accumulated_profit_loss = balance_performance.get("AccumulatedProfitLoss", 0.0)
+
+                                # Use AccumulatedProfitLoss as YTD earnings percentage
+                                ytd_earnings_percentage = accumulated_profit_loss
+                                _LOGGER.debug("Retrieved performance data, AccumulatedProfitLoss: %s", accumulated_profit_loss)
+
+                            except Exception as perf_e:
+                                _LOGGER.debug("Could not fetch performance data: %s", type(perf_e).__name__)
+                        else:
+                            _LOGGER.debug("No ClientKey found from client details endpoint, performance data not available")
+                    else:
+                        _LOGGER.debug("No client details available")
+                except Exception as client_e:
+                    _LOGGER.debug("Could not fetch client details: %s", type(client_e).__name__)
+
+                # Create simple data structure for balance sensors
+                return {
+                    "cash_balance": balance_data.get("CashBalance", 0.0),
+                    "currency": balance_data.get("Currency", "USD"),
+                    "total_value": balance_data.get("TotalValue", 0.0),
+                    "non_margin_positions_value": balance_data.get("NonMarginPositionsValue", 0.0),
+                    "ytd_earnings_percentage": ytd_earnings_percentage,
+                    "client_id": client_id,
+                    "last_updated": balance_data.get("LastUpdated"),
+                }
 
         except AuthenticationError as e:
-            _LOGGER.error("Authentication error: %s", type(e).__name__)
-            raise ConfigEntryAuthFailed("Authentication failed") from e
+            _LOGGER.error(
+                "Authentication error for production environment: %s. "
+                "Check that OAuth credentials are valid production credentials.",
+                type(e).__name__
+            )
+            raise ConfigEntryAuthFailed(
+                "Authentication failed for production environment. "
+                "Ensure OAuth credentials are valid production credentials."
+            ) from e
 
         except TimeoutError as e:
             _LOGGER.error("Timeout fetching portfolio data")
@@ -376,72 +515,38 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         await super().async_shutdown()
 
-    def get_portfolio_sensor_data(self, sensor_type: str) -> Any:
-        """Get data for portfolio-level sensors.
-
-        Args:
-            sensor_type: Type of sensor data to retrieve
+    def get_cash_balance(self) -> float:
+        """Get cash balance from data.
 
         Returns:
-            Sensor value or None if not available
+            Cash balance value or 0.0 if not available
 
         """
-        if not self.data or "portfolio" not in self.data:
-            return None
+        if not self.data:
+            return 0.0
+        return self.data.get("cash_balance", 0.0)
 
-        portfolio_data = self.data["portfolio"]
-
-        sensor_map = {
-            "total_value": "total_value",
-            "cash_balance": "cash_balance",
-            "unrealized_pnl": "unrealized_pnl",
-            "positions_count": "positions_count",
-            "pnl_percentage": "pnl_percentage",
-        }
-
-        field_name = sensor_map.get(sensor_type)
-        if field_name:
-            return portfolio_data.get(field_name)
-
-        return None
-
-    def get_account_sensor_data(self, account_id: str) -> dict[str, Any] | None:
-        """Get data for account-specific sensors.
-
-        Args:
-            account_id: Account identifier
+    def get_total_value(self) -> float:
+        """Get total portfolio value from data.
 
         Returns:
-            Account data or None if not found
+            Total value or 0.0 if not available
 
         """
-        if not self.data or "accounts" not in self.data:
-            return None
+        if not self.data:
+            return 0.0
+        return self.data.get("total_value", 0.0)
 
-        for account in self.data["accounts"]:
-            if account.get("account_id") == account_id:
-                return account
-
-        return None
-
-    def get_position_sensor_data(self, position_id: str) -> dict[str, Any] | None:
-        """Get data for position-specific sensors.
-
-        Args:
-            position_id: Position identifier
+    def get_non_margin_positions_value(self) -> float:
+        """Get non-margin positions value from data.
 
         Returns:
-            Position data or None if not found
+            Non-margin positions value or 0.0 if not available
 
         """
-        if not self.data or "positions" not in self.data:
-            return None
-
-        for position in self.data["positions"]:
-            if position.get("position_id") == position_id:
-                return position
-
-        return None
+        if not self.data:
+            return 0.0
+        return self.data.get("non_margin_positions_value", 0.0)
 
     def get_currency(self) -> str:
         """Get the portfolio base currency.
@@ -450,9 +555,31 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             Currency code or USD as default
 
         """
-        if self.data and "portfolio" in self.data:
-            return self.data["portfolio"].get("currency", "USD")
+        if self.data:
+            return self.data.get("currency", "USD")
         return "USD"
+
+    def get_ytd_earnings_percentage(self) -> float:
+        """Get YTD earnings percentage from performance data.
+
+        Returns:
+            YTD earnings percentage or 0.0 if not available
+
+        """
+        if not self.data:
+            return 0.0
+        return self.data.get("ytd_earnings_percentage", 0.0)
+
+    def get_client_id(self) -> str:
+        """Get ClientId from client details.
+
+        Returns:
+            ClientId or 'unknown' if not available
+
+        """
+        if not self.data:
+            return "unknown"
+        return self.data.get("client_id", "unknown")
 
     async def async_update_interval_if_needed(self) -> None:
         """Check and update the refresh interval based on current market status.

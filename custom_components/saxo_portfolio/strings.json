@@ -20,19 +20,7 @@
       "unknown": "Unexpected error occurred. Please try again."
     },
     "abort": {
-      "already_configured": "Saxo Portfolio is already configured for this account.",
-      "single_instance_allowed": "Only a single configuration of Saxo Portfolio is allowed."
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Saxo Portfolio Options",
-        "description": "Configure options for your Saxo Portfolio integration.",
-        "data": {
-          "update_interval": "Update interval (minutes)"
-        }
-      }
+      "missing_credentials": "**Application Credentials Required**\n\nBefore setting up Saxo Portfolio, you need to configure Application Credentials.\n\n**Steps:**\n1. Go to [Saxo Developer Portal](https://www.developer.saxo/openapi/appmanagement) \n2. Create a production application with redirect URI: `https://my.home-assistant.io/redirect/oauth`\n3. Go to [Application Credentials]({setup_url}) in Home Assistant\n4. Add credentials for '{domain}' with your App Key and Secret\n5. Return here to complete setup\n\n**Production OAuth Endpoints:**\n• Authorize: {authorize_url}\n• Token: {token_url}"
     }
   },
   "entity": {
@@ -43,20 +31,11 @@
       "cash_balance": {
         "name": "Portfolio Cash Balance"
       },
-      "unrealized_pnl": {
-        "name": "Portfolio Unrealized P&L"
+      "non_margin_positions_value": {
+        "name": "Portfolio Non-Margin Positions Value"
       },
-      "positions_count": {
-        "name": "Portfolio Positions Count"
-      },
-      "pnl_percentage": {
-        "name": "Portfolio P&L Percentage"
-      },
-      "account_balance": {
-        "name": "Account Balance"
-      },
-      "position_value": {
-        "name": "Position Value"
+      "accumulated_profit_loss": {
+        "name": "Portfolio Accumulated Profit/Loss"
       }
     }
   },

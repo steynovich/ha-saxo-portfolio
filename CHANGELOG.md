@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2025-09-11
+
+### Breaking Changes
+- **Automatic Entity Naming**: Entity prefixes now automatically use Saxo Client ID (e.g., `saxo_123456_cash_balance`)
+- **Removed Options Flow**: No longer configurable entity prefixes - all entities use `saxo_{clientid}` format
+- **Removed Cash Deposit Sensor**: Streamlined to 4 core sensors for better focus on available data
+
+### Added
+- **Client ID Integration**: Automatically fetches Client ID from `/port/v1/clients/me` endpoint
+- **Performance Analytics**: Added all-time profit/loss tracking via `/hist/v3/perf/` endpoint
+- **Non-Margin Positions**: Added sensor for non-margin trading positions value
+- **Accumulated Profit/Loss**: Historical performance tracking with BalancePerformance data
+
+### Enhanced
+- **Simplified Setup**: No configuration needed - entities automatically named using your Saxo Client ID
+- **Better API Coverage**: Now uses 3 Saxo endpoints for comprehensive portfolio data
+- **Streamlined Sensors**: Focused on 4 core sensors that provide meaningful data
+- **Unique Entity IDs**: Each Saxo client gets unique entity names preventing conflicts
+
+### Technical Improvements
+- Removed problematic accounts endpoint dependency
+- Cleaner API client with focused endpoint usage
+- Simplified configuration flow without user input requirements
+- Enhanced error handling for client details retrieval
+
+### Removed
+- Custom entity prefix configuration (now automatic)
+- Cash deposit sensor (was returning 0.0 without proper data source)
+- Options flow for prefix changes
+- Manual entity naming system
+
 ## [1.0.1] - 2025-09-10
 
 ### Enhanced
@@ -81,4 +112,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Modular data models for type safety and consistency
 - Proper Home Assistant integration patterns
 
+[2.0.0]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.0.0
+[1.0.1]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v1.0.1
 [1.0.0]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v1.0.0

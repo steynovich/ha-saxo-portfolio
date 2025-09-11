@@ -3,6 +3,7 @@
   "name": "Saxo Portfolio",
   "codeowners": ["@steynovich"],
   "config_flow": true,
+  "dependencies": ["application_credentials"],
   "documentation": "https://github.com/steynovich/ha-saxo-portfolio",
   "integration_type": "service",
   "iot_class": "cloud_polling",

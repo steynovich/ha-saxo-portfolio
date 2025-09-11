@@ -15,9 +15,9 @@ import aiohttp
 import async_timeout
 
 from ..const import (
-    API_ACCOUNTS_ENDPOINT,
     API_BALANCE_ENDPOINT,
-    API_POSITIONS_ENDPOINT,
+    API_CLIENT_DETAILS_ENDPOINT,
+    API_PERFORMANCE_ENDPOINT,
     API_RATE_LIMIT_PER_MINUTE,
     API_RATE_LIMIT_WINDOW,
     API_TIMEOUT_CONNECT,
@@ -72,7 +72,7 @@ class RateLimiter:
         self._lock = asyncio.Lock()
         self._rate_limited_until = 0  # Timestamp when rate limiting ends
 
-    async def wait_if_needed(self, endpoint_group: str = "default") -> None:
+    async def wait_if_needed(self) -> None:
         """Wait if rate limit would be exceeded."""
         async with self._lock:
             now = time.time()
@@ -124,8 +124,8 @@ class SaxoApiClient:
     def __init__(
         self,
         access_token: str,
-        base_url: str = None,
-        session: aiohttp.ClientSession = None,
+        base_url: str | None = None,
+        session: aiohttp.ClientSession | None = None,
     ):
         """Initialize Saxo API client.
 
@@ -145,7 +145,7 @@ class SaxoApiClient:
         """Async context manager entry."""
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, _exc_type, _exc_val, _exc_tb):
         """Async context manager exit."""
         if self._session and not self._session.closed:
             await self._session.close()
@@ -166,14 +166,23 @@ class SaxoApiClient:
                 limit_per_host=30,  # Per-host connection limit
             )
 
+            auth_header = f"Bearer {self.access_token}"
+            headers = {
+                "Authorization": auth_header,
+                "Content-Type": "application/json",
+                "User-Agent": "HomeAssistant-SaxoPortfolio/1.0",
+            }
+
+            _LOGGER.debug(
+                "Creating API session with auth header length: %d, user-agent: %s",
+                len(auth_header),
+                headers["User-Agent"]
+            )
+
             self._session = aiohttp.ClientSession(
                 timeout=timeout,
                 connector=connector,
-                headers={
-                    "Authorization": f"Bearer {self.access_token}",
-                    "Content-Type": "application/json",
-                    "User-Agent": "HomeAssistant-SaxoPortfolio/1.0",
-                },
+                headers=headers,
             )
         return self._session
 
@@ -216,11 +225,38 @@ class SaxoApiClient:
                             response.status,
                         )
 
+                        if response.status == 401:
+                            # Log additional details for 401 errors (without exposing sensitive data)
+                            auth_header = self.session.headers.get("Authorization", "")
+                            has_bearer = auth_header.startswith("Bearer ")
+                            token_length = len(auth_header.replace("Bearer ", "")) if has_bearer else 0
+
+                            _LOGGER.debug(
+                                "401 Unauthorized - has_bearer_token: %s, token_length: %d, user_agent: %s",
+                                has_bearer,
+                                token_length,
+                                self.session.headers.get("User-Agent", "unknown")
+                            )
+
+                            # Log response headers that might give us clues
+                            www_auth = response.headers.get("WWW-Authenticate", "")
+                            if www_auth:
+                                _LOGGER.debug("WWW-Authenticate header: %s", www_auth)
+
                         if response.status == 200:
                             data = await response.json()
                             return data
                         elif response.status == 401:
                             raise AuthenticationError(ERROR_AUTH_FAILED)
+                        elif response.status == 400:
+                            # Log 400 Bad Request details
+                            error_text = await response.text()
+                            _LOGGER.error(
+                                "400 Bad Request for %s: %s",
+                                mask_url_for_logging(url),
+                                error_text[:500] if error_text else "No error details"
+                            )
+                            raise APIError(f"HTTP 400 Bad Request: {error_text}")
                         elif response.status == 429:
                             # Handle rate limiting with server-specified retry time
                             retry_after = int(response.headers.get("Retry-After", 60))
@@ -340,14 +376,11 @@ class SaxoApiClient:
             _LOGGER.error("Error fetching account balance: %s", type(e).__name__)
             raise APIError("Failed to fetch account balance")
 
-    async def get_positions(self, client_key: str | None = None) -> dict[str, Any]:
-        """Get positions from Saxo API.
-
-        Args:
-            client_key: Optional client key for filtering
+    async def get_client_details(self) -> dict[str, Any] | None:
+        """Get client details including ClientKey and ClientId.
 
         Returns:
-            Positions data matching contract schema
+            Client details dict or None if not available
 
         Raises:
             AuthenticationError: For authentication failures
@@ -355,166 +388,65 @@ class SaxoApiClient:
 
         """
         try:
-            params = {}
+            response = await self._make_request(API_CLIENT_DETAILS_ENDPOINT)
+
+            # Validate response structure
+            if not isinstance(response, dict):
+                _LOGGER.debug("Invalid client details response structure")
+                return None
+
+            # Extract ClientKey and ClientId
+            client_key = response.get("ClientKey")
+            client_id = response.get("ClientId")
+
             if client_key:
-                params["ClientKey"] = client_key
-
-            response = await self._make_request(API_POSITIONS_ENDPOINT, params)
-
-            # Validate response structure
-            if "__count" not in response or "Data" not in response:
-                raise APIError("Invalid positions response structure")
-
-            if not isinstance(response["__count"], int):
-                raise APIError("__count must be integer")
-            if not isinstance(response["Data"], list):
-                raise APIError("Data must be list")
-
-            # Validate position data
-            valid_asset_types = ["FxSpot", "Stock", "Bond", "Option", "Future"]
-            valid_statuses = ["Open", "Closed", "Pending"]
-
-            for position in response["Data"]:
-                # Validate structure
-                if "NetPositionId" not in position:
-                    raise APIError("Missing NetPositionId")
-                if "PositionBase" not in position or "PositionView" not in position:
-                    raise APIError("Missing PositionBase or PositionView")
-
-                position_base = position["PositionBase"]
-                position_view = position["PositionView"]
-
-                # Validate required fields
-                required_base_fields = [
-                    "AccountId",
-                    "Amount",
-                    "AssetType",
-                    "OpenPrice",
-                    "Status",
-                ]
-                for field in required_base_fields:
-                    if field not in position_base:
-                        raise APIError(f"Missing PositionBase field: {field}")
-
-                required_view_fields = ["CurrentPrice", "ProfitLossOnTrade"]
-                for field in required_view_fields:
-                    if field not in position_view:
-                        raise APIError(f"Missing PositionView field: {field}")
-
-                # Validate enums
-                if position_base["AssetType"] not in valid_asset_types:
-                    raise APIError(f"Invalid AssetType: {position_base['AssetType']}")
-                if position_base["Status"] not in valid_statuses:
-                    raise APIError(f"Invalid Status: {position_base['Status']}")
-
-                # Validate numeric data
-                import math
-
-                if (
-                    not math.isfinite(position_base["OpenPrice"])
-                    or position_base["OpenPrice"] <= 0
-                ):
-                    raise APIError("Invalid OpenPrice")
-                if (
-                    not math.isfinite(position_view["CurrentPrice"])
-                    or position_view["CurrentPrice"] <= 0
-                ):
-                    raise APIError("Invalid CurrentPrice")
-                if not math.isfinite(position_view["ProfitLossOnTrade"]):
-                    raise APIError("Invalid ProfitLossOnTrade")
+                _LOGGER.debug("Found ClientKey from client details endpoint: %s", client_key[:10] + "..." if len(client_key) > 10 else client_key)
+            if client_id:
+                _LOGGER.debug("Found ClientId from client details endpoint: %s", client_id)
 
             return response
 
         except (AuthenticationError, RateLimitError):
             raise
         except Exception as e:
-            _LOGGER.error("Error fetching positions: %s", type(e).__name__)
-            raise APIError("Failed to fetch positions")
+            _LOGGER.debug("Error fetching client details: %s", type(e).__name__)
+            return None
 
-    async def get_accounts(self, client_key: str) -> dict[str, Any]:
-        """Get accounts from Saxo API.
+    async def get_performance(self, client_key: str) -> dict[str, Any]:
+        """Get performance data from Saxo v3 performance API.
 
         Args:
-            client_key: Required client key parameter
+            client_key: Client key for the request
 
         Returns:
-            Accounts data matching contract schema
+            Performance data containing AccumulatedProfitLoss from BalancePerformance
 
         Raises:
             AuthenticationError: For authentication failures
             APIError: For other API errors
 
         """
-        if not client_key:
-            raise APIError("ClientKey is required for accounts endpoint")
-
         try:
-            params = {"ClientKey": client_key}
-            response = await self._make_request(API_ACCOUNTS_ENDPOINT, params)
+            endpoint = f"{API_PERFORMANCE_ENDPOINT}{client_key}"
+            params = {
+                "StandardPeriod": "AllTime"
+            }
+
+            response = await self._make_request(endpoint, params)
 
             # Validate response structure
-            if "__count" not in response or "Data" not in response:
-                raise APIError("Invalid accounts response structure")
+            if not isinstance(response, dict):
+                raise APIError("Invalid performance response format")
 
-            if not isinstance(response["__count"], int):
-                raise APIError("__count must be integer")
-            if not isinstance(response["Data"], list):
-                raise APIError("Data must be list")
-
-            # Validate account data
-            valid_account_types = ["Normal", "Margin", "ISA", "SIPP"]
-            account_ids = set()
-            account_keys = set()
-
-            for account in response["Data"]:
-                # Validate required fields
-                required_fields = ["AccountId", "AccountKey", "Active", "AccountType"]
-                for field in required_fields:
-                    if field not in account:
-                        raise APIError(f"Missing account field: {field}")
-
-                # Validate data types
-                if (
-                    not isinstance(account["AccountId"], str)
-                    or not account["AccountId"]
-                ):
-                    raise APIError("AccountId must be non-empty string")
-                if (
-                    not isinstance(account["AccountKey"], str)
-                    or not account["AccountKey"]
-                ):
-                    raise APIError("AccountKey must be non-empty string")
-                if not isinstance(account["Active"], bool):
-                    raise APIError("Active must be boolean")
-                if account["AccountType"] not in valid_account_types:
-                    raise APIError(f"Invalid AccountType: {account['AccountType']}")
-
-                # Validate currency if present
-                if "Currency" in account:
-                    currency = account["Currency"]
-                    if (
-                        not isinstance(currency, str)
-                        or len(currency) != 3
-                        or not currency.isupper()
-                    ):
-                        raise APIError(f"Invalid currency format: {currency}")
-
-                # Check for duplicates
-                if account["AccountId"] in account_ids:
-                    raise APIError(f"Duplicate AccountId: {account['AccountId']}")
-                if account["AccountKey"] in account_keys:
-                    raise APIError(f"Duplicate AccountKey: {account['AccountKey']}")
-
-                account_ids.add(account["AccountId"])
-                account_keys.add(account["AccountKey"])
+            _LOGGER.debug("Performance API response structure: %s", list(response.keys()) if response else "empty")
 
             return response
 
         except (AuthenticationError, RateLimitError):
             raise
         except Exception as e:
-            _LOGGER.error("Error fetching accounts: %s", type(e).__name__)
-            raise APIError("Failed to fetch accounts")
+            _LOGGER.error("Error fetching performance data: %s", type(e).__name__)
+            raise APIError("Failed to fetch performance data")
 
     async def close(self):
         """Close the HTTP session."""
