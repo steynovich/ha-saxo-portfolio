@@ -418,10 +418,9 @@ class SaxoNonMarginPositionsValueSensor(
 class SaxoAccumulatedProfitLossSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
     """Representation of a Saxo Portfolio Accumulated Profit/Loss sensor."""
 
-    _attr_device_class = None
+    _attr_device_class = "monetary"
     _attr_state_class = "measurement"
     _attr_icon = "mdi:trending-up"
-    _attr_native_unit_of_measurement = None  # Will use currency from coordinator
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
         """Initialize the sensor."""
@@ -433,6 +432,9 @@ class SaxoAccumulatedProfitLossSensor(CoordinatorEntity[SaxoCoordinator], Sensor
 
         self._attr_unique_id = f"{entity_prefix}_accumulated_profit_loss"
         self._attr_name = f"Saxo {client_id} Portfolio Accumulated Profit/Loss"
+
+        # Set unit of measurement to currency from coordinator
+        self._attr_native_unit_of_measurement = coordinator.get_currency()
 
         _LOGGER.debug(
             "Initialized accumulated profit/loss sensor with unique_id: %s, name: %s",
