@@ -23,7 +23,7 @@ A **Platinum-grade** Home Assistant integration for monitoring your Saxo Bank po
 
 ## Supported Sensors
 
-The integration provides **4 core sensors** that automatically use your Saxo Client ID for unique entity naming:
+The integration provides **6 comprehensive sensors** that automatically use your Saxo Client ID for unique entity naming:
 
 ### Balance & Portfolio Sensors
 - **Cash Balance**: Available cash in your Saxo portfolio (`sensor.saxo_{clientid}_cash_balance`)
@@ -32,10 +32,13 @@ The integration provides **4 core sensors** that automatically use your Saxo Cli
 
 ### Performance Analytics
 - **Accumulated Profit/Loss**: All-time performance tracking from Saxo's historical API (`sensor.saxo_{clientid}_accumulated_profit_loss`)
+- **Investment Performance**: Overall portfolio return percentage from performance timeseries (`sensor.saxo_{clientid}_investment_performance`)
+- **Cash Transfer Balance**: Latest cash transfer value from performance data (`sensor.saxo_{clientid}_cash_transfer_balance`)
 
 ### Key Features
-- **API Endpoints Used**: `/port/v1/balances/me`, `/port/v1/clients/me`, `/hist/v3/perf/`
+- **API Endpoints Used**: `/port/v1/balances/me`, `/port/v1/clients/me`, `/hist/v3/perf/`, `/hist/v4/performance/timeseries`
 - **Currency Support**: Automatically detects and displays the appropriate currency unit
+- **Performance Data**: ReturnFraction converted to percentage, latest cash transfer tracking
 - **Client ID Integration**: Entity names automatically use your actual Saxo Client ID for unique identification
 
 ## Prerequisites
@@ -89,13 +92,15 @@ The integration provides **4 core sensors** that automatically use your Saxo Cli
 
 ## Entities Created
 
-The integration automatically creates **4 sensors** using your Saxo Client ID:
+The integration automatically creates **6 sensors** using your Saxo Client ID:
 
 ### Automatic Entity Naming (Example: Client ID "123456")
 - `sensor.saxo_123456_cash_balance` - Available cash balance
 - `sensor.saxo_123456_total_value` - Total portfolio value
 - `sensor.saxo_123456_non_margin_positions_value` - Non-margin positions value
 - `sensor.saxo_123456_accumulated_profit_loss` - All-time profit/loss performance
+- `sensor.saxo_123456_investment_performance` - Overall portfolio return percentage
+- `sensor.saxo_123456_cash_transfer_balance` - Latest cash transfer balance
 
 ### Entity Attributes
 - **Currency**: Portfolio currency (EUR, USD, etc.) - automatically detected

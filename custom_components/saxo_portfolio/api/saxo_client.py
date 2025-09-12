@@ -18,6 +18,7 @@ from ..const import (
     API_BALANCE_ENDPOINT,
     API_CLIENT_DETAILS_ENDPOINT,
     API_PERFORMANCE_ENDPOINT,
+    API_PERFORMANCE_V4_ENDPOINT,
     API_RATE_LIMIT_PER_MINUTE,
     API_RATE_LIMIT_WINDOW,
     API_TIMEOUT_CONNECT,
@@ -457,6 +458,46 @@ class SaxoApiClient:
         except Exception as e:
             _LOGGER.error("Error fetching performance data: %s", type(e).__name__)
             raise APIError("Failed to fetch performance data")
+
+    async def get_performance_v4(self, client_key: str) -> dict[str, Any]:
+        """Get performance timeseries data from Saxo v4 performance API.
+
+        Args:
+            client_key: Client key for the request
+
+        Returns:
+            Performance timeseries data containing ReturnFraction and CashTransfer
+
+        Raises:
+            AuthenticationError: For authentication failures
+            APIError: For other API errors
+
+        """
+        try:
+            params = {
+                "ClientKey": client_key,
+                "StandardPeriod": "AllTime",
+                "FieldGroups": "Balance_CashTransfer,KeyFigures",
+            }
+
+            response = await self._make_request(API_PERFORMANCE_V4_ENDPOINT, params)
+
+            # Validate response structure
+            if not isinstance(response, dict):
+                raise APIError("Invalid performance v4 response format")
+
+            _LOGGER.debug(
+                "Performance v4 API response structure: %s",
+                list(response.keys()) if response else "empty",
+            )
+
+            return response
+
+        except (AuthenticationError, RateLimitError):
+            raise
+        except Exception as e:
+            _LOGGER.error("Error fetching performance v4 data: %s", type(e).__name__)
+            raise APIError("Failed to fetch performance v4 data")
 
     async def close(self):
         """Close the HTTP session."""

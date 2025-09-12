@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.3] - 2025-09-12
+
+### Added
+- **Investment Performance Sensor**: New sensor tracking overall portfolio return percentage from `/hist/v4/performance/timeseries` endpoint
+- **Cash Transfer Balance Sensor**: New sensor showing latest cash transfer value from performance timeseries data
+- **Enhanced API Coverage**: Added v4 performance endpoint support alongside existing v3 endpoint
+
+### Enhanced
+- **Comprehensive Portfolio Monitoring**: Now provides 6 sensors covering all key portfolio metrics
+- **Performance Analytics**: ReturnFraction data converted to percentage for easy interpretation
+- **Historical Data Integration**: Cash transfer tracking from timeseries performance data
+
+### Technical Improvements
+- Added `get_performance_v4()` method to API client for v4 performance endpoint
+- Enhanced coordinator with investment performance and cash transfer data fetching
+- Improved sensor naming consistency with client_id integration
+- All code validated with ruff formatting and quality checks
+
+### Sensor Updates
+- Total sensors increased from 4 to 6:
+  - Cash Balance (existing)
+  - Total Value (existing) 
+  - Non-Margin Positions Value (existing)
+  - Accumulated Profit/Loss (existing)
+  - Investment Performance (new)
+  - Cash Transfer Balance (new)
+
 ## [2.0.0] - 2025-09-11
 
 ### Breaking Changes
@@ -112,6 +139,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Modular data models for type safety and consistency
 - Proper Home Assistant integration patterns
 
+[2.0.3]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.0.3
 [2.0.0]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.0.0
 [1.0.1]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v1.0.1
 [1.0.0]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v1.0.0

@@ -1,6 +1,6 @@
 # ha-saxo Development Guidelines
 
-Auto-generated from current implementation. Last updated: 2025-09-11
+Auto-generated from current implementation. Last updated: 2025-09-12
 
 ## Active Technologies
 - Home Assistant Custom Integration
@@ -15,7 +15,7 @@ custom_components/saxo_portfolio/
 ├── __init__.py                 # Integration setup
 ├── config_flow.py             # OAuth configuration flow with prefix support
 ├── coordinator.py             # Data update coordinator with market hours logic
-├── sensor.py                  # CashBalance and TotalValue sensors with custom prefixes
+├── sensor.py                  # Six comprehensive sensors with automatic client ID naming
 ├── const.py                   # Constants and configuration
 ├── application_credentials.py  # OAuth credential management
 └── api/
@@ -48,36 +48,50 @@ python -m py_compile custom_components/saxo_portfolio/sensor.py
 ## Current Implementation
 
 ### Core Features
-- **Two Sensors**: `SaxoCashBalanceSensor` and `SaxoTotalValueSensor` from `/port/v1/balances/me` endpoint
-- **Custom Prefixes**: User-defined prefixes with `saxo_` base (e.g., `saxo_mybank_cash_balance`, `saxo_mybank_total_value`)
+- **Six Sensors**: Complete portfolio monitoring with balance, performance, and transfer tracking
+  - `SaxoCashBalanceSensor` from `/port/v1/balances/me`
+  - `SaxoTotalValueSensor` from `/port/v1/balances/me`
+  - `SaxoNonMarginPositionsValueSensor` from `/port/v1/balances/me`
+  - `SaxoAccumulatedProfitLossSensor` from `/hist/v3/perf/`
+  - `SaxoInvestmentPerformanceSensor` from `/hist/v4/performance/timeseries`
+  - `SaxoCashTransferBalanceSensor` from `/hist/v4/performance/timeseries`
+- **Automatic Client ID Naming**: Entity names use actual Saxo Client ID (e.g., `saxo_123456_cash_balance`)
 - **OAuth 2.0**: Secure authentication with Home Assistant credential management (production endpoints only)
 - **Market Hours**: Dynamic update intervals (5 min market hours, 30 min after hours)
 - **Rate Limiting**: Intelligent API throttling with exponential backoff
 
 ### Entity Naming Pattern
-- Default: `sensor.saxo_cash_balance` + `sensor.saxo_total_value`
-- Custom: `sensor.saxo_{user_prefix}_cash_balance` + `sensor.saxo_{user_prefix}_total_value`
-- Device: `"Saxo Portfolio"` or `"Saxo {UserPrefix} Portfolio"`
+- All entities use Client ID: `sensor.saxo_{client_id}_{sensor_type}`
+- Examples with Client ID "123456":
+  - `sensor.saxo_123456_cash_balance`
+  - `sensor.saxo_123456_total_value`
+  - `sensor.saxo_123456_non_margin_positions_value`
+  - `sensor.saxo_123456_accumulated_profit_loss`
+  - `sensor.saxo_123456_investment_performance`
+  - `sensor.saxo_123456_cash_transfer_balance`
+- Device: `"Saxo {ClientId} Portfolio"`
 
 ### Configuration Options
-- `CONF_ENTITY_PREFIX`: User-defined prefix (default: "saxo")
+- No user configuration needed - automatic Client ID detection
 - Production endpoints only (no environment selection)
 - Automatic token refresh with proper security handling
+- Entity names automatically generated from Saxo Client ID
 
 ### Key Files
-- `sensor.py:59-65`: Entity prefix logic combining `saxo_` with user input
-- `sensor.py:179-305`: SaxoTotalValueSensor implementation
-- `coordinator.py:403-423`: get_cash_balance() and get_total_value() methods
-- `config_flow.py`: Simplified OAuth flow without environment selection
-- `api/saxo_client.py:333-377`: Balance endpoint handling (CashBalance + TotalValue)
+- `sensor.py:46-53`: All six sensor classes instantiated in async_setup_entry
+- `sensor.py:520-722`: New sensor implementations (SaxoInvestmentPerformanceSensor, SaxoCashTransferBalanceSensor)
+- `coordinator.py:657-677`: New getter methods for performance and cash transfer data
+- `coordinator.py:472-502`: V4 performance API data fetching
+- `api/saxo_client.py:464-502`: get_performance_v4() method for new endpoint
+- `const.py:23`: API_PERFORMANCE_V4_ENDPOINT constant
 
-## Recent Changes
-- Simplified to two sensors: CashBalance and TotalValue from balance endpoint
-- Removed positions and accounts functionality (no longer supported)
-- Added user-defined entity prefix functionality
-- Removed environment selection - production endpoints only
-- Enhanced entity naming with saxo_ base prefix pattern
-- Removed unused imports and cleaned up codebase
+## Recent Changes (v2.0.3)
+- **Expanded to six sensors**: Added comprehensive portfolio monitoring capabilities
+- **New Performance Sensors**: Investment performance (ReturnFraction * 100) and cash transfer balance
+- **V4 API Integration**: Added `/hist/v4/performance/timeseries` endpoint support
+- **Enhanced Data Coverage**: Now covers balance, performance, and transfer data
+- **Code Quality**: All code validated with ruff formatting and quality checks
+- **Documentation Updates**: Updated CHANGELOG.md, README.md, and CLAUDE.md for new features
 
 ## Security & Quality
 - OAuth 2.0 with CSRF protection using `secrets.token_urlsafe(32)`

@@ -1,0 +1,113 @@
+# Home Assistant Trend Helper Configuration for Saxo Portfolio Total Value
+# Add this to your Home Assistant configuration.yaml file
+#
+# Note: Replace {client_id} with your actual Saxo Client ID
+# The Client ID can be found by looking at your existing sensor entity_id
+# For example, if your sensor is "sensor.saxo_123456_total_value", then your client_id is "123456"
+
+# Trend Helper for Saxo Portfolio Total Value
+trend:
+  sensors:
+    saxo_{client_id}_total_value_trend:
+      unique_id: "saxo_{client_id}_total_value_trend"
+      friendly_name: "Saxo {client_id} Portfolio Total Value Trend"
+      entity_id: sensor.saxo_{client_id}_total_value
+      sample_duration: 3600  # 1 hour
+      max_samples: 24        # Keep 24 hours of samples
+      min_gradient: 0.01     # Minimum change to consider trending (adjust as needed)
+      device_class: "monetary"
+      
+    saxo_{client_id}_total_value_daily_trend:
+      unique_id: "saxo_{client_id}_total_value_daily_trend"
+      friendly_name: "Saxo {client_id} Portfolio Total Value Daily Trend"
+      entity_id: sensor.saxo_{client_id}_total_value
+      sample_duration: 86400  # 24 hours (1 day)
+      max_samples: 30         # Keep 30 days of samples
+      min_gradient: 1.0       # Minimum daily change to consider trending
+      device_class: "monetary"
+
+# Optional: Template sensors for better trend visualization
+template:
+  - sensor:
+    - name: "Saxo {client_id} Portfolio Value Change"
+      unique_id: "saxo_{client_id}_portfolio_value_change"
+      state: >
+        {% set current = states('sensor.saxo_{client_id}_total_value') | float(0) %}
+        {% set previous = state_attr('binary_sensor.saxo_{client_id}_total_value_trend', 'sample_start') | float(0) %}
+        {{ (current - previous) | round(2) }}
+      unit_of_measurement: "EUR"  # Adjust currency as needed
+      device_class: "monetary"
+      icon: >
+        {% set trend = states('binary_sensor.saxo_{client_id}_total_value_trend') %}
+        {% if trend == 'on' %}
+          mdi:trending-up
+        {% elif trend == 'off' %}
+          mdi:trending-down
+        {% else %}
+          mdi:trending-neutral
+        {% endif %}
+
+    - name: "Saxo {client_id} Portfolio Value Change Percentage"
+      unique_id: "saxo_{client_id}_portfolio_value_change_percentage" 
+      state: >
+        {% set current = states('sensor.saxo_{client_id}_total_value') | float(0) %}
+        {% set previous = state_attr('binary_sensor.saxo_{client_id}_total_value_trend', 'sample_start') | float(0) %}
+        {% if previous > 0 %}
+          {{ (((current - previous) / previous) * 100) | round(2) }}
+        {% else %}
+          0
+        {% endif %}
+      unit_of_measurement: "%"
+      icon: >
+        {% set trend = states('binary_sensor.saxo_{client_id}_total_value_trend') %}
+        {% if trend == 'on' %}
+          mdi:trending-up
+        {% elif trend == 'off' %}
+          mdi:trending-down
+        {% else %}
+          mdi:trending-neutral
+        {% endif %}
+
+# Example automation using the trend helper
+automation:
+  - id: "saxo_{client_id}_portfolio_trend_notification"
+    alias: "Saxo {client_id} Portfolio Trend Alert"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.saxo_{client_id}_total_value_trend
+        to: "on"
+        for: "00:30:00"  # Trending up for 30 minutes
+      - platform: state
+        entity_id: binary_sensor.saxo_{client_id}_total_value_trend
+        to: "off"
+        for: "00:30:00"  # Trending down for 30 minutes
+    action:
+      - service: notify.mobile_app_your_device  # Replace with your notification service
+        data:
+          title: "Saxo {client_id} Portfolio Trend Alert"
+          message: >
+            {% if trigger.to_state.state == 'on' %}
+              📈 Your Saxo portfolio is trending UP! 
+            {% else %}
+              📉 Your Saxo portfolio is trending DOWN!
+            {% endif %}
+            Current value: {{ states('sensor.saxo_{client_id}_total_value') }}
+            Change: {{ states('sensor.saxo_{client_id}_portfolio_value_change') }}
+            ({{ states('sensor.saxo_{client_id}_portfolio_value_change_percentage') }}%)
+
+# Example Lovelace card configuration
+# Add this to your dashboard YAML:
+#
+# type: entities
+# title: Saxo Portfolio Trend
+# entities:
+#   - entity: sensor.saxo_{client_id}_total_value
+#     name: Total Value
+#   - entity: binary_sensor.saxo_portfolio_total_value_trend
+#     name: Hourly Trend
+#   - entity: binary_sensor.saxo_portfolio_total_value_daily_trend
+#     name: Daily Trend
+#   - entity: sensor.saxo_portfolio_value_change
+#     name: Value Change
+#   - entity: sensor.saxo_portfolio_value_change_percentage
+#     name: Change %

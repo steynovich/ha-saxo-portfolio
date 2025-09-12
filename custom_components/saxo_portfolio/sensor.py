@@ -48,6 +48,8 @@ async def async_setup_entry(
         SaxoTotalValueSensor(coordinator),
         SaxoNonMarginPositionsValueSensor(coordinator),
         SaxoAccumulatedProfitLossSensor(coordinator),
+        SaxoInvestmentPerformanceSensor(coordinator),
+        SaxoCashTransferBalanceSensor(coordinator),
     ]
 
     _LOGGER.info(
@@ -512,6 +514,210 @@ class SaxoAccumulatedProfitLossSensor(CoordinatorEntity[SaxoCoordinator], Sensor
         """When entity will be removed from hass."""
         _LOGGER.debug(
             "Accumulated profit/loss sensor %s being removed from Home Assistant",
+            self.entity_id,
+        )
+        await super().async_will_remove_from_hass()
+
+
+class SaxoInvestmentPerformanceSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+    """Representation of a Saxo Portfolio Investment Performance sensor."""
+
+    def __init__(self, coordinator: SaxoCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+
+        # Get entity prefix from ClientId with saxo_ prefix
+        client_id = coordinator.get_client_id()
+        entity_prefix = f"saxo_{client_id}".lower()
+
+        self._attr_unique_id = f"{entity_prefix}_investment_performance"
+        self._attr_name = f"Saxo {client_id} Portfolio Investment Performance"
+        # Use object_id to control the entity_id generation
+        self.entity_id = f"sensor.{entity_prefix}_investment_performance"
+        self._attr_device_class = None
+        self._attr_icon = "mdi:trending-up"
+        self._attr_entity_category = None
+        self._attr_native_unit_of_measurement = "%"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        # Get ClientId for device name
+        client_id = self.coordinator.get_client_id()
+        device_name = f"Saxo {client_id} Portfolio"
+
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
+            name=device_name,
+            manufacturer=DEVICE_MANUFACTURER,
+            model=DEVICE_MODEL,
+            sw_version="1.0.0",
+            configuration_url="https://www.developer.saxo/openapi/appmanagement",
+        )
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the state of the sensor."""
+        if not self.coordinator.last_update_success or not self.coordinator.data:
+            return None
+
+        try:
+            # Get investment performance percentage using coordinator method
+            performance_percentage = (
+                self.coordinator.get_investment_performance_percentage()
+            )
+
+            if performance_percentage is None:
+                return None
+
+            # Validate and format numeric value
+            if isinstance(performance_percentage, int | float):
+                import math
+
+                if not math.isfinite(performance_percentage):
+                    _LOGGER.warning(
+                        "Investment performance percentage is not finite: %s",
+                        performance_percentage,
+                    )
+                    return None
+
+                # Round to 2 decimal places for percentage display
+                return round(performance_percentage, 2)
+            else:
+                _LOGGER.warning(
+                    "Investment performance percentage is not numeric: %s (type: %s)",
+                    performance_percentage,
+                    type(performance_percentage),
+                )
+                return None
+
+        except Exception as e:
+            _LOGGER.error(
+                "Error getting investment performance percentage: %s", type(e).__name__
+            )
+            return None
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "investment_performance_percentage" in self.coordinator.data
+        )
+
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass."""
+        await super().async_added_to_hass()
+        _LOGGER.debug(
+            "Investment performance sensor %s added to Home Assistant", self.entity_id
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        """When entity will be removed from hass."""
+        _LOGGER.debug(
+            "Investment performance sensor %s being removed from Home Assistant",
+            self.entity_id,
+        )
+        await super().async_will_remove_from_hass()
+
+
+class SaxoCashTransferBalanceSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+    """Representation of a Saxo Portfolio Cash Transfer Balance sensor."""
+
+    def __init__(self, coordinator: SaxoCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+
+        # Get entity prefix from ClientId with saxo_ prefix
+        client_id = coordinator.get_client_id()
+        entity_prefix = f"saxo_{client_id}".lower()
+
+        self._attr_unique_id = f"{entity_prefix}_cash_transfer_balance"
+        self._attr_name = f"Saxo {client_id} Portfolio Cash Transfer Balance"
+        # Use object_id to control the entity_id generation
+        self.entity_id = f"sensor.{entity_prefix}_cash_transfer_balance"
+        self._attr_device_class = "monetary"
+        self._attr_icon = "mdi:bank-transfer"
+        self._attr_entity_category = None
+
+        # Set unit of measurement to currency from coordinator
+        self._attr_native_unit_of_measurement = coordinator.get_currency()
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        # Get ClientId for device name
+        client_id = self.coordinator.get_client_id()
+        device_name = f"Saxo {client_id} Portfolio"
+
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
+            name=device_name,
+            manufacturer=DEVICE_MANUFACTURER,
+            model=DEVICE_MODEL,
+            sw_version="1.0.0",
+            configuration_url="https://www.developer.saxo/openapi/appmanagement",
+        )
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the state of the sensor."""
+        if not self.coordinator.last_update_success or not self.coordinator.data:
+            return None
+
+        try:
+            # Get cash transfer balance using coordinator method
+            cash_transfer_balance = self.coordinator.get_cash_transfer_balance()
+
+            if cash_transfer_balance is None:
+                return None
+
+            # Validate and format numeric value
+            if isinstance(cash_transfer_balance, int | float):
+                import math
+
+                if not math.isfinite(cash_transfer_balance):
+                    _LOGGER.warning(
+                        "Cash transfer balance is not finite: %s",
+                        cash_transfer_balance,
+                    )
+                    return None
+
+                # Round to 2 decimal places for currency display
+                return round(cash_transfer_balance, 2)
+            else:
+                _LOGGER.warning(
+                    "Cash transfer balance is not numeric: %s (type: %s)",
+                    cash_transfer_balance,
+                    type(cash_transfer_balance),
+                )
+                return None
+
+        except Exception as e:
+            _LOGGER.error("Error getting cash transfer balance: %s", type(e).__name__)
+            return None
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "cash_transfer_balance" in self.coordinator.data
+        )
+
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass."""
+        await super().async_added_to_hass()
+        _LOGGER.debug(
+            "Cash transfer balance sensor %s added to Home Assistant", self.entity_id
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        """When entity will be removed from hass."""
+        _LOGGER.debug(
+            "Cash transfer balance sensor %s being removed from Home Assistant",
             self.entity_id,
         )
         await super().async_will_remove_from_hass()

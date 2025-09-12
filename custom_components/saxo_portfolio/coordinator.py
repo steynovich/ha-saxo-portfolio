@@ -426,6 +426,8 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                 # Try to fetch client details and performance data
                 ytd_earnings_percentage = 0.0
+                investment_performance_percentage = 0.0
+                cash_transfer_balance = 0.0
                 client_id = "unknown"
 
                 # Get client details (ClientKey, ClientId, etc.)
@@ -466,6 +468,41 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                     "Could not fetch performance data: %s",
                                     type(perf_e).__name__,
                                 )
+
+                            # Also try to fetch v4 performance data
+                            try:
+                                performance_v4_data = await client.get_performance_v4(
+                                    client_key
+                                )
+
+                                # Extract ReturnFraction from KeyFigures (multiply by 100 for percentage)
+                                key_figures = performance_v4_data.get("KeyFigures", {})
+                                return_fraction = key_figures.get("ReturnFraction", 0.0)
+                                investment_performance_percentage = (
+                                    return_fraction * 100.0
+                                )
+
+                                # Extract latest CashTransfer value
+                                balance = performance_v4_data.get("Balance", {})
+                                cash_transfer_list = balance.get("CashTransfer", [])
+                                if cash_transfer_list:
+                                    # Get the latest entry (last in the list)
+                                    latest_cash_transfer = cash_transfer_list[-1]
+                                    cash_transfer_balance = latest_cash_transfer.get(
+                                        "Value", 0.0
+                                    )
+
+                                _LOGGER.debug(
+                                    "Retrieved performance v4 data - ReturnFraction: %s%%, CashTransfer: %s",
+                                    investment_performance_percentage,
+                                    cash_transfer_balance,
+                                )
+
+                            except Exception as perf_v4_e:
+                                _LOGGER.debug(
+                                    "Could not fetch performance v4 data: %s",
+                                    type(perf_v4_e).__name__,
+                                )
                         else:
                             _LOGGER.debug(
                                 "No ClientKey found from client details endpoint, performance data not available"
@@ -486,6 +523,8 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         "NonMarginPositionsValue", 0.0
                     ),
                     "ytd_earnings_percentage": ytd_earnings_percentage,
+                    "investment_performance_percentage": investment_performance_percentage,
+                    "cash_transfer_balance": cash_transfer_balance,
                     "client_id": client_id,
                     "last_updated": balance_data.get("LastUpdated"),
                 }
@@ -618,6 +657,28 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not self.data:
             return "unknown"
         return self.data.get("client_id", "unknown")
+
+    def get_investment_performance_percentage(self) -> float:
+        """Get investment performance percentage from v4 performance API.
+
+        Returns:
+            Investment performance percentage (ReturnFraction * 100) or 0.0 if not available
+
+        """
+        if not self.data:
+            return 0.0
+        return self.data.get("investment_performance_percentage", 0.0)
+
+    def get_cash_transfer_balance(self) -> float:
+        """Get latest cash transfer balance from v4 performance API.
+
+        Returns:
+            Latest cash transfer balance value or 0.0 if not available
+
+        """
+        if not self.data:
+            return 0.0
+        return self.data.get("cash_transfer_balance", 0.0)
 
     async def async_update_interval_if_needed(self) -> None:
         """Check and update the refresh interval based on current market status.

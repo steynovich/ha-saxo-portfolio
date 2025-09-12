@@ -20,6 +20,7 @@ OAUTH_TOKEN_ENDPOINT: Final = "/token"
 API_BALANCE_ENDPOINT: Final = "/port/v1/balances/me"
 API_CLIENT_DETAILS_ENDPOINT: Final = "/port/v1/clients/me"
 API_PERFORMANCE_ENDPOINT: Final = "/hist/v3/perf/"
+API_PERFORMANCE_V4_ENDPOINT: Final = "/hist/v4/performance/timeseries"
 
 
 # Default configuration
