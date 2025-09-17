@@ -5,9 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.1.0-beta.2] - 2025-09-17
+## [2.1.0-beta.3] - 2025-09-17
 
-### Fixed
+### Added
+- **Diagnostics Support**: Comprehensive diagnostic information for debugging and support
+  - Timezone configuration and market hours settings
+  - Detailed token expiry information with human-readable timestamps
+  - Coordinator status and update intervals
+  - Market hours detection status
+  - Dynamic version reading from manifest.json
+
+### Enhanced
+- **Token Diagnostics**: Comprehensive expiry tracking with status indicators (OK/WARNING/CRITICAL/EXPIRED)
+- **Market Configuration**: Clear visibility into configured timezone and update intervals
+- **Security**: All sensitive data automatically redacted in diagnostics
+
+### Fixed (from beta.2)
 - **Token Refresh**: Added redirect_uri to config entry to fix OAuth token refresh failures
 - **State Class**: Changed accumulated profit/loss sensor state_class from 'measurement' to 'total' for proper Home Assistant compatibility
 
