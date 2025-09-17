@@ -145,7 +145,11 @@ class SaxoPortfolioFlowHandler(
             # Create entry with simple title - ClientId will be determined from API
             title = "Saxo Portfolio"
 
-            _LOGGER.debug("Creating config entry with title: %s, timezone: %s", title, data[CONF_TIMEZONE])
+            _LOGGER.debug(
+                "Creating config entry with title: %s, timezone: %s",
+                title,
+                data[CONF_TIMEZONE],
+            )
 
             return self.async_create_entry(
                 title=title,

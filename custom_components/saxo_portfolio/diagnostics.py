@@ -51,7 +51,9 @@ async def async_get_config_entry_diagnostics(
         ),
         "update_interval": str(coordinator.update_interval),
         "configured_timezone": getattr(coordinator, "_timezone", "Unknown"),
-        "is_market_hours": coordinator._is_market_hours() if hasattr(coordinator, "_is_market_hours") else None,
+        "is_market_hours": coordinator._is_market_hours()
+        if hasattr(coordinator, "_is_market_hours")
+        else None,
     }
 
     # Get data snapshot (redacted)
@@ -69,11 +71,16 @@ async def async_get_config_entry_diagnostics(
         # Add some numeric values if available (non-sensitive)
         if "balance" in coordinator.data:
             balance = coordinator.data["balance"]
-            data_snapshot["balance_fields"] = list(balance.keys()) if isinstance(balance, dict) else "Not a dict"
+            data_snapshot["balance_fields"] = (
+                list(balance.keys()) if isinstance(balance, dict) else "Not a dict"
+            )
 
     # Market hours configuration
     from .const import MARKET_HOURS, DEFAULT_TIMEZONE, DEFAULT_UPDATE_INTERVAL_ANY
-    from .const import DEFAULT_UPDATE_INTERVAL_MARKET_HOURS, DEFAULT_UPDATE_INTERVAL_AFTER_HOURS
+    from .const import (
+        DEFAULT_UPDATE_INTERVAL_MARKET_HOURS,
+        DEFAULT_UPDATE_INTERVAL_AFTER_HOURS,
+    )
 
     configured_tz = entry.data.get(CONF_TIMEZONE, DEFAULT_TIMEZONE)
     market_config = {}
@@ -104,6 +111,7 @@ async def async_get_config_entry_diagnostics(
     if "token" in entry.data:
         token_data = entry.data["token"]
         import time
+
         current_time = time.time()
 
         token_status = {
