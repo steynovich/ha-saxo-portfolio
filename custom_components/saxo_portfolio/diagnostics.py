@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 import json
 from pathlib import Path
 import time
@@ -124,9 +125,34 @@ async def async_get_config_entry_diagnostics(
         if "expires_at" in token_data:
             expires_at = token_data["expires_at"]
             time_until_expiry = expires_at - current_time
-            token_status["expires_in_seconds"] = int(time_until_expiry)
-            token_status["is_expired"] = time_until_expiry <= 0
-            token_status["needs_refresh_soon"] = time_until_expiry <= 300  # 5 minutes
+
+            # Calculate human-readable expiry information
+            expiry_datetime = datetime.fromtimestamp(expires_at)
+            current_datetime = datetime.fromtimestamp(current_time)
+
+            token_status.update({
+                "expires_at_timestamp": expires_at,
+                "expires_at_iso": expiry_datetime.isoformat(),
+                "current_time_iso": current_datetime.isoformat(),
+                "expires_in_seconds": int(time_until_expiry),
+                "expires_in_minutes": round(time_until_expiry / 60, 1),
+                "expires_in_hours": round(time_until_expiry / 3600, 2),
+                "is_expired": time_until_expiry <= 0,
+                "needs_refresh_soon": time_until_expiry <= 300,  # 5 minutes
+                "needs_refresh_urgent": time_until_expiry <= 60,  # 1 minute
+            })
+
+            # Add human-readable status
+            if time_until_expiry <= 0:
+                token_status["status"] = "EXPIRED"
+            elif time_until_expiry <= 60:
+                token_status["status"] = "CRITICAL - Expires in less than 1 minute"
+            elif time_until_expiry <= 300:
+                token_status["status"] = "WARNING - Expires in less than 5 minutes"
+            elif time_until_expiry <= 3600:
+                token_status["status"] = f"OK - Expires in {round(time_until_expiry / 60)} minutes"
+            else:
+                token_status["status"] = f"OK - Expires in {round(time_until_expiry / 3600, 1)} hours"
 
     # Get version from manifest
     manifest_path = Path(__file__).parent / "manifest.json"
