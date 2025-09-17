@@ -114,6 +114,9 @@ MARKET_HOURS: Final = {
 # Update interval for "any" timezone (no intelligent scheduling)
 DEFAULT_UPDATE_INTERVAL_ANY: Final = timedelta(minutes=15)
 
+# Performance data update interval (less frequent since performance changes slowly)
+PERFORMANCE_UPDATE_INTERVAL: Final = timedelta(hours=1)
+
 
 # Configuration flow
 CONF_ENTITY_PREFIX: Final = "entity_prefix"

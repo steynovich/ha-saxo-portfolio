@@ -51,7 +51,13 @@ async def async_setup_entry(
         SaxoAccumulatedProfitLossSensor(coordinator),
         SaxoInvestmentPerformanceSensor(coordinator),
         SaxoCashTransferBalanceSensor(coordinator),
+        SaxoYTDInvestmentPerformanceSensor(coordinator),
+        SaxoMonthInvestmentPerformanceSensor(coordinator),
+        SaxoQuarterInvestmentPerformanceSensor(coordinator),
         # Diagnostic sensors
+        SaxoClientIDSensor(coordinator),
+        SaxoAccountIDSensor(coordinator),
+        SaxoNameSensor(coordinator),
         SaxoTokenExpirySensor(coordinator),
         SaxoMarketStatusSensor(coordinator),
         SaxoLastUpdateSensor(coordinator),
@@ -152,11 +158,6 @@ class SaxoCashBalanceSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
             last_updated = self.coordinator.data.get("last_updated")
             if last_updated:
                 attributes["last_updated"] = last_updated
-
-            # Add total portfolio value for context
-            total_value = self.coordinator.data.get("total_value")
-            if total_value:
-                attributes["total_value"] = total_value
 
         return attributes
 
@@ -266,11 +267,6 @@ class SaxoTotalValueSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
             last_updated = self.coordinator.data.get("last_updated")
             if last_updated:
                 attributes["last_updated"] = last_updated
-
-            # Add cash balance for context
-            cash_balance = self.coordinator.get_cash_balance()
-            if cash_balance:
-                attributes["cash_balance"] = cash_balance
 
         return attributes
 
@@ -385,15 +381,6 @@ class SaxoNonMarginPositionsValueSensor(
             if last_updated:
                 attributes["last_updated"] = last_updated
 
-            # Add other values for context
-            total_value = self.coordinator.get_total_value()
-            if total_value:
-                attributes["total_value"] = total_value
-
-            cash_balance = self.coordinator.get_cash_balance()
-            if cash_balance:
-                attributes["cash_balance"] = cash_balance
-
         return attributes
 
     @property
@@ -491,8 +478,14 @@ class SaxoAccumulatedProfitLossSensor(CoordinatorEntity[SaxoCoordinator], Sensor
 
         attrs = {
             "attribution": ATTRIBUTION,
-            "last_updated": self.coordinator.data.get("last_updated"),
+            "last_updated": getattr(
+                self.coordinator, "_performance_last_updated", None
+            ),
         }
+
+        # Add currency information
+        currency = self.coordinator.get_currency()
+        attrs["currency"] = currency
 
         return attrs
 
@@ -521,25 +514,41 @@ class SaxoAccumulatedProfitLossSensor(CoordinatorEntity[SaxoCoordinator], Sensor
         await super().async_will_remove_from_hass()
 
 
-class SaxoInvestmentPerformanceSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
-    """Representation of a Saxo Portfolio Investment Performance sensor."""
+class SaxoPerformanceSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+    """Base class for Saxo Portfolio Performance sensors."""
 
-    def __init__(self, coordinator: SaxoCoordinator) -> None:
-        """Initialize the sensor."""
+    def __init__(
+        self,
+        coordinator: SaxoCoordinator,
+        sensor_type: str,
+        display_name: str,
+        data_key: str,
+    ) -> None:
+        """Initialize the performance sensor.
+
+        Args:
+            coordinator: The coordinator instance
+            sensor_type: Type identifier for the sensor (e.g., "investment_performance", "ytd_investment_performance")
+            display_name: Human readable name for the sensor
+            data_key: Key to fetch data from coordinator data dict
+
+        """
         super().__init__(coordinator)
 
         # Get entity prefix from ClientId with saxo_ prefix
         client_id = coordinator.get_client_id()
         entity_prefix = f"saxo_{client_id}".lower()
 
-        self._attr_unique_id = f"{entity_prefix}_investment_performance"
-        self._attr_name = f"Saxo {client_id} Portfolio Investment Performance"
+        self._attr_unique_id = f"{entity_prefix}_{sensor_type}"
+        self._attr_name = f"Saxo {client_id} Portfolio {display_name}"
         # Use object_id to control the entity_id generation
-        self.entity_id = f"sensor.{entity_prefix}_investment_performance"
+        self.entity_id = f"sensor.{entity_prefix}_{sensor_type}"
         self._attr_device_class = None
         self._attr_icon = "mdi:trending-up"
         self._attr_entity_category = None
         self._attr_native_unit_of_measurement = "%"
+
+        self._data_key = data_key
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -563,10 +572,8 @@ class SaxoInvestmentPerformanceSensor(CoordinatorEntity[SaxoCoordinator], Sensor
             return None
 
         try:
-            # Get investment performance percentage using coordinator method
-            performance_percentage = (
-                self.coordinator.get_investment_performance_percentage()
-            )
+            # Get performance percentage using coordinator method
+            performance_percentage = self._get_performance_value()
 
             if performance_percentage is None:
                 return None
@@ -577,7 +584,8 @@ class SaxoInvestmentPerformanceSensor(CoordinatorEntity[SaxoCoordinator], Sensor
 
                 if not math.isfinite(performance_percentage):
                     _LOGGER.warning(
-                        "Investment performance percentage is not finite: %s",
+                        "%s performance percentage is not finite: %s",
+                        self._attr_name,
                         performance_percentage,
                     )
                     return None
@@ -586,7 +594,8 @@ class SaxoInvestmentPerformanceSensor(CoordinatorEntity[SaxoCoordinator], Sensor
                 return round(performance_percentage, 2)
             else:
                 _LOGGER.warning(
-                    "Investment performance percentage is not numeric: %s (type: %s)",
+                    "%s performance percentage is not numeric: %s (type: %s)",
+                    self._attr_name,
                     performance_percentage,
                     type(performance_percentage),
                 )
@@ -594,9 +603,90 @@ class SaxoInvestmentPerformanceSensor(CoordinatorEntity[SaxoCoordinator], Sensor
 
         except Exception as e:
             _LOGGER.error(
-                "Error getting investment performance percentage: %s", type(e).__name__
+                "Error getting %s performance percentage: %s",
+                self._attr_name,
+                type(e).__name__,
             )
             return None
+
+    def _get_performance_value(self) -> float | None:
+        """Get the performance value from coordinator data.
+
+        This method should be overridden by subclasses to call the appropriate coordinator method.
+        """
+        raise NotImplementedError(
+            "Subclasses must implement _get_performance_value method"
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra attributes for the sensor."""
+        if not self.coordinator.data:
+            return {}
+
+        # Get last updated timestamp and format it as ISO string
+        last_updated = getattr(self.coordinator, "_performance_last_updated", None)
+        if last_updated is not None:
+            last_updated_str = last_updated.isoformat()
+        else:
+            last_updated_str = None
+
+        attrs = {
+            "attribution": ATTRIBUTION,
+            "last_updated": last_updated_str,
+            "time_period": self._get_time_period(),
+        }
+
+        # Add From and Thru attributes based on time period
+        period_dates = self._get_period_dates()
+        if period_dates:
+            attrs.update(period_dates)
+
+        return attrs
+
+    def _get_time_period(self) -> str:
+        """Get the time period for this sensor.
+
+        This method should be overridden by subclasses to return the appropriate time period.
+        """
+        raise NotImplementedError("Subclasses must implement _get_time_period method")
+
+    def _get_period_dates(self) -> dict[str, str] | None:
+        """Calculate From and Thru dates based on the time period.
+
+        Returns:
+            Dictionary with 'from' and 'thru' date strings in ISO format, or None if not applicable
+
+        """
+        from datetime import datetime, date
+
+        time_period = self._get_time_period()
+        now = datetime.now()
+
+        if time_period == "Year":
+            # Year-to-date: January 1st to today
+            from_date = date(now.year, 1, 1)
+            thru_date = now.date()
+        elif time_period == "Month":
+            # Month-to-date: 1st of current month to today
+            from_date = date(now.year, now.month, 1)
+            thru_date = now.date()
+        elif time_period == "Quarter":
+            # Quarter-to-date: 1st day of current quarter to today
+            quarter_start_month = ((now.month - 1) // 3) * 3 + 1
+            from_date = date(now.year, quarter_start_month, 1)
+            thru_date = now.date()
+        elif time_period == "AllTime":
+            # All-time: No specific from date, just indicate it's all-time
+            return {"from": "inception", "thru": now.date().isoformat()}
+        else:
+            # Unknown time period
+            return None
+
+        return {
+            "from": from_date.isoformat(),
+            "thru": thru_date.isoformat()
+        }
 
     @property
     def available(self) -> bool:
@@ -604,23 +694,67 @@ class SaxoInvestmentPerformanceSensor(CoordinatorEntity[SaxoCoordinator], Sensor
         return (
             self.coordinator.last_update_success
             and self.coordinator.data is not None
-            and "investment_performance_percentage" in self.coordinator.data
+            and self._data_key in self.coordinator.data
         )
 
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
         _LOGGER.debug(
-            "Investment performance sensor %s added to Home Assistant", self.entity_id
+            "%s sensor %s added to Home Assistant", self._attr_name, self.entity_id
         )
 
     async def async_will_remove_from_hass(self) -> None:
         """When entity will be removed from hass."""
         _LOGGER.debug(
-            "Investment performance sensor %s being removed from Home Assistant",
+            "%s sensor %s being removed from Home Assistant",
+            self._attr_name,
             self.entity_id,
         )
         await super().async_will_remove_from_hass()
+
+
+class SaxoInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
+    """Representation of a Saxo Portfolio Investment Performance sensor."""
+
+    def __init__(self, coordinator: SaxoCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(
+            coordinator,
+            "investment_performance",
+            "Investment Performance",
+            "investment_performance_percentage",
+        )
+
+    def _get_performance_value(self) -> float | None:
+        """Get the investment performance value from coordinator."""
+        return self.coordinator.get_investment_performance_percentage()
+
+    def _get_time_period(self) -> str:
+        """Get the time period for this sensor."""
+        return "AllTime"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra attributes for the Investment Performance sensor."""
+        # Get base attributes from parent class
+        attrs = super().extra_state_attributes
+
+        # Add InceptionDay attribute for all-time performance tracking
+        try:
+            # Get the real InceptionDay from the performance summary API
+            inception_day = self.coordinator.get_inception_day()
+            if inception_day:
+                attrs["inception_day"] = inception_day
+            else:
+                # If no InceptionDay is available, use a fallback
+                attrs["inception_day"] = "2020-01-01"
+
+        except Exception:
+            # If there's any error getting inception day, use a fallback
+            attrs["inception_day"] = "2020-01-01"
+
+        return attrs
 
 
 class SaxoCashTransferBalanceSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
@@ -699,6 +833,26 @@ class SaxoCashTransferBalanceSensor(CoordinatorEntity[SaxoCoordinator], SensorEn
             return None
 
     @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra attributes for the sensor."""
+        if not self.coordinator.data:
+            return {}
+
+        attrs = {
+            "attribution": ATTRIBUTION,
+            "last_updated": getattr(
+                self.coordinator, "_performance_last_updated", None
+            ),
+        }
+
+        if self.coordinator.data:
+            # Add currency information
+            currency = self.coordinator.get_currency()
+            attrs["currency"] = currency
+
+        return attrs
+
+    @property
     def available(self) -> bool:
         """Return True if entity is available."""
         return (
@@ -721,6 +875,209 @@ class SaxoCashTransferBalanceSensor(CoordinatorEntity[SaxoCoordinator], SensorEn
             self.entity_id,
         )
         await super().async_will_remove_from_hass()
+
+
+class SaxoYTDInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
+    """Representation of a Saxo Portfolio YTD Investment Performance sensor."""
+
+    def __init__(self, coordinator: SaxoCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(
+            coordinator,
+            "ytd_investment_performance",
+            "YTD Investment Performance",
+            "ytd_investment_performance_percentage",
+        )
+
+    def _get_performance_value(self) -> float | None:
+        """Get the YTD investment performance value from coordinator."""
+        return self.coordinator.get_ytd_investment_performance_percentage()
+
+    def _get_time_period(self) -> str:
+        """Get the time period for this sensor."""
+        return "Year"
+
+
+class SaxoMonthInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
+    """Representation of a Saxo Portfolio Month Investment Performance sensor."""
+
+    def __init__(self, coordinator: SaxoCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(
+            coordinator,
+            "month_investment_performance",
+            "Month Investment Performance",
+            "month_investment_performance_percentage",
+        )
+
+    def _get_performance_value(self) -> float | None:
+        """Get the Month investment performance value from coordinator."""
+        return self.coordinator.get_month_investment_performance_percentage()
+
+    def _get_time_period(self) -> str:
+        """Get the time period for this sensor."""
+        return "Month"
+
+
+class SaxoQuarterInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
+    """Representation of a Saxo Portfolio Quarter Investment Performance sensor."""
+
+    def __init__(self, coordinator: SaxoCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(
+            coordinator,
+            "quarter_investment_performance",
+            "Quarter Investment Performance",
+            "quarter_investment_performance_percentage",
+        )
+
+    def _get_performance_value(self) -> float | None:
+        """Get the Quarter investment performance value from coordinator."""
+        return self.coordinator.get_quarter_investment_performance_percentage()
+
+    def _get_time_period(self) -> str:
+        """Get the time period for this sensor."""
+        return "Quarter"
+
+
+class SaxoClientIDSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+    """Representation of a Saxo Client ID diagnostic sensor."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:identifier"
+
+    def __init__(self, coordinator: SaxoCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+
+        # Get entity prefix from ClientId with saxo_ prefix
+        client_id = coordinator.get_client_id()
+        entity_prefix = f"saxo_{client_id}".lower()
+
+        self._attr_unique_id = f"{entity_prefix}_client_id"
+        self._attr_name = f"Saxo {client_id} Client ID"
+        self.entity_id = f"sensor.{entity_prefix}_client_id"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        client_id = self.coordinator.get_client_id()
+        device_name = f"Saxo {client_id} Portfolio"
+
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
+            name=device_name,
+            manufacturer=DEVICE_MANUFACTURER,
+            model=DEVICE_MODEL,
+        )
+
+    @property
+    def native_value(self) -> str:
+        """Return the Client ID."""
+        return self.coordinator.get_client_id()
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return self.coordinator.get_client_id() != "unknown"
+
+
+class SaxoAccountIDSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+    """Representation of a Saxo Account ID diagnostic sensor."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:account"
+
+    def __init__(self, coordinator: SaxoCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+
+        # Get entity prefix from ClientId with saxo_ prefix
+        client_id = coordinator.get_client_id()
+        entity_prefix = f"saxo_{client_id}".lower()
+
+        self._attr_unique_id = f"{entity_prefix}_account_id"
+        self._attr_name = f"Saxo {client_id} Account ID"
+        self.entity_id = f"sensor.{entity_prefix}_account_id"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        client_id = self.coordinator.get_client_id()
+        device_name = f"Saxo {client_id} Portfolio"
+
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
+            name=device_name,
+            manufacturer=DEVICE_MANUFACTURER,
+            model=DEVICE_MODEL,
+        )
+
+    @property
+    def native_value(self) -> str:
+        """Return the Account ID."""
+        return self.coordinator.get_account_id()
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return self.coordinator.get_account_id() != "unknown"
+
+
+class SaxoNameSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+    """Representation of a Saxo Name diagnostic sensor."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:account-box"
+
+    def __init__(self, coordinator: SaxoCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+
+        # Get entity prefix from ClientId with saxo_ prefix
+        client_id = coordinator.get_client_id()
+        entity_prefix = f"saxo_{client_id}".lower()
+
+        self._attr_unique_id = f"{entity_prefix}_name"
+        self._attr_name = f"Saxo {client_id} Name"
+        self.entity_id = f"sensor.{entity_prefix}_name"
+        self._attr_icon = "mdi:account-box"
+
+        _LOGGER.debug(
+            "Initialized Name sensor - unique_id: %s, name: %s, icon: %s",
+            self._attr_unique_id,
+            self._attr_name,
+            self._attr_icon,
+        )
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        client_id = self.coordinator.get_client_id()
+        device_name = f"Saxo {client_id} Portfolio"
+
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
+            name=device_name,
+            manufacturer=DEVICE_MANUFACTURER,
+            model=DEVICE_MODEL,
+        )
+
+    @property
+    def native_value(self) -> str:
+        """Return the client Name."""
+        return self.coordinator.get_client_name()
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return self.coordinator.get_client_name() != "unknown"
+
+    @property
+    def icon(self) -> str:
+        """Return the icon for this sensor."""
+        _LOGGER.debug("Name sensor icon property called - returning mdi:account-box")
+        return "mdi:account-box"
 
 
 class SaxoTokenExpirySensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):

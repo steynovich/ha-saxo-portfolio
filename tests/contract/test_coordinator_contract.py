@@ -65,99 +65,61 @@ class TestSaxoCoordinatorContract:
         # This test MUST FAIL initially - no implementation exists
         await coordinator.async_config_entry_first_refresh()
 
-        # Validate data structure matches CoordinatorData schema
+        # Validate data structure matches current implementation
         data = coordinator.data
         assert isinstance(data, dict)
 
-        # Required top-level fields
-        assert "portfolio" in data
-        assert "accounts" in data
-        assert "positions" in data
-        assert "last_updated" in data
+        # Required top-level fields for current implementation
+        expected_fields = {
+            "cash_balance",
+            "currency",
+            "total_value",
+            "non_margin_positions_value",
+            "ytd_earnings_percentage",
+            "investment_performance_percentage",
+            "ytd_investment_performance_percentage",
+            "cash_transfer_balance",
+            "client_id",
+            "account_id",
+            "display_name",
+            "last_updated",
+        }
+
+        for field in expected_fields:
+            assert field in data
 
         # Validate field types
-        assert isinstance(data["portfolio"], dict)
-        assert isinstance(data["accounts"], list)
-        assert isinstance(data["positions"], list)
-        assert isinstance(data["last_updated"], str | datetime)
+        assert isinstance(data["cash_balance"], int | float)
+        assert isinstance(data["currency"], str)
+        assert isinstance(data["total_value"], int | float)
+        assert isinstance(data["client_id"], str)
+        assert isinstance(data["account_id"], str)
+        assert isinstance(data["display_name"], str)
 
     @pytest.mark.asyncio
-    async def test_portfolio_data_schema(self, coordinator):
-        """Test that portfolio data matches PortfolioData schema."""
+    async def test_coordinator_getter_methods(self, coordinator):
+        """Test that coordinator provides required getter methods."""
         # This test MUST FAIL initially - no implementation exists
         await coordinator.async_config_entry_first_refresh()
 
-        portfolio = coordinator.data["portfolio"]
+        # Should have getter methods for sensor data
+        assert hasattr(coordinator, "get_cash_balance")
+        assert hasattr(coordinator, "get_currency")
+        assert hasattr(coordinator, "get_total_value")
+        assert hasattr(coordinator, "get_client_id")
+        assert hasattr(coordinator, "get_account_id")
+        assert hasattr(coordinator, "get_display_name")
 
-        # Required portfolio fields
-        assert "total_value" in portfolio
-        assert "cash_balance" in portfolio
-        assert "currency" in portfolio
-        assert "positions_count" in portfolio
+        # Methods should be callable and return expected types
+        assert callable(coordinator.get_cash_balance)
+        assert callable(coordinator.get_currency)
+        assert callable(coordinator.get_total_value)
 
-        # Validate field types and constraints
-        assert isinstance(portfolio["total_value"], int | float)
-        assert isinstance(portfolio["cash_balance"], int | float)
-        assert isinstance(portfolio["currency"], str)
-        assert isinstance(portfolio["positions_count"], int)
-
-        # Business logic validation
-        assert portfolio["total_value"] >= 0
-        assert portfolio["positions_count"] >= 0
-        assert len(portfolio["currency"]) == 3  # ISO currency code
-
-    @pytest.mark.asyncio
-    async def test_accounts_data_schema(self, coordinator):
-        """Test that accounts data matches AccountData schema."""
-        # This test MUST FAIL initially - no implementation exists
-        await coordinator.async_config_entry_first_refresh()
-
-        accounts = coordinator.data["accounts"]
-
-        for account in accounts:
-            # Required account fields
-            assert "account_id" in account
-            assert "account_key" in account
-            assert "balance" in account
-            assert "currency" in account
-
-            # Validate field types
-            assert isinstance(account["account_id"], str)
-            assert isinstance(account["account_key"], str)
-            assert isinstance(account["balance"], int | float)
-            assert isinstance(account["currency"], str)
-            assert isinstance(account.get("active", True), bool)
-
-            # String fields should not be empty
-            assert len(account["account_id"]) > 0
-            assert len(account["account_key"]) > 0
-
-    @pytest.mark.asyncio
-    async def test_positions_data_schema(self, coordinator):
-        """Test that positions data matches PositionData schema."""
-        # This test MUST FAIL initially - no implementation exists
-        await coordinator.async_config_entry_first_refresh()
-
-        positions = coordinator.data["positions"]
-
-        for position in positions:
-            # Required position fields
-            assert "position_id" in position
-            assert "account_id" in position
-            assert "symbol" in position
-            assert "quantity" in position
-            assert "current_value" in position
-
-            # Validate field types
-            assert isinstance(position["position_id"], str)
-            assert isinstance(position["account_id"], str)
-            assert isinstance(position["symbol"], str)
-            assert isinstance(position["quantity"], int | float)
-            assert isinstance(position["current_value"], int | float)
-
-            # Business logic validation
-            assert position["quantity"] != 0  # No zero-quantity positions
-            assert position["current_value"] >= 0
+        # Test return values when data is available
+        if coordinator.data:
+            currency = coordinator.get_currency()
+            assert isinstance(currency, str)
+            assert len(currency) == 3  # ISO currency code
 
     @pytest.mark.asyncio
     async def test_coordinator_update_interval(self, coordinator):
@@ -238,9 +200,12 @@ class TestSaxoCoordinatorContract:
 
         # Structure should be consistent
         assert set(first_data.keys()) == set(second_data.keys())
-        assert set(first_data["portfolio"].keys()).issubset(
-            set(second_data["portfolio"].keys())
-        )
+
+        # Core fields should remain consistent
+        assert "cash_balance" in second_data
+        assert "currency" in second_data
+        assert "total_value" in second_data
+        assert "client_id" in second_data
 
     def test_coordinator_implements_interface(self, coordinator):
         """Test that coordinator implements required DataUpdateCoordinator interface."""

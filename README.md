@@ -6,12 +6,14 @@
 [![HACS Action](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hacs.yml/badge.svg)](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hacs.yml)
 [![Hassfest](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hassfest.yml/badge.svg)](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hassfest.yml)
 
-A **Platinum-grade** Home Assistant integration for monitoring your Saxo Bank portfolio through their OpenAPI. Features OAuth 2.0 authentication, intelligent update scheduling based on market hours, automatic entity naming based on your Saxo Client ID, and comprehensive portfolio monitoring with six dedicated sensors.
+A **Platinum-grade** Home Assistant integration for monitoring your Saxo Bank portfolio through their OpenAPI. Features OAuth 2.0 authentication, intelligent update scheduling based on market hours, automatic entity naming based on your Saxo Client ID, and comprehensive portfolio monitoring with nine dedicated sensors and seven diagnostic entities.
 
 ## Features
 
 - 🔐 **Enterprise-Grade Security**: OAuth 2.0 with Home Assistant credential management, encrypted token storage, and comprehensive data masking
-- 💰 **Six Comprehensive Sensors**: Real-time balance, performance metrics, and cash transfer tracking from multiple Saxo API endpoints
+- 💰 **Nine Portfolio Sensors**: Real-time balance, performance metrics, and cash transfer tracking from multiple Saxo API endpoints
+- 📊 **Seven Diagnostic Sensors**: Built-in monitoring for integration health, account identification, token expiry, and market status
+- ⚡ **Smart Performance Caching**: Performance data updates hourly while balance data remains real-time for optimal API usage
 - 🏷️ **Automatic Entity Naming**: Entity names auto-generated using your Saxo Client ID (e.g., `saxo_123456_cash_balance`)
 - 🕒 **Intelligent Scheduling**: Configurable market timezone with dynamic update intervals (5 min during market hours, 30 min after hours)
 - 📊 **Performance Analytics**: All-time profit/loss, investment returns, and cash transfer balance tracking
@@ -23,7 +25,7 @@ A **Platinum-grade** Home Assistant integration for monitoring your Saxo Bank po
 
 ## Supported Sensors
 
-The integration provides **six comprehensive sensors** that automatically use your Saxo Client ID for unique entity naming:
+The integration provides **nine comprehensive sensors** that automatically use your Saxo Client ID for unique entity naming:
 
 ### Balance & Portfolio Sensors
 - **Cash Balance**: Available cash in your Saxo portfolio (`sensor.saxo_{clientid}_cash_balance`)
@@ -32,13 +34,17 @@ The integration provides **six comprehensive sensors** that automatically use yo
 
 ### Performance & Transfer Analytics
 - **Accumulated Profit/Loss**: All-time performance tracking from Saxo's historical API (`sensor.saxo_{clientid}_accumulated_profit_loss`)
-- **Investment Performance**: Overall portfolio return percentage from performance timeseries (`sensor.saxo_{clientid}_investment_performance`)
+- **Investment Performance**: Overall portfolio return percentage (all-time) from performance timeseries (`sensor.saxo_{clientid}_investment_performance`)
+- **YTD Investment Performance**: Year-to-Date portfolio return percentage (`sensor.saxo_{clientid}_ytd_investment_performance`)
+- **Month Investment Performance**: Month-to-Date portfolio return percentage (`sensor.saxo_{clientid}_month_investment_performance`)
+- **Quarter Investment Performance**: Quarter-to-Date portfolio return percentage (`sensor.saxo_{clientid}_quarter_investment_performance`)
 - **Cash Transfer Balance**: Latest cash transfer value tracking deposits and withdrawals (`sensor.saxo_{clientid}_cash_transfer_balance`)
 
 ### Key Features
-- **API Endpoints Used**: `/port/v1/balances/me`, `/port/v1/clients/me`, `/hist/v3/perf/`, `/hist/v4/performance/timeseries`
+- **API Endpoints Used**: `/port/v1/balances/me`, `/port/v1/clients/me`, `/port/v1/accounts/{AccountKey}`, `/hist/v3/perf/`, `/hist/v4/performance/timeseries`
 - **Currency Support**: Automatically detects and displays the appropriate currency unit
-- **Performance Metrics**: Investment returns as percentage, cash transfer balance tracking
+- **Performance Metrics**: Investment returns as percentage (all-time and YTD), cash transfer balance tracking
+- **Smart Caching**: Performance and account data cached for 1 hour to optimize API usage while keeping balance data real-time
 - **Client ID Integration**: Entity names automatically use your actual Saxo Client ID for unique identification
 
 ## Prerequisites
@@ -87,9 +93,10 @@ The integration provides **six comprehensive sensors** that automatically use yo
 | Option | Description | Default |
 |--------|-------------|---------|
 | Market Timezone | Select your primary trading market for intelligent scheduling | America/New_York |
-| Update Interval (Market Hours) | How often to fetch data during market hours | 5 minutes |
-| Update Interval (After Hours) | How often to fetch data after market hours | 30 minutes |
+| Update Interval (Market Hours) | How often to fetch balance data during market hours | 5 minutes |
+| Update Interval (After Hours) | How often to fetch balance data after market hours | 30 minutes |
 | Update Interval (Any Mode) | Fixed interval when "Any" timezone is selected | 15 minutes |
+| Performance Data Interval | How often performance metrics are refreshed | 1 hour |
 
 ### Supported Market Timezones
 - **America/New_York**: NYSE/NASDAQ (9:30 AM - 4:00 PM ET)
@@ -107,17 +114,23 @@ The integration provides **six comprehensive sensors** that automatically use yo
 
 ## Entities Created
 
-The integration automatically creates **ten entities** using your Saxo Client ID:
+The integration automatically creates **sixteen entities** using your Saxo Client ID:
 
 ### Portfolio Sensors (Example: Client ID "123456")
 - `sensor.saxo_123456_cash_balance` - Available cash balance
 - `sensor.saxo_123456_total_value` - Total portfolio value
 - `sensor.saxo_123456_non_margin_positions_value` - Non-margin positions value
 - `sensor.saxo_123456_accumulated_profit_loss` - All-time profit/loss performance
-- `sensor.saxo_123456_investment_performance` - Overall portfolio return percentage
+- `sensor.saxo_123456_investment_performance` - Overall portfolio return percentage (all-time)
+- `sensor.saxo_123456_ytd_investment_performance` - Year-to-Date portfolio return percentage
+- `sensor.saxo_123456_month_investment_performance` - Month-to-Date portfolio return percentage
+- `sensor.saxo_123456_quarter_investment_performance` - Quarter-to-Date portfolio return percentage
 - `sensor.saxo_123456_cash_transfer_balance` - Latest cash transfer balance
 
 ### Diagnostic Sensors (Example: Client ID "123456")
+- `sensor.saxo_123456_client_id` - Saxo Client ID identifier for troubleshooting
+- `sensor.saxo_123456_account_id` - Saxo Account ID from account details API
+- `sensor.saxo_123456_name` - Client name from client details API
 - `sensor.saxo_123456_token_expiry` - OAuth token expiration countdown and status
 - `sensor.saxo_123456_market_status` - Current market status (Open/Closed/Fixed Schedule)
 - `sensor.saxo_123456_last_update` - Last successful data update timestamp
@@ -125,9 +138,11 @@ The integration automatically creates **ten entities** using your Saxo Client ID
 
 ### Entity Attributes
 - **Currency**: Portfolio currency (EUR, USD, etc.) - automatically detected
-- **Cross-Reference**: Sensors include related values for context
-- **Last Updated**: Timestamp of last data refresh
-- **Performance Metrics**: Historical profit/loss and return calculations
+- **Last Updated**: Timestamp of last data refresh (balance sensors use balance API timestamp, performance sensors use performance API timestamp)
+- **Time Period**: Performance sensors include the StandardPeriod value ("AllTime", "Year", "Month", or "Quarter") used in API calls
+- **From/Thru Dates**: Performance sensors include calculated date ranges showing the period covered by each sensor
+- **Inception Day**: Investment Performance (all-time) sensor includes an inception date baseline for long-term tracking
+- **Performance Metrics**: Historical profit/loss and return calculations with clear time period identification
 - **Attribution**: Data source identification
 
 ## Security & Privacy
@@ -147,10 +162,17 @@ See [SECURITY.md](SECURITY.md) for comprehensive security documentation and user
 
 ## Market Hours Detection
 
-The integration intelligently adjusts update frequency based on your configured market timezone:
+The integration intelligently adjusts update frequency based on your configured market timezone and data type:
+
+### Balance Data (Real-time)
 - **Market Hours**: Updates every 5 minutes when your selected market is open
 - **After Hours**: Updates every 30 minutes when your selected market is closed
 - **"Any" Mode**: Fixed 15-minute updates regardless of time (no market hours detection)
+
+### Performance Data (Cached)
+- **All Performance Sensors**: Updates every 1 hour regardless of market hours
+- **Smart Caching**: Reduces API calls while maintaining data freshness for slower-changing metrics
+- **Includes**: Investment performance, YTD performance, accumulated profit/loss, and cash transfers
 
 The integration automatically handles daylight saving time transitions for all supported markets.
 
@@ -176,6 +198,9 @@ The integration automatically handles daylight saving time transitions for all s
 The integration provides comprehensive diagnostic sensors and data to help troubleshoot issues:
 
 **Diagnostic Sensors**: Monitor integration health in real-time
+- **Client ID**: Shows the Saxo Client ID used for entity naming and troubleshooting
+- **Account ID**: Displays the Account ID from account details API for multi-account identification
+- **Display Name**: Shows the account display name from account details API
 - **Token Expiry**: Shows countdown to token expiration with status indicators (OK/WARNING/CRITICAL/EXPIRED)
 - **Market Status**: Displays current market state (Open/Closed) and update intervals
 - **Last Update**: Timestamp of the last successful data refresh

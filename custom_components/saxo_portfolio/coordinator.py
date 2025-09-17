@@ -31,6 +31,7 @@ from .const import (
     DEFAULT_UPDATE_INTERVAL_MARKET_HOURS,
     DOMAIN,
     MARKET_HOURS,
+    PERFORMANCE_UPDATE_INTERVAL,
     TOKEN_MIN_VALIDITY,
     TOKEN_REFRESH_BUFFER,
 )
@@ -54,6 +55,10 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_token_check = datetime.now()
         self._token_refresh_lock = asyncio.Lock()
         self._last_successful_update: datetime | None = None
+
+        # Performance data caching
+        self._performance_data_cache: dict[str, Any] = {}
+        self._performance_last_updated: datetime | None = None
 
         # Get configured timezone
         self._timezone = config_entry.data.get(CONF_TIMEZONE, DEFAULT_TIMEZONE)
@@ -123,6 +128,66 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._api_client = SaxoApiClient(access_token, base_url)
 
         return self._api_client
+
+    def _should_update_performance_data(self) -> bool:
+        """Check if performance data should be updated based on cache age.
+
+        Returns:
+            True if performance data should be fetched (cache is stale or empty)
+
+        """
+        if self._performance_last_updated is None:
+            # No cached data, should update
+            return True
+
+        time_since_last_update = datetime.now() - self._performance_last_updated
+        should_update = time_since_last_update >= PERFORMANCE_UPDATE_INTERVAL
+
+        _LOGGER.debug(
+            "Performance cache age: %s, should_update: %s",
+            time_since_last_update,
+            should_update,
+        )
+
+        return should_update
+
+    async def _fetch_performance_data(
+        self, client: SaxoApiClient, client_key: str, period_name: str, method_name: str
+    ) -> float:
+        """Fetch performance data with consistent error handling.
+
+        Args:
+            client: API client instance
+            client_key: Client key for API calls
+            period_name: Human-readable period name for logging
+            method_name: API client method name to call
+
+        Returns:
+            Performance percentage or 0.0 if unavailable
+
+        """
+        try:
+            method = getattr(client, method_name)
+            performance_data = await method(client_key)
+
+            key_figures = performance_data.get("KeyFigures", {})
+            return_fraction = key_figures.get("ReturnFraction", 0.0)
+            performance_percentage = return_fraction * 100.0
+
+            _LOGGER.debug(
+                "Retrieved %s performance v4 data - ReturnFraction: %s%%",
+                period_name,
+                performance_percentage,
+            )
+            return performance_percentage
+
+        except Exception as e:
+            _LOGGER.debug(
+                "Could not fetch %s performance v4 data: %s",
+                period_name,
+                type(e).__name__,
+            )
+            return 0.0
 
     def _is_market_hours(self) -> bool:
         """Check if current time is during market hours.
@@ -265,13 +330,16 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             # Get redirect_uri from the original OAuth flow (required by Saxo)
             redirect_uri = self.config_entry.data.get("redirect_uri")
-            if redirect_uri:
-                refresh_data["redirect_uri"] = redirect_uri
-                _LOGGER.debug("Added redirect_uri to refresh request")
-            else:
-                _LOGGER.warning(
-                    "No redirect_uri found in config entry - this may cause refresh to fail"
+            if not redirect_uri:
+                # Fallback to default Home Assistant OAuth redirect URI
+                redirect_uri = "https://my.home-assistant.io/redirect/oauth"
+                _LOGGER.info(
+                    "No redirect_uri in config entry, using fallback: %s (consider reconfiguring integration)",
+                    redirect_uri
                 )
+
+            refresh_data["redirect_uri"] = redirect_uri
+            _LOGGER.debug("Added redirect_uri to refresh request: %s", redirect_uri)
 
             # Get client credentials for HTTP Basic Auth (Saxo's preferred method)
             auth = None
@@ -438,105 +506,254 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "Balance data keys: %s",
                     list(balance_data.keys()) if balance_data else "No balance data",
                 )
-                import json
 
-                del balance_data["MarginCollateralNotAvailableDetail"]
-                _LOGGER.debug(
-                    "Balance data: %s",
-                    json.dumps(balance_data, indent=4, sort_keys=True)
-                    if balance_data
-                    else "No balance data",
-                )
+                # Remove detailed margin info to reduce log noise
+                if "MarginCollateralNotAvailableDetail" in balance_data:
+                    del balance_data["MarginCollateralNotAvailableDetail"]
 
                 # Try to fetch client details and performance data
                 ytd_earnings_percentage = 0.0
                 investment_performance_percentage = 0.0
+                ytd_investment_performance_percentage = 0.0
+                month_investment_performance_percentage = 0.0
+                quarter_investment_performance_percentage = 0.0
                 cash_transfer_balance = 0.0
+                inception_day = None
                 client_id = "unknown"
+                account_id = "unknown"
+                client_name = "unknown"
 
-                # Get client details (ClientKey, ClientId, etc.)
-                try:
-                    client_details = await client.get_client_details()
-                    if client_details:
-                        client_key = client_details.get("ClientKey")
-                        client_id = client_details.get("ClientId", "unknown")
+                # Check if we should update performance data or use cached values
+                should_update_performance = self._should_update_performance_data()
 
-                        _LOGGER.debug("Found client details - ClientId: %s", client_id)
+                if should_update_performance:
+                    _LOGGER.debug(
+                        "Updating performance data (cache expired or missing)"
+                    )
+                else:
+                    _LOGGER.debug("Using cached performance data")
+                    # Use cached performance values
+                    ytd_earnings_percentage = self._performance_data_cache.get(
+                        "ytd_earnings_percentage", 0.0
+                    )
+                    investment_performance_percentage = (
+                        self._performance_data_cache.get(
+                            "investment_performance_percentage", 0.0
+                        )
+                    )
+                    ytd_investment_performance_percentage = (
+                        self._performance_data_cache.get(
+                            "ytd_investment_performance_percentage", 0.0
+                        )
+                    )
+                    month_investment_performance_percentage = (
+                        self._performance_data_cache.get(
+                            "month_investment_performance_percentage", 0.0
+                        )
+                    )
+                    quarter_investment_performance_percentage = (
+                        self._performance_data_cache.get(
+                            "quarter_investment_performance_percentage", 0.0
+                        )
+                    )
+                    cash_transfer_balance = self._performance_data_cache.get(
+                        "cash_transfer_balance", 0.0
+                    )
+                    inception_day = self._performance_data_cache.get(
+                        "inception_day", None
+                    )
+                    client_id = self._performance_data_cache.get("client_id", "unknown")
+                    account_id = self._performance_data_cache.get(
+                        "account_id", "unknown"
+                    )
+                    client_name = self._performance_data_cache.get(
+                        "client_name", "unknown"
+                    )
 
-                        if client_key:
+                # Get client details for both performance and account data
+                client_details = None
+
+                # Only fetch performance data if cache is stale
+                if should_update_performance:
+                    # Get client details (ClientKey, ClientId, etc.)
+                    try:
+                        client_details = await client.get_client_details()
+                        if client_details:
                             _LOGGER.debug(
-                                "Found ClientKey from client details, attempting performance fetch"
+                                "Client details response keys: %s",
+                                list(client_details.keys()) if client_details else "No data"
                             )
-                            try:
-                                performance_data = await client.get_performance(
-                                    client_key
-                                )
 
-                                # Extract AccumulatedProfitLoss from BalancePerformance
-                                balance_performance = performance_data.get(
-                                    "BalancePerformance", {}
-                                )
-                                accumulated_profit_loss = balance_performance.get(
-                                    "AccumulatedProfitLoss", 0.0
-                                )
+                            client_key = client_details.get("ClientKey")
+                            client_id = client_details.get("ClientId", "unknown")
+                            default_account_id = client_details.get(
+                                "DefaultAccountId", "unknown"
+                            )
+                            client_name = client_details.get("Name", "unknown")
 
-                                # Use AccumulatedProfitLoss as YTD earnings percentage
-                                ytd_earnings_percentage = accumulated_profit_loss
+                            _LOGGER.debug(
+                                "Extracted from client details - ClientId: %s, DefaultAccountId: %s, Name: '%s'",
+                                client_id,
+                                default_account_id,
+                                client_name,
+                            )
+
+                            if client_key:
                                 _LOGGER.debug(
-                                    "Retrieved performance data, AccumulatedProfitLoss: %s",
-                                    accumulated_profit_loss,
+                                    "Found ClientKey from client details, attempting performance fetch"
                                 )
-
-                            except Exception as perf_e:
-                                _LOGGER.debug(
-                                    "Could not fetch performance data: %s",
-                                    type(perf_e).__name__,
-                                )
-
-                            # Also try to fetch v4 performance data
-                            try:
-                                performance_v4_data = await client.get_performance_v4(
-                                    client_key
-                                )
-
-                                # Extract ReturnFraction from KeyFigures (multiply by 100 for percentage)
-                                key_figures = performance_v4_data.get("KeyFigures", {})
-                                return_fraction = key_figures.get("ReturnFraction", 0.0)
-                                investment_performance_percentage = (
-                                    return_fraction * 100.0
-                                )
-
-                                # Extract latest CashTransfer value
-                                balance = performance_v4_data.get("Balance", {})
-                                cash_transfer_list = balance.get("CashTransfer", [])
-                                if cash_transfer_list:
-                                    # Get the latest entry (last in the list)
-                                    latest_cash_transfer = cash_transfer_list[-1]
-                                    cash_transfer_balance = latest_cash_transfer.get(
-                                        "Value", 0.0
+                                try:
+                                    performance_data = await client.get_performance(
+                                        client_key
                                     )
 
-                                _LOGGER.debug(
-                                    "Retrieved performance v4 data - ReturnFraction: %s%%, CashTransfer: %s",
-                                    investment_performance_percentage,
-                                    cash_transfer_balance,
+                                    # Extract AccumulatedProfitLoss from BalancePerformance
+                                    balance_performance = performance_data.get(
+                                        "BalancePerformance", {}
+                                    )
+                                    accumulated_profit_loss = balance_performance.get(
+                                        "AccumulatedProfitLoss", 0.0
+                                    )
+
+                                    # Use AccumulatedProfitLoss as YTD earnings percentage
+                                    ytd_earnings_percentage = accumulated_profit_loss
+                                    _LOGGER.debug(
+                                        "Retrieved performance data, AccumulatedProfitLoss: %s",
+                                        accumulated_profit_loss,
+                                    )
+
+                                except Exception as perf_e:
+                                    _LOGGER.debug(
+                                        "Could not fetch performance data: %s",
+                                        type(perf_e).__name__,
+                                    )
+
+                                # Also try to fetch v4 performance data
+                                try:
+                                    performance_v4_data = (
+                                        await client.get_performance_v4(client_key)
+                                    )
+
+                                    # Extract ReturnFraction from KeyFigures (multiply by 100 for percentage)
+                                    key_figures = performance_v4_data.get(
+                                        "KeyFigures", {}
+                                    )
+                                    return_fraction = key_figures.get(
+                                        "ReturnFraction", 0.0
+                                    )
+                                    investment_performance_percentage = (
+                                        return_fraction * 100.0
+                                    )
+
+                                    # Also try to extract InceptionDay if available in v4 performance data
+                                    inception_day = performance_v4_data.get(
+                                        "InceptionDay"
+                                    )
+                                    if inception_day:
+                                        _LOGGER.debug(
+                                            "Found InceptionDay in performance v4 data: %s",
+                                            inception_day,
+                                        )
+
+                                    # Extract latest CashTransfer value
+                                    balance = performance_v4_data.get("Balance", {})
+                                    cash_transfer_list = balance.get("CashTransfer", [])
+                                    if cash_transfer_list:
+                                        # Get the latest entry (last in the list)
+                                        latest_cash_transfer = cash_transfer_list[-1]
+                                        cash_transfer_balance = (
+                                            latest_cash_transfer.get("Value", 0.0)
+                                        )
+
+                                    _LOGGER.debug(
+                                        "Retrieved performance v4 data - ReturnFraction: %s%%, CashTransfer: %s",
+                                        investment_performance_percentage,
+                                        cash_transfer_balance,
+                                    )
+
+                                except Exception as perf_v4_e:
+                                    _LOGGER.debug(
+                                        "Could not fetch performance v4 data: %s",
+                                        type(perf_v4_e).__name__,
+                                    )
+
+                                # Fetch additional performance periods using helper method
+                                ytd_investment_performance_percentage = (
+                                    await self._fetch_performance_data(
+                                        client,
+                                        client_key,
+                                        "YTD",
+                                        "get_performance_v4_ytd",
+                                    )
+                                )
+                                month_investment_performance_percentage = (
+                                    await self._fetch_performance_data(
+                                        client,
+                                        client_key,
+                                        "Month",
+                                        "get_performance_v4_month",
+                                    )
+                                )
+                                quarter_investment_performance_percentage = (
+                                    await self._fetch_performance_data(
+                                        client,
+                                        client_key,
+                                        "Quarter",
+                                        "get_performance_v4_quarter",
+                                    )
                                 )
 
-                            except Exception as perf_v4_e:
+                            else:
                                 _LOGGER.debug(
-                                    "Could not fetch performance v4 data: %s",
-                                    type(perf_v4_e).__name__,
+                                    "No ClientKey found from client details endpoint, performance data not available"
                                 )
                         else:
+                            _LOGGER.debug("No client details available")
+                    except Exception as client_e:
+                        _LOGGER.debug(
+                            "Could not fetch client details: %s",
+                            type(client_e).__name__,
+                        )
+
+                # Get account id and client name from client details or cache
+                if not client_details:
+                    try:
+                        client_details = await client.get_client_details()
+                        if client_details:
                             _LOGGER.debug(
-                                "No ClientKey found from client details endpoint, performance data not available"
+                                "Fetched client details keys for account info: %s",
+                                list(client_details.keys())
                             )
-                    else:
-                        _LOGGER.debug("No client details available")
-                except Exception as client_e:
+                    except Exception:
+                        _LOGGER.debug("Could not fetch client details for account info")
+
+                if client_details:
+                    account_id = client_details.get("DefaultAccountId", account_id)
+                    client_name = client_details.get("Name", client_name)
                     _LOGGER.debug(
-                        "Could not fetch client details: %s", type(client_e).__name__
+                        "Final extracted values - AccountId: %s, Name: '%s'",
+                        account_id,
+                        client_name,
                     )
+                else:
+                    _LOGGER.debug("No client details available - using cached/default values: AccountId: %s, Name: '%s'", account_id, client_name)
+
+                    # Update performance data cache if we fetched new data
+                    if should_update_performance:
+                        self._performance_data_cache = {
+                            "ytd_earnings_percentage": ytd_earnings_percentage,
+                            "investment_performance_percentage": investment_performance_percentage,
+                            "ytd_investment_performance_percentage": ytd_investment_performance_percentage,
+                            "month_investment_performance_percentage": month_investment_performance_percentage,
+                            "quarter_investment_performance_percentage": quarter_investment_performance_percentage,
+                            "cash_transfer_balance": cash_transfer_balance,
+                            "inception_day": inception_day,
+                            "client_id": client_id,
+                            "account_id": account_id,
+                            "client_name": client_name,
+                        }
+                        self._performance_last_updated = datetime.now()
+                        _LOGGER.debug("Updated performance data cache")
 
                 # Create simple data structure for balance sensors
                 return {
@@ -548,9 +765,15 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     ),
                     "ytd_earnings_percentage": ytd_earnings_percentage,
                     "investment_performance_percentage": investment_performance_percentage,
+                    "ytd_investment_performance_percentage": ytd_investment_performance_percentage,
+                    "month_investment_performance_percentage": month_investment_performance_percentage,
+                    "quarter_investment_performance_percentage": quarter_investment_performance_percentage,
                     "cash_transfer_balance": cash_transfer_balance,
+                    "inception_day": inception_day,
                     "client_id": client_id,
-                    "last_updated": balance_data.get("LastUpdated"),
+                    "account_id": account_id,
+                    "client_name": client_name,
+                    "last_updated": datetime.now().isoformat(),
                 }
 
         except AuthenticationError as e:
@@ -726,6 +949,72 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not self.data:
             return 0.0
         return self.data.get("cash_transfer_balance", 0.0)
+
+    def get_ytd_investment_performance_percentage(self) -> float:
+        """Get YTD investment performance percentage from v4 performance API.
+
+        Returns:
+            YTD investment performance percentage (ReturnFraction * 100) or 0.0 if not available
+
+        """
+        if not self.data:
+            return 0.0
+        return self.data.get("ytd_investment_performance_percentage", 0.0)
+
+    def get_month_investment_performance_percentage(self) -> float:
+        """Get Month investment performance percentage from v4 performance API.
+
+        Returns:
+            Month investment performance percentage (ReturnFraction * 100) or 0.0 if not available
+
+        """
+        if not self.data:
+            return 0.0
+        return self.data.get("month_investment_performance_percentage", 0.0)
+
+    def get_quarter_investment_performance_percentage(self) -> float:
+        """Get Quarter investment performance percentage from v4 performance API.
+
+        Returns:
+            Quarter investment performance percentage (ReturnFraction * 100) or 0.0 if not available
+
+        """
+        if not self.data:
+            return 0.0
+        return self.data.get("quarter_investment_performance_percentage", 0.0)
+
+    def get_inception_day(self) -> str | None:
+        """Get InceptionDay from performance summary API.
+
+        Returns:
+            InceptionDay (first account deposit date) or None if not available
+
+        """
+        if not self.data:
+            return None
+        return self.data.get("inception_day")
+
+    def get_account_id(self) -> str:
+        """Get AccountId from account data.
+
+        Returns:
+            AccountId or 'unknown' if not available
+
+        """
+        if not self.data:
+            return "unknown"
+        return self.data.get("account_id", "unknown")
+
+    def get_client_name(self) -> str:
+        """Get client Name from client data.
+
+        Returns:
+            Client Name or 'unknown' if not available
+
+        """
+        if not self.data:
+            return "unknown"
+        return self.data.get("client_name", "unknown")
 
     async def async_update_interval_if_needed(self) -> None:
         """Check and update the refresh interval based on current market status.

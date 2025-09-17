@@ -499,6 +499,134 @@ class SaxoApiClient:
             _LOGGER.error("Error fetching performance v4 data: %s", type(e).__name__)
             raise APIError("Failed to fetch performance v4 data")
 
+    async def get_performance_v4_ytd(self, client_key: str) -> dict[str, Any]:
+        """Fetch YTD performance timeseries data using v4 API.
+
+        Args:
+            client_key: Client key for the request
+
+        Returns:
+            YTD Performance timeseries data containing ReturnFraction and CashTransfer
+
+        Raises:
+            AuthenticationError: For authentication failures
+            APIError: For other API errors
+
+        """
+        try:
+            params = {
+                "ClientKey": client_key,
+                "StandardPeriod": "Year",
+                "FieldGroups": "Balance_CashTransfer,KeyFigures",
+            }
+
+            response = await self._make_request(API_PERFORMANCE_V4_ENDPOINT, params)
+
+            # Validate response structure
+            if not isinstance(response, dict):
+                raise APIError("Invalid performance v4 YTD response format")
+
+            _LOGGER.debug(
+                "Performance v4 YTD API response structure: %s",
+                list(response.keys()) if response else "empty",
+            )
+
+            return response
+
+        except (AuthenticationError, RateLimitError):
+            raise
+        except Exception as e:
+            _LOGGER.error(
+                "Error fetching performance v4 YTD data: %s", type(e).__name__
+            )
+            raise APIError("Failed to fetch performance v4 YTD data")
+
+    async def get_performance_v4_month(self, client_key: str) -> dict[str, Any]:
+        """Fetch Month performance timeseries data using v4 API.
+
+        Args:
+            client_key: Client key for the request
+
+        Returns:
+            Month Performance timeseries data containing ReturnFraction and CashTransfer
+
+        Raises:
+            AuthenticationError: For authentication failures
+            APIError: For other API errors
+
+        """
+        try:
+            params = {
+                "ClientKey": client_key,
+                "StandardPeriod": "Month",
+                "FieldGroups": "Balance_CashTransfer,KeyFigures",
+            }
+
+            response = await self._make_request(API_PERFORMANCE_V4_ENDPOINT, params)
+
+            # Validate response structure
+            if not isinstance(response, dict):
+                raise APIError("Invalid performance v4 Month response format")
+
+            _LOGGER.debug(
+                "Performance v4 Month API response structure: %s",
+                list(response.keys()) if response else "empty",
+            )
+
+            return response
+
+        except (AuthenticationError, RateLimitError):
+            raise
+        except Exception as e:
+            _LOGGER.error(
+                "Error fetching performance v4 Month data: %s", type(e).__name__
+            )
+            raise APIError("Failed to fetch performance v4 Month data")
+
+    async def get_performance_v4_quarter(self, client_key: str) -> dict[str, Any]:
+        """Fetch Quarter performance timeseries data using v4 API.
+
+        Args:
+            client_key: Client key for the request
+
+        Returns:
+            Quarter Performance timeseries data containing ReturnFraction and CashTransfer
+
+        Raises:
+            AuthenticationError: For authentication failures
+            APIError: For other API errors
+
+        """
+        try:
+            params = {
+                "ClientKey": client_key,
+                "StandardPeriod": "Quarter",
+                "FieldGroups": "Balance_CashTransfer,KeyFigures",
+            }
+
+            response = await self._make_request(API_PERFORMANCE_V4_ENDPOINT, params)
+
+            # Validate response structure
+            if not isinstance(response, dict):
+                raise APIError("Invalid performance v4 Quarter response format")
+
+            _LOGGER.debug(
+                "Performance v4 Quarter API response structure: %s",
+                list(response.keys()) if response else "empty",
+            )
+
+            return response
+
+        except (AuthenticationError, RateLimitError):
+            raise
+        except Exception as e:
+            _LOGGER.error(
+                "Error fetching performance v4 Quarter data: %s", type(e).__name__
+            )
+            raise APIError("Failed to fetch performance v4 Quarter data")
+
+
+
     async def close(self):
         """Close the HTTP session."""
         if self._session and not self._session.closed:

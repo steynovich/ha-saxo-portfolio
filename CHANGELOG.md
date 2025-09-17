@@ -5,6 +5,75 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.2] - 2025-09-17
+
+### Fixed
+- **Performance Sensor Last Updated**: Fixed "last_updated" attribute showing as "unknown" for performance sensors
+  - Converted datetime objects to ISO format strings for proper display in Home Assistant
+  - Performance sensors now properly show when performance data was last fetched
+- **Display Name Sensor Icon**: Fixed missing icon for Display Name diagnostic sensor
+  - Changed from invalid `mdi:account-card-details` to valid `mdi:account-box` icon
+  - Added proper icon property method to ensure display in Home Assistant interface
+- **OAuth Token Refresh**: Added fallback redirect_uri for token refresh operations
+  - Prevents token refresh failures when redirect_uri is missing from config entry
+  - Uses standard Home Assistant OAuth redirect URL as fallback
+
+### Technical Improvements
+- Enhanced error handling for OAuth token refresh with proper fallback mechanisms
+- Added debug logging for sensor initialization and icon property calls
+- Improved timestamp formatting for performance sensor attributes
+
+## [2.2.1] - 2025-09-17
+
+### Enhanced
+- **Sensor Attribute Improvements**: Cleaned up cross-reference attributes and enhanced performance sensor metadata
+  - Removed "total_value" attribute from Cash Balance sensor to eliminate circular references
+  - Removed "cash_balance" attribute from Total Value sensor to eliminate circular references
+  - Added "time_period" attribute to performance sensors showing StandardPeriod values ("AllTime" or "Year")
+  - Fixed "last_updated" attribute in Accumulated Profit/Loss sensor to use performance API timestamp instead of balance API
+  - Performance sensors now include proper time period identification matching API parameters
+
+### Technical Improvements
+- Enhanced SaxoPerformanceSensorBase with time_period support and abstract _get_time_period() method
+- Improved attribute consistency across all sensor types with appropriate data source timestamps
+- Fixed data source mapping for last_updated attributes ensuring accuracy and consistency
+
+## [2.2.0] - 2025-09-17
+
+### Added
+- **YTD Investment Performance Sensor**: New Year-to-Date portfolio return percentage sensor (`sensor.saxo_{clientid}_ytd_investment_performance`)
+- **Smart Performance Caching**: Intelligent hourly caching system for performance data to optimize API usage
+  - Balance data: Real-time updates (5-30 minutes based on market hours)
+  - Performance data: Cached updates (1 hour) reducing API calls by ~90%
+
+### Added
+- **Account/Client ID Diagnostic Sensors**: New diagnostic entities for troubleshooting and multi-account identification
+  - Client ID sensor (`sensor.saxo_{clientid}_client_id`) showing the Saxo Client ID used for entity naming
+  - Account ID sensor (`sensor.saxo_{clientid}_account_id`) displaying Account ID from balance data
+
+### Enhanced
+- **API Optimization**: Performance endpoints now called hourly instead of every 5-30 minutes
+- **Code Quality**: Refactored performance sensors with shared base class (SaxoPerformanceSensorBase) to reduce code duplication
+- **Entity Count**: Expanded from 10 to 13 total entities (7 portfolio + 6 diagnostic sensors)
+- **Diagnostic Suite**: Complete integration monitoring with account identification, health status, and configuration visibility
+- **v4 API Integration**: Added YTD performance support using "Year" StandardPeriod parameter
+
+### Technical Improvements
+- Added `get_performance_v4_ytd()` method to API client for year-to-date performance data
+- Implemented performance data caching with `_should_update_performance_data()` validation
+- Enhanced coordinator with smart update logic balancing real-time and cached data
+- Added `get_account_id()` method to coordinator for Account ID access
+- Enhanced balance data structure to include Account ID from API response
+- Added `PERFORMANCE_UPDATE_INTERVAL` constant (1 hour) for cache management
+- Reduced code duplication by ~24 lines through base class implementation
+- Added two new diagnostic sensor classes (SaxoClientIDSensor, SaxoAccountIDSensor)
+
+### Documentation
+- Updated README.md with new YTD sensor, performance caching, and diagnostic sensors
+- Enhanced CLAUDE.md with implementation details and updated file references for 13 entities
+- Added configuration table showing different update intervals for balance vs performance data
+- Updated entity count documentation from 11 to 13 total entities across all files
+
 ## [2.1.1] - 2025-09-17
 
 ### Fixed
@@ -187,6 +256,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Modular data models for type safety and consistency
 - Proper Home Assistant integration patterns
 
+[2.2.1]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.2.1
+[2.2.0]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.2.0
 [2.1.1]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.1.1
 [2.1.0]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.1.0
 [2.0.3]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.0.3

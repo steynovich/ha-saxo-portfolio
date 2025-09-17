@@ -14,7 +14,7 @@ from custom_components.saxo_portfolio.api.saxo_client import SaxoApiClient
 
 @pytest.mark.contract
 class TestSaxoAccountsContract:
-    """Contract tests for /port/v1/accounts endpoint."""
+    """Contract tests for /port/v1/accounts/{AccountKey} endpoint."""
 
     @pytest.fixture
     def mock_client(self):
@@ -22,56 +22,46 @@ class TestSaxoAccountsContract:
         return SaxoApiClient(access_token="mock_token")
 
     @pytest.mark.asyncio
-    async def test_accounts_response_schema(self, mock_client):
-        """Test that accounts response matches contract schema."""
+    async def test_account_details_response_schema(self, mock_client):
+        """Test that account details response matches contract schema."""
         # This test MUST FAIL initially - no implementation exists
-        client_key = "test_client_key"
-        response = await mock_client.get_accounts(client_key=client_key)
+        account_key = "test_account_key"
+        response = await mock_client.get_account_details(account_key)
 
-        # Validate top-level structure
-        assert "__count" in response
-        assert "Data" in response
-        assert isinstance(response["__count"], int)
-        assert isinstance(response["Data"], list)
+        # Validate response is a dict (single account, not list)
+        assert isinstance(response, dict)
 
-        # If accounts exist, validate each account
-        if response["__count"] > 0:
-            account = response["Data"][0]
+        # Required fields from contract
+        assert "AccountId" in response
+        assert "AccountKey" in response
+        assert "Active" in response
+        assert "AccountType" in response
 
-            # Required fields from contract
-            assert "AccountId" in account
-            assert "AccountKey" in account
-            assert "Active" in account
-            assert "AccountType" in account
-
-            # Optional fields that might be present
-            if "AccountGroupKey" in account:
-                assert isinstance(account["AccountGroupKey"], str)
-            if "Currency" in account:
-                assert isinstance(account["Currency"], str)
-            if "DisplayName" in account:
-                assert isinstance(account["DisplayName"], str)
+        # Optional fields that might be present
+        if "AccountGroupKey" in response:
+            assert isinstance(response["AccountGroupKey"], str)
+        if "Currency" in response:
+            assert isinstance(response["Currency"], str)
+        if "DisplayName" in response:
+            assert isinstance(response["DisplayName"], str)
 
     @pytest.mark.asyncio
     async def test_account_data_types(self, mock_client):
         """Test that account fields have correct data types."""
         # This test MUST FAIL initially - no implementation exists
-        client_key = "test_client_key"
-        response = await mock_client.get_accounts(client_key=client_key)
+        account_key = "test_account_key"
+        response = await mock_client.get_account_details(account_key)
 
-        if response["__count"] > 0:
-            account = response["Data"][0]
+        # Required field types
+        assert isinstance(response["AccountId"], str)
+        assert isinstance(response["AccountKey"], str)
+        assert isinstance(response["Active"], bool)
+        assert isinstance(response["AccountType"], str)
 
-            # Required field types
-            assert isinstance(account["AccountId"], str)
-            assert isinstance(account["AccountKey"], str)
-            assert isinstance(account["Active"], bool)
-            assert isinstance(account["AccountType"], str)
-
-            # String fields should not be empty
-            assert len(account["AccountId"]) > 0
-            assert len(account["AccountKey"]) > 0
-            assert len(account["AccountType"]) > 0
+        # String fields should not be empty
+        assert len(response["AccountId"]) > 0
+        assert len(response["AccountKey"]) > 0
+        assert len(response["AccountType"]) > 0
 
     @pytest.mark.asyncio
     async def test_account_type_enumeration(self, mock_client):

@@ -15,7 +15,12 @@ from homeassistant.config_entries import ConfigEntry
 from custom_components.saxo_portfolio import async_setup_entry
 from custom_components.saxo_portfolio.const import DOMAIN
 from custom_components.saxo_portfolio.coordinator import SaxoCoordinator
-from custom_components.saxo_portfolio.sensor import SaxoPortfolioSensor
+from custom_components.saxo_portfolio.sensor import (
+    SaxoCashBalanceSensor,
+    SaxoTotalValueSensor,
+    SaxoAccountIDSensor,
+    SaxoDisplayNameSensor,
+)
 
 
 @pytest.mark.integration
@@ -135,20 +140,25 @@ class TestSensorCreationAndUpdates:
         """Test that sensor platform creates expected sensors."""
         # This test MUST FAIL initially - no implementation exists
 
-        # Mock coordinator with data
+        # Mock coordinator with current data structure
         mock_coordinator = Mock(spec=SaxoCoordinator)
         mock_coordinator.data = {
-            "portfolio": {
-                "total_value": 125000.00,
-                "cash_balance": 5000.00,
-                "unrealized_pnl": 2500.00,
-                "positions_count": 5,
-                "currency": "USD",
-            },
-            "accounts": [{"account_id": "acc_001", "balance": 50000.00}],
-            "positions": [{"position_id": "pos_123", "current_value": 15500.00}],
+            "cash_balance": 5000.00,
+            "currency": "USD",
+            "total_value": 125000.00,
+            "non_margin_positions_value": 120000.00,
+            "ytd_earnings_percentage": 15.5,
+            "investment_performance_percentage": 25.0,
+            "ytd_investment_performance_percentage": 12.5,
+            "cash_transfer_balance": 1000.00,
+            "client_id": "123456",
+            "account_id": "ACC001",
+            "display_name": "Main Trading Account",
             "last_updated": datetime.now().isoformat(),
         }
+        mock_coordinator.get_client_id = Mock(return_value="123456")
+        mock_coordinator.get_account_id = Mock(return_value="ACC001")
+        mock_coordinator.get_display_name = Mock(return_value="Main Trading Account")
 
         # Setup sensor platform
         from custom_components.saxo_portfolio.sensor import (
@@ -166,19 +176,30 @@ class TestSensorCreationAndUpdates:
         call_args = mock_add_entities.call_args
         sensors = call_args[0][0]  # First argument (entities list)
 
-        # Should create expected sensor types
-        sensor_types = [
-            sensor._sensor_type for sensor in sensors if hasattr(sensor, "_sensor_type")
-        ]
-        expected_types = [
-            "total_value",
-            "cash_balance",
-            "unrealized_pnl",
-            "positions_count",
+        # Should create 14 sensors total
+        assert len(sensors) == 14
+
+        # Should create expected sensor classes
+        sensor_classes = [type(sensor).__name__ for sensor in sensors]
+        expected_classes = [
+            "SaxoCashBalanceSensor",
+            "SaxoTotalValueSensor",
+            "SaxoNonMarginPositionsValueSensor",
+            "SaxoAccumulatedProfitLossSensor",
+            "SaxoInvestmentPerformanceSensor",
+            "SaxoYTDInvestmentPerformanceSensor",
+            "SaxoCashTransferBalanceSensor",
+            "SaxoClientIDSensor",
+            "SaxoAccountIDSensor",
+            "SaxoDisplayNameSensor",
+            "SaxoTokenExpirySensor",
+            "SaxoMarketStatusSensor",
+            "SaxoLastUpdateSensor",
+            "SaxoTimezoneSensor",
         ]
 
-        for expected_type in expected_types:
-            assert expected_type in sensor_types
+        for expected_class in expected_classes:
+            assert expected_class in sensor_classes
 
     @pytest.mark.asyncio
     async def test_sensor_state_updates_from_coordinator_data(
@@ -187,25 +208,30 @@ class TestSensorCreationAndUpdates:
         """Test that sensors update their state when coordinator data changes."""
         # This test MUST FAIL initially - no implementation exists
 
-        # Create mock coordinator
+        # Create mock coordinator with current data structure
         mock_coordinator = Mock(spec=SaxoCoordinator)
         mock_coordinator.data = {
-            "portfolio": {"total_value": 100000.00, "currency": "USD"},
+            "total_value": 100000.00,
+            "currency": "USD",
             "last_updated": datetime.now().isoformat(),
         }
+        mock_coordinator.last_update_success = True
+        mock_coordinator.get_total_value = Mock(return_value=100000.00)
+        mock_coordinator.get_currency = Mock(return_value="USD")
 
-        # Create sensor
-        sensor = SaxoPortfolioSensor(mock_coordinator, "total_value")
+        # Create sensor using actual sensor class
+        sensor = SaxoTotalValueSensor(mock_coordinator)
 
         # Initial state should reflect coordinator data
-        initial_state = sensor.state
+        initial_state = sensor.native_value
         assert float(initial_state) == 100000.00
 
         # Update coordinator data
-        mock_coordinator.data["portfolio"]["total_value"] = 110000.00
+        mock_coordinator.data["total_value"] = 110000.00
+        mock_coordinator.get_total_value = Mock(return_value=110000.00)
 
         # Sensor state should update
-        updated_state = sensor.state
+        updated_state = sensor.native_value
         assert float(updated_state) == 110000.00
 
     @pytest.mark.asyncio
@@ -217,27 +243,27 @@ class TestSensorCreationAndUpdates:
 
         mock_coordinator = Mock(spec=SaxoCoordinator)
         mock_coordinator.data = {
-            "portfolio": {"total_value": 125000.00, "currency": "USD"},
+            "total_value": 125000.00,
+            "currency": "USD",
             "last_updated": "2023-12-01T10:30:00Z",
         }
+        mock_coordinator.get_currency = Mock(return_value="USD")
 
-        sensor = SaxoPortfolioSensor(mock_coordinator, "total_value")
+        sensor = SaxoTotalValueSensor(mock_coordinator)
 
         # Check sensor attributes
         attributes = sensor.extra_state_attributes
         assert isinstance(attributes, dict)
 
-        # Required attributes from quickstart validation
-        assert "friendly_name" in attributes
-        assert "unit_of_measurement" in attributes
+        # Required attributes for balance sensors
+        assert "attribution" in attributes
         assert "currency" in attributes
         assert "last_updated" in attributes
-        assert "attribution" in attributes
 
         # Validate attribute values
         assert attributes["currency"] == "USD"
         assert "Saxo" in attributes["attribution"]
-        assert attributes["unit_of_measurement"] in ["USD", "$"]
+        assert attributes["last_updated"] == "2023-12-01T10:30:00Z"
 
     @pytest.mark.asyncio
     async def test_sensor_unique_ids_generated(self, mock_hass, mock_config_entry):
@@ -246,23 +272,25 @@ class TestSensorCreationAndUpdates:
 
         mock_coordinator = Mock(spec=SaxoCoordinator)
         mock_coordinator.config_entry = mock_config_entry
+        mock_coordinator.get_client_id = Mock(return_value="123456")
 
-        # Create multiple sensors
-        total_value_sensor = SaxoPortfolioSensor(mock_coordinator, "total_value")
-        cash_balance_sensor = SaxoPortfolioSensor(mock_coordinator, "cash_balance")
-        pnl_sensor = SaxoPortfolioSensor(mock_coordinator, "unrealized_pnl")
+        # Create multiple sensors using actual sensor classes
+        total_value_sensor = SaxoTotalValueSensor(mock_coordinator)
+        cash_balance_sensor = SaxoCashBalanceSensor(mock_coordinator)
+        account_id_sensor = SaxoAccountIDSensor(mock_coordinator)
 
         # Each sensor should have unique ID
         unique_ids = {
             total_value_sensor.unique_id,
             cash_balance_sensor.unique_id,
-            pnl_sensor.unique_id,
+            account_id_sensor.unique_id,
         }
         assert len(unique_ids) == 3  # All different
 
-        # Unique IDs should include entry ID and sensor type
-        for sensor_id in unique_ids:
-            assert mock_config_entry.entry_id in sensor_id
+        # Unique IDs should follow saxo_{client_id}_{sensor_type} pattern
+        assert total_value_sensor.unique_id == "saxo_123456_total_value"
+        assert cash_balance_sensor.unique_id == "saxo_123456_cash_balance"
+        assert account_id_sensor.unique_id == "saxo_123456_account_id"
 
     @pytest.mark.asyncio
     async def test_sensor_availability_based_on_coordinator_state(
@@ -272,12 +300,13 @@ class TestSensorCreationAndUpdates:
         # This test MUST FAIL initially - no implementation exists
 
         mock_coordinator = Mock(spec=SaxoCoordinator)
+        mock_coordinator.get_client_id = Mock(return_value="123456")
 
         # Coordinator with successful data
         mock_coordinator.last_update_success = True
-        mock_coordinator.data = {"portfolio": {"total_value": 100000.00}}
+        mock_coordinator.data = {"total_value": 100000.00}
 
-        sensor = SaxoPortfolioSensor(mock_coordinator, "total_value")
+        sensor = SaxoTotalValueSensor(mock_coordinator)
 
         # Sensor should be available
         assert sensor.available is True
@@ -290,73 +319,31 @@ class TestSensorCreationAndUpdates:
         assert sensor.available is False
 
     @pytest.mark.asyncio
-    async def test_multiple_account_sensors_created(self, mock_hass, mock_config_entry):
-        """Test that individual account sensors are created for each account."""
-        # This test MUST FAIL initially - no implementation exists
-
-        mock_coordinator = Mock(spec=SaxoCoordinator)
-        mock_coordinator.data = {
-            "accounts": [
-                {"account_id": "acc_001", "balance": 50000.00, "display_name": "Main"},
-                {
-                    "account_id": "acc_002",
-                    "balance": 75000.00,
-                    "display_name": "Savings",
-                },
-            ]
-        }
-
-        from custom_components.saxo_portfolio.sensor import SaxoAccountSensor
-
-        # Should be able to create sensors for each account
-        account1_sensor = SaxoAccountSensor(mock_coordinator, "acc_001")
-        account2_sensor = SaxoAccountSensor(mock_coordinator, "acc_002")
-
-        # Sensors should have different unique IDs
-        assert account1_sensor.unique_id != account2_sensor.unique_id
-
-        # Sensors should reflect account data
-        assert float(account1_sensor.state) == 50000.00
-        assert float(account2_sensor.state) == 75000.00
-
-    @pytest.mark.asyncio
-    async def test_position_sensors_track_individual_holdings(
+    async def test_account_diagnostic_sensors_created(
         self, mock_hass, mock_config_entry
     ):
-        """Test that position sensors track individual position values."""
+        """Test that account diagnostic sensors are created with correct data."""
         # This test MUST FAIL initially - no implementation exists
 
         mock_coordinator = Mock(spec=SaxoCoordinator)
-        mock_coordinator.data = {
-            "positions": [
-                {
-                    "position_id": "pos_123",
-                    "symbol": "AAPL",
-                    "current_value": 15500.00,
-                    "unrealized_pnl": 500.00,
-                },
-                {
-                    "position_id": "pos_456",
-                    "symbol": "MSFT",
-                    "current_value": 8200.00,
-                    "unrealized_pnl": -300.00,
-                },
-            ]
-        }
+        mock_coordinator.get_client_id = Mock(return_value="123456")
+        mock_coordinator.get_account_id = Mock(return_value="ACC001")
+        mock_coordinator.get_display_name = Mock(return_value="Main Trading Account")
 
-        from custom_components.saxo_portfolio.sensor import SaxoPositionSensor
+        # Create account diagnostic sensors
+        account_id_sensor = SaxoAccountIDSensor(mock_coordinator)
+        display_name_sensor = SaxoDisplayNameSensor(mock_coordinator)
 
-        # Create position sensors
-        aapl_sensor = SaxoPositionSensor(mock_coordinator, "pos_123")
-        msft_sensor = SaxoPositionSensor(mock_coordinator, "pos_456")
+        # Sensors should have different unique IDs
+        assert account_id_sensor.unique_id != display_name_sensor.unique_id
 
-        # Should track individual position values
-        assert float(aapl_sensor.state) == 15500.00
-        assert float(msft_sensor.state) == 8200.00
+        # Sensors should reflect account data
+        assert account_id_sensor.native_value == "ACC001"
+        assert display_name_sensor.native_value == "Main Trading Account"
 
-        # Should have symbol in attributes
-        assert "AAPL" in aapl_sensor.extra_state_attributes.get("symbol", "")
-        assert "MSFT" in msft_sensor.extra_state_attributes.get("symbol", "")
+        # Should have proper entity IDs
+        assert account_id_sensor.entity_id == "sensor.saxo_123456_account_id"
+        assert display_name_sensor.entity_id == "sensor.saxo_123456_display_name"
 
     @pytest.mark.asyncio
     async def test_sensor_entity_registry_integration(
@@ -366,19 +353,16 @@ class TestSensorCreationAndUpdates:
         # This test MUST FAIL initially - no implementation exists
 
         mock_coordinator = Mock(spec=SaxoCoordinator)
-        sensor = SaxoPortfolioSensor(mock_coordinator, "total_value")
-
-        # Should have entity registry properties
-        assert hasattr(sensor, "entity_registry_enabled_default")
-        assert isinstance(sensor.entity_registry_enabled_default, bool)
-        assert sensor.entity_registry_enabled_default is True
+        mock_coordinator.config_entry = mock_config_entry
+        mock_coordinator.get_client_id = Mock(return_value="123456")
+        sensor = SaxoTotalValueSensor(mock_coordinator)
 
         # Should have device info for grouping
-        if hasattr(sensor, "device_info"):
-            device_info = sensor.device_info
-            assert isinstance(device_info, dict)
-            assert "identifiers" in device_info
-            assert "name" in device_info
+        device_info = sensor.device_info
+        assert isinstance(device_info, dict)
+        assert "identifiers" in device_info
+        assert "name" in device_info
+        assert device_info["name"] == "Saxo 123456 Portfolio"
 
     @pytest.mark.asyncio
     async def test_sensor_state_transitions_during_updates(
@@ -388,26 +372,29 @@ class TestSensorCreationAndUpdates:
         # This test MUST FAIL initially - no implementation exists
 
         mock_coordinator = Mock(spec=SaxoCoordinator)
+        mock_coordinator.get_client_id = Mock(return_value="123456")
 
         # Initial state - no data
         mock_coordinator.data = None
         mock_coordinator.last_update_success = False
+        mock_coordinator.get_total_value = Mock(return_value=None)
 
-        sensor = SaxoPortfolioSensor(mock_coordinator, "total_value")
+        sensor = SaxoTotalValueSensor(mock_coordinator)
 
         # Should be unavailable initially
-        assert sensor.state in [None, "unavailable", "unknown"]
+        assert sensor.native_value is None
 
         # Data becomes available
-        mock_coordinator.data = {"portfolio": {"total_value": 100000.00}}
+        mock_coordinator.data = {"total_value": 100000.00}
         mock_coordinator.last_update_success = True
+        mock_coordinator.get_total_value = Mock(return_value=100000.00)
 
         # Should show actual value
-        assert float(sensor.state) == 100000.00
+        assert float(sensor.native_value) == 100000.00
 
         # Data update fails
         mock_coordinator.last_update_success = False
         # But data is still there (coordinator keeps last good data)
 
-        # Should still show last good value
-        assert float(sensor.state) == 100000.00
+        # Should still show last good value (coordinator keeps data)
+        assert float(sensor.native_value) == 100000.00
