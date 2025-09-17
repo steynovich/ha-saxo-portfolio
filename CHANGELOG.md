@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0-beta.4] - 2025-09-17
+
+### Added
+- **Diagnostics Support**: Comprehensive diagnostic information for debugging and support
+  - Timezone configuration and market hours settings
+  - Detailed token expiry information with human-readable timestamps
+  - Coordinator status and update intervals
+  - Market hours detection status
+  - Dynamic version reading from manifest.json
+- **Diagnostic Sensors**: Four dedicated diagnostic entities for real-time monitoring
+  - Token Expiry sensor with countdown and status indicators
+  - Market Status sensor showing current market state
+  - Last Update sensor with timestamp tracking
+  - Timezone sensor displaying configuration details
+
+### Enhanced
+- **Token Diagnostics**: Comprehensive expiry tracking with status indicators (OK/WARNING/CRITICAL/EXPIRED)
+- **Market Configuration**: Clear visibility into configured timezone and update intervals
+- **Security**: All sensitive data automatically redacted in diagnostics
+
+### Fixed (from beta.2)
+- **Token Refresh**: Added redirect_uri to config entry to fix OAuth token refresh failures
+- **State Class**: Changed accumulated profit/loss sensor state_class from 'measurement' to 'total' for proper Home Assistant compatibility
+
+### Added (from beta.1)
+- **Configurable Market Timezone**: Select from 9 major market timezones for intelligent scheduling
+- **"Any" Mode**: Option to disable market hours detection with fixed 15-minute update intervals
+- **Options Flow**: Change timezone configuration after initial setup through integration options
+- **Global Market Support**: NYSE, LSE, Euronext, XETRA, TSE, HKEX, SGX, ASX markets
+- **Timezone Selection Step**: New configuration step during initial setup to select market timezone
+
+### Enhanced
+- **Intelligent Scheduling**: Dynamic update intervals based on selected market hours
+- **Backward Compatibility**: Default timezone set to America/New_York for existing installations
+- **Market Hours Detection**: Automatic DST handling for all supported timezones
+- **Update Intervals**: 5 min (market hours), 30 min (after hours), 15 min ("any" mode)
+
+### Technical Improvements
+- Added comprehensive timezone constants and market hours configuration
+- Updated coordinator to use configurable timezone instead of hardcoded ET
+- Enhanced config flow with timezone selection and options flow handler
+- Added UI strings for timezone configuration in strings.json
+
 ## [2.0.3] - 2025-09-12
 
 ### Added

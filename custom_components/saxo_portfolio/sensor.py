@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 import logging
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -50,6 +51,11 @@ async def async_setup_entry(
         SaxoAccumulatedProfitLossSensor(coordinator),
         SaxoInvestmentPerformanceSensor(coordinator),
         SaxoCashTransferBalanceSensor(coordinator),
+        # Diagnostic sensors
+        SaxoTokenExpirySensor(coordinator),
+        SaxoMarketStatusSensor(coordinator),
+        SaxoLastUpdateSensor(coordinator),
+        SaxoTimezoneSensor(coordinator),
     ]
 
     _LOGGER.info(
@@ -94,7 +100,6 @@ class SaxoCashBalanceSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
             name=device_name,
             manufacturer=DEVICE_MANUFACTURER,
             model=DEVICE_MODEL,
-            sw_version="1.0.0",
             configuration_url="https://www.developer.saxo/openapi/appmanagement",
         )
 
@@ -209,7 +214,6 @@ class SaxoTotalValueSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
             name=device_name,
             manufacturer=DEVICE_MANUFACTURER,
             model=DEVICE_MODEL,
-            sw_version="1.0.0",
             configuration_url="https://www.developer.saxo/openapi/appmanagement",
         )
 
@@ -326,7 +330,6 @@ class SaxoNonMarginPositionsValueSensor(
             name=device_name,
             manufacturer=DEVICE_MANUFACTURER,
             model=DEVICE_MODEL,
-            sw_version="1.0.0",
             configuration_url="https://www.developer.saxo/openapi/appmanagement",
         )
 
@@ -421,7 +424,7 @@ class SaxoAccumulatedProfitLossSensor(CoordinatorEntity[SaxoCoordinator], Sensor
     """Representation of a Saxo Portfolio Accumulated Profit/Loss sensor."""
 
     _attr_device_class = "monetary"
-    _attr_state_class = "measurement"
+    _attr_state_class = "total"
     _attr_icon = "mdi:trending-up"
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
@@ -456,7 +459,6 @@ class SaxoAccumulatedProfitLossSensor(CoordinatorEntity[SaxoCoordinator], Sensor
             name=device_name,
             manufacturer=DEVICE_MANUFACTURER,
             model=DEVICE_MODEL,
-            sw_version="1.0.0",
             configuration_url="https://www.developer.saxo/openapi/appmanagement",
         )
 
@@ -551,7 +553,6 @@ class SaxoInvestmentPerformanceSensor(CoordinatorEntity[SaxoCoordinator], Sensor
             name=device_name,
             manufacturer=DEVICE_MANUFACTURER,
             model=DEVICE_MODEL,
-            sw_version="1.0.0",
             configuration_url="https://www.developer.saxo/openapi/appmanagement",
         )
 
@@ -656,7 +657,6 @@ class SaxoCashTransferBalanceSensor(CoordinatorEntity[SaxoCoordinator], SensorEn
             name=device_name,
             manufacturer=DEVICE_MANUFACTURER,
             model=DEVICE_MODEL,
-            sw_version="1.0.0",
             configuration_url="https://www.developer.saxo/openapi/appmanagement",
         )
 
@@ -721,3 +721,383 @@ class SaxoCashTransferBalanceSensor(CoordinatorEntity[SaxoCoordinator], SensorEn
             self.entity_id,
         )
         await super().async_will_remove_from_hass()
+
+
+class SaxoTokenExpirySensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+    """Representation of a Saxo Token Expiry diagnostic sensor."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:clock-alert-outline"
+
+    def __init__(self, coordinator: SaxoCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+
+        # Get entity prefix from ClientId with saxo_ prefix
+        client_id = coordinator.get_client_id()
+        entity_prefix = f"saxo_{client_id}".lower()
+
+        self._attr_unique_id = f"{entity_prefix}_token_expiry"
+        self._attr_name = f"Saxo {client_id} Token Expiry"
+        self.entity_id = f"sensor.{entity_prefix}_token_expiry"
+
+        _LOGGER.debug(
+            "Initialized token expiry sensor with unique_id: %s, name: %s",
+            self._attr_unique_id,
+            self._attr_name,
+        )
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        client_id = self.coordinator.get_client_id()
+        device_name = f"Saxo {client_id} Portfolio"
+
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
+            name=device_name,
+            manufacturer=DEVICE_MANUFACTURER,
+            model=DEVICE_MODEL,
+        )
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the token expiry status."""
+        import time
+
+        token_data = self.coordinator.config_entry.data.get("token", {})
+        if not token_data or "expires_at" not in token_data:
+            return "Unknown"
+
+        expires_at = token_data["expires_at"]
+        current_time = time.time()
+        time_until_expiry = expires_at - current_time
+
+        if time_until_expiry <= 0:
+            return "Expired"
+        elif time_until_expiry <= 60:
+            return "Critical - < 1 minute"
+        elif time_until_expiry <= 300:
+            return f"Warning - {round(time_until_expiry / 60, 1)} minutes"
+        elif time_until_expiry <= 3600:
+            return f"{round(time_until_expiry / 60)} minutes"
+        else:
+            return f"{round(time_until_expiry / 3600, 1)} hours"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        import time
+        from datetime import datetime
+
+        attrs = {}
+        token_data = self.coordinator.config_entry.data.get("token", {})
+
+        if token_data and "expires_at" in token_data:
+            expires_at = token_data["expires_at"]
+            current_time = time.time()
+            time_until_expiry = expires_at - current_time
+
+            expiry_datetime = datetime.fromtimestamp(expires_at)
+
+            attrs["expires_at"] = expiry_datetime.isoformat()
+            attrs["expires_in_seconds"] = int(time_until_expiry)
+            attrs["is_expired"] = time_until_expiry <= 0
+            attrs["needs_refresh"] = time_until_expiry <= 300
+
+        return attrs
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return self.coordinator.config_entry.data.get("token") is not None
+
+
+class SaxoMarketStatusSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+    """Representation of a Saxo Market Status diagnostic sensor."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:chart-timeline-variant"
+
+    def __init__(self, coordinator: SaxoCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+
+        # Get entity prefix from ClientId with saxo_ prefix
+        client_id = coordinator.get_client_id()
+        entity_prefix = f"saxo_{client_id}".lower()
+
+        self._attr_unique_id = f"{entity_prefix}_market_status"
+        self._attr_name = f"Saxo {client_id} Market Status"
+        self.entity_id = f"sensor.{entity_prefix}_market_status"
+
+        _LOGGER.debug(
+            "Initialized market status sensor with unique_id: %s, name: %s",
+            self._attr_unique_id,
+            self._attr_name,
+        )
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        client_id = self.coordinator.get_client_id()
+        device_name = f"Saxo {client_id} Portfolio"
+
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
+            name=device_name,
+            manufacturer=DEVICE_MANUFACTURER,
+            model=DEVICE_MODEL,
+        )
+
+    @property
+    def native_value(self) -> str:
+        """Return the market status."""
+        timezone = getattr(self.coordinator, "_timezone", "Unknown")
+
+        if timezone == "any":
+            return "Fixed Schedule"
+
+        is_market_hours = (
+            self.coordinator._is_market_hours()
+            if hasattr(self.coordinator, "_is_market_hours")
+            else False
+        )
+
+        if is_market_hours:
+            return "Market Open"
+        else:
+            return "After Hours"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        from .const import (
+            MARKET_HOURS,
+            DEFAULT_UPDATE_INTERVAL_MARKET_HOURS,
+            DEFAULT_UPDATE_INTERVAL_AFTER_HOURS,
+            DEFAULT_UPDATE_INTERVAL_ANY,
+        )
+
+        timezone = getattr(self.coordinator, "_timezone", "Unknown")
+        attrs = {
+            "timezone": timezone,
+            "update_interval": str(self.coordinator.update_interval)
+            if hasattr(self.coordinator, "update_interval")
+            else None,
+        }
+
+        if timezone != "any" and timezone in MARKET_HOURS:
+            market_info = MARKET_HOURS[timezone]
+            attrs["market_open"] = (
+                f"{market_info['open'][0]:02d}:{market_info['open'][1]:02d}"
+            )
+            attrs["market_close"] = (
+                f"{market_info['close'][0]:02d}:{market_info['close'][1]:02d}"
+            )
+            attrs["trading_days"] = market_info["weekdays"]
+
+            is_market_hours = (
+                self.coordinator._is_market_hours()
+                if hasattr(self.coordinator, "_is_market_hours")
+                else False
+            )
+            attrs["interval_active"] = str(
+                DEFAULT_UPDATE_INTERVAL_MARKET_HOURS
+                if is_market_hours
+                else DEFAULT_UPDATE_INTERVAL_AFTER_HOURS
+            )
+        elif timezone == "any":
+            attrs["interval_active"] = str(DEFAULT_UPDATE_INTERVAL_ANY)
+
+        return attrs
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return True
+
+
+class SaxoLastUpdateSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+    """Representation of a Saxo Last Update diagnostic sensor."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:update"
+
+    def __init__(self, coordinator: SaxoCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+
+        # Get entity prefix from ClientId with saxo_ prefix
+        client_id = coordinator.get_client_id()
+        entity_prefix = f"saxo_{client_id}".lower()
+
+        self._attr_unique_id = f"{entity_prefix}_last_update"
+        self._attr_name = f"Saxo {client_id} Last Update"
+        self.entity_id = f"sensor.{entity_prefix}_last_update"
+
+        _LOGGER.debug(
+            "Initialized last update sensor with unique_id: %s, name: %s",
+            self._attr_unique_id,
+            self._attr_name,
+        )
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        client_id = self.coordinator.get_client_id()
+        device_name = f"Saxo {client_id} Portfolio"
+
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
+            name=device_name,
+            manufacturer=DEVICE_MANUFACTURER,
+            model=DEVICE_MODEL,
+        )
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the last update time."""
+        # Use our custom property that tracks successful updates
+        if hasattr(self.coordinator, "last_successful_update_time"):
+            return self.coordinator.last_successful_update_time
+
+        # Fallback to DataUpdateCoordinator's built-in property if available
+        if (
+            hasattr(self.coordinator, "last_update_time_utc")
+            and self.coordinator.last_update_time_utc is not None
+        ):
+            return self.coordinator.last_update_time_utc
+
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        attrs = {
+            "update_success": self.coordinator.last_update_success
+            if hasattr(self.coordinator, "last_update_success")
+            else None,
+            "has_data": self.coordinator.data is not None
+            if hasattr(self.coordinator, "data")
+            else False,
+        }
+
+        if (
+            hasattr(self.coordinator, "last_exception")
+            and self.coordinator.last_exception
+        ):
+            attrs["last_error"] = str(self.coordinator.last_exception)
+
+        return attrs
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        # Always available since it's a diagnostic sensor
+        # But we could check if coordinator has been initialized
+        return self.coordinator is not None
+
+
+class SaxoTimezoneSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+    """Representation of a Saxo Timezone Configuration diagnostic sensor."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:earth"
+
+    def __init__(self, coordinator: SaxoCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+
+        # Get entity prefix from ClientId with saxo_ prefix
+        client_id = coordinator.get_client_id()
+        entity_prefix = f"saxo_{client_id}".lower()
+
+        self._attr_unique_id = f"{entity_prefix}_timezone"
+        self._attr_name = f"Saxo {client_id} Timezone"
+        self.entity_id = f"sensor.{entity_prefix}_timezone"
+
+        _LOGGER.debug(
+            "Initialized timezone sensor with unique_id: %s, name: %s",
+            self._attr_unique_id,
+            self._attr_name,
+        )
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        client_id = self.coordinator.get_client_id()
+        device_name = f"Saxo {client_id} Portfolio"
+
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
+            name=device_name,
+            manufacturer=DEVICE_MANUFACTURER,
+            model=DEVICE_MODEL,
+        )
+
+    @property
+    def native_value(self) -> str:
+        """Return the configured timezone."""
+        timezone = getattr(self.coordinator, "_timezone", "Unknown")
+
+        if timezone == "any":
+            return "Any (Fixed Schedule)"
+
+        return timezone
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        from .const import (
+            MARKET_HOURS,
+            CONF_TIMEZONE,
+            DEFAULT_UPDATE_INTERVAL_MARKET_HOURS,
+            DEFAULT_UPDATE_INTERVAL_AFTER_HOURS,
+            DEFAULT_UPDATE_INTERVAL_ANY,
+        )
+
+        timezone = getattr(self.coordinator, "_timezone", "Unknown")
+        attrs = {
+            "configured_timezone": timezone,
+            "config_entry_timezone": self.coordinator.config_entry.data.get(
+                CONF_TIMEZONE, "Not configured"
+            ),
+        }
+
+        if timezone == "any":
+            attrs["mode"] = "Fixed interval"
+            attrs["update_interval"] = str(DEFAULT_UPDATE_INTERVAL_ANY)
+            attrs["market_hours_detection"] = False
+        elif timezone in MARKET_HOURS:
+            market_info = MARKET_HOURS[timezone]
+            attrs["mode"] = "Market hours detection"
+            attrs["market_hours_detection"] = True
+            attrs["market_open"] = (
+                f"{market_info['open'][0]:02d}:{market_info['open'][1]:02d}"
+            )
+            attrs["market_close"] = (
+                f"{market_info['close'][0]:02d}:{market_info['close'][1]:02d}"
+            )
+            attrs["trading_days"] = market_info["weekdays"]
+            attrs["update_interval_market"] = str(DEFAULT_UPDATE_INTERVAL_MARKET_HOURS)
+            attrs["update_interval_after"] = str(DEFAULT_UPDATE_INTERVAL_AFTER_HOURS)
+
+            # Show current market status
+            is_market_hours = (
+                self.coordinator._is_market_hours()
+                if hasattr(self.coordinator, "_is_market_hours")
+                else False
+            )
+            attrs["current_market_status"] = "Open" if is_market_hours else "Closed"
+        else:
+            attrs["mode"] = "Unknown configuration"
+            attrs["error"] = f"Unknown timezone: {timezone}"
+
+        return attrs
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return True

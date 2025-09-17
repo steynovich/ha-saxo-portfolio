@@ -23,15 +23,14 @@ from homeassistant.util import dt as dt_util
 
 from .api.saxo_client import SaxoApiClient, AuthenticationError, APIError
 from .const import (
+    CONF_TIMEZONE,
     COORDINATOR_UPDATE_TIMEOUT,
-    DEFAULT_UPDATE_INTERVAL_MARKET_HOURS,
+    DEFAULT_TIMEZONE,
     DEFAULT_UPDATE_INTERVAL_AFTER_HOURS,
+    DEFAULT_UPDATE_INTERVAL_ANY,
+    DEFAULT_UPDATE_INTERVAL_MARKET_HOURS,
     DOMAIN,
-    MARKET_CLOSE_HOUR,
-    MARKET_CLOSE_MINUTE,
-    MARKET_OPEN_HOUR,
-    MARKET_OPEN_MINUTE,
-    MARKET_WEEKDAYS,
+    MARKET_HOURS,
     TOKEN_MIN_VALIDITY,
     TOKEN_REFRESH_BUFFER,
 )
@@ -50,12 +49,24 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             config_entry: Configuration entry with OAuth token
 
         """
+        self.config_entry = config_entry
+        self._api_client: SaxoApiClient | None = None
+        self._last_token_check = datetime.now()
+        self._token_refresh_lock = asyncio.Lock()
+        self._last_successful_update: datetime | None = None
+
+        # Get configured timezone
+        self._timezone = config_entry.data.get(CONF_TIMEZONE, DEFAULT_TIMEZONE)
+
         # Determine initial update interval
-        update_interval = (
-            DEFAULT_UPDATE_INTERVAL_MARKET_HOURS
-            if self._is_market_hours()
-            else DEFAULT_UPDATE_INTERVAL_AFTER_HOURS
-        )
+        if self._timezone == "any":
+            update_interval = DEFAULT_UPDATE_INTERVAL_ANY
+        else:
+            update_interval = (
+                DEFAULT_UPDATE_INTERVAL_MARKET_HOURS
+                if self._is_market_hours()
+                else DEFAULT_UPDATE_INTERVAL_AFTER_HOURS
+            )
 
         super().__init__(
             hass,
@@ -64,12 +75,6 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=update_interval,
             always_update=False,
         )
-
-        self.config_entry = config_entry
-        self._api_client: SaxoApiClient | None = None
-        self._last_token_check = datetime.now()
-        self._token_refresh_lock = asyncio.Lock()
-        self._last_successful_update = None
 
     @property
     def api_client(self) -> SaxoApiClient:
@@ -122,35 +127,54 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _is_market_hours(self) -> bool:
         """Check if current time is during market hours.
 
-        Market hours: Monday-Friday, 9:30 AM - 4:00 PM ET
-        Properly handles Eastern Time with DST conversion.
-
         Returns:
             True if market is currently open
 
         """
-        try:
-            # Get current time and convert to Eastern Time
-            now_utc = dt_util.utcnow()
-            eastern = zoneinfo.ZoneInfo("America/New_York")
-            now_et = now_utc.astimezone(eastern)
+        # If timezone is "any", market hours don't apply
+        if self._timezone == "any":
+            return False
 
-            # Check if it's a weekday (Monday = 0, Sunday = 6)
-            if now_et.weekday() not in MARKET_WEEKDAYS:
+        try:
+            # Get current time and convert to configured timezone
+            now_utc = dt_util.utcnow()
+
+            # Get market hours for configured timezone
+            market_config = MARKET_HOURS.get(self._timezone)
+            if not market_config:
+                # Fallback to default timezone if not found
+                _LOGGER.warning(
+                    "Unknown timezone %s, falling back to %s",
+                    self._timezone,
+                    DEFAULT_TIMEZONE,
+                )
+                self._timezone = DEFAULT_TIMEZONE
+                market_config = MARKET_HOURS[DEFAULT_TIMEZONE]
+
+            # Convert to configured timezone
+            tz = zoneinfo.ZoneInfo(self._timezone)
+            now_local = now_utc.astimezone(tz)
+
+            # Check if it's a weekday
+            if now_local.weekday() not in market_config["weekdays"]:
                 return False
 
-            # Market hours in Eastern Time
-            market_open = time(MARKET_OPEN_HOUR, MARKET_OPEN_MINUTE)  # 9:30 AM
-            market_close = time(MARKET_CLOSE_HOUR, MARKET_CLOSE_MINUTE)  # 4:00 PM
+            # Get market hours
+            open_hour, open_minute = market_config["open"]
+            close_hour, close_minute = market_config["close"]
 
-            current_time = now_et.time()
+            market_open = time(open_hour, open_minute)
+            market_close = time(close_hour, close_minute)
+
+            current_time = now_local.time()
 
             is_open = market_open <= current_time <= market_close
 
             _LOGGER.debug(
-                "Market hours check: %s ET, weekday: %s, is_open: %s",
+                "Market hours check for %s: %s, weekday: %s, is_open: %s",
+                self._timezone,
                 current_time.strftime("%H:%M:%S"),
-                now_et.weekday(),
+                now_local.weekday(),
                 is_open,
             )
 
@@ -562,27 +586,45 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             Updated portfolio data
 
         """
-        # Check current market status and determine appropriate interval
-        is_market_open = self._is_market_hours()
-        new_interval = (
-            DEFAULT_UPDATE_INTERVAL_MARKET_HOURS
-            if is_market_open
-            else DEFAULT_UPDATE_INTERVAL_AFTER_HOURS
-        )
-
-        # Update interval if it has changed
-        if new_interval != self.update_interval:
-            market_status = "market hours" if is_market_open else "after hours"
-            _LOGGER.info(
-                "Switched to %s mode - updating refresh interval from %s to %s",
-                market_status,
-                self.update_interval,
-                new_interval,
+        # For "any" timezone, use fixed interval
+        if self._timezone == "any":
+            new_interval = DEFAULT_UPDATE_INTERVAL_ANY
+            # Log only if interval changed
+            if new_interval != self.update_interval:
+                _LOGGER.info(
+                    "Using fixed update interval (no market hours) - %s",
+                    new_interval,
+                )
+                self.update_interval = new_interval
+        else:
+            # Check current market status and determine appropriate interval
+            is_market_open = self._is_market_hours()
+            new_interval = (
+                DEFAULT_UPDATE_INTERVAL_MARKET_HOURS
+                if is_market_open
+                else DEFAULT_UPDATE_INTERVAL_AFTER_HOURS
             )
-            self.update_interval = new_interval
+
+            # Update interval if it has changed
+            if new_interval != self.update_interval:
+                market_status = "market hours" if is_market_open else "after hours"
+                _LOGGER.info(
+                    "Switched to %s mode for %s - updating refresh interval from %s to %s",
+                    market_status,
+                    self._timezone,
+                    self.update_interval,
+                    new_interval,
+                )
+                self.update_interval = new_interval
 
         # Fetch the portfolio data
-        return await self._fetch_portfolio_data()
+        data = await self._fetch_portfolio_data()
+
+        # Store the last successful update time
+        if data is not None:
+            self._last_successful_update = dt_util.utcnow()
+
+        return data
 
     async def async_shutdown(self) -> None:
         """Shutdown the coordinator and cleanup resources."""
@@ -591,6 +633,11 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._api_client = None
 
         await super().async_shutdown()
+
+    @property
+    def last_successful_update_time(self) -> datetime | None:
+        """Get the last successful update time."""
+        return self._last_successful_update
 
     def get_cash_balance(self) -> float:
         """Get cash balance from data.
@@ -686,19 +733,30 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         This can be called manually to force an interval check without waiting
         for the next scheduled update.
         """
-        is_market_open = self._is_market_hours()
-        new_interval = (
-            DEFAULT_UPDATE_INTERVAL_MARKET_HOURS
-            if is_market_open
-            else DEFAULT_UPDATE_INTERVAL_AFTER_HOURS
-        )
-
-        if new_interval != self.update_interval:
-            market_status = "market hours" if is_market_open else "after hours"
-            _LOGGER.info(
-                "Manual interval check: Switched to %s mode - updating refresh interval from %s to %s",
-                market_status,
-                self.update_interval,
-                new_interval,
+        # For "any" timezone, use fixed interval
+        if self._timezone == "any":
+            new_interval = DEFAULT_UPDATE_INTERVAL_ANY
+            if new_interval != self.update_interval:
+                _LOGGER.info(
+                    "Manual interval check: Using fixed update interval (no market hours) - %s",
+                    new_interval,
+                )
+                self.update_interval = new_interval
+        else:
+            is_market_open = self._is_market_hours()
+            new_interval = (
+                DEFAULT_UPDATE_INTERVAL_MARKET_HOURS
+                if is_market_open
+                else DEFAULT_UPDATE_INTERVAL_AFTER_HOURS
             )
-            self.update_interval = new_interval
+
+            if new_interval != self.update_interval:
+                market_status = "market hours" if is_market_open else "after hours"
+                _LOGGER.info(
+                    "Manual interval check: Switched to %s mode for %s - updating refresh interval from %s to %s",
+                    market_status,
+                    self._timezone,
+                    self.update_interval,
+                    new_interval,
+                )
+                self.update_interval = new_interval
