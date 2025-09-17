@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-import json
 import logging
-from pathlib import Path
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
@@ -27,15 +25,6 @@ from .coordinator import SaxoCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-
-def get_integration_version() -> str:
-    """Get version from manifest.json."""
-    try:
-        manifest_path = Path(__file__).parent / "manifest.json"
-        manifest = json.loads(manifest_path.read_text())
-        return manifest.get("version", "unknown")
-    except (FileNotFoundError, json.JSONDecodeError, KeyError):
-        return "unknown"
 
 
 async def async_setup_entry(
@@ -111,7 +100,6 @@ class SaxoCashBalanceSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
             name=device_name,
             manufacturer=DEVICE_MANUFACTURER,
             model=DEVICE_MODEL,
-            sw_version=get_integration_version(),
             configuration_url="https://www.developer.saxo/openapi/appmanagement",
         )
 
@@ -226,7 +214,6 @@ class SaxoTotalValueSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
             name=device_name,
             manufacturer=DEVICE_MANUFACTURER,
             model=DEVICE_MODEL,
-            sw_version=get_integration_version(),
             configuration_url="https://www.developer.saxo/openapi/appmanagement",
         )
 
@@ -343,7 +330,6 @@ class SaxoNonMarginPositionsValueSensor(
             name=device_name,
             manufacturer=DEVICE_MANUFACTURER,
             model=DEVICE_MODEL,
-            sw_version=get_integration_version(),
             configuration_url="https://www.developer.saxo/openapi/appmanagement",
         )
 
@@ -473,7 +459,6 @@ class SaxoAccumulatedProfitLossSensor(CoordinatorEntity[SaxoCoordinator], Sensor
             name=device_name,
             manufacturer=DEVICE_MANUFACTURER,
             model=DEVICE_MODEL,
-            sw_version=get_integration_version(),
             configuration_url="https://www.developer.saxo/openapi/appmanagement",
         )
 
@@ -568,7 +553,6 @@ class SaxoInvestmentPerformanceSensor(CoordinatorEntity[SaxoCoordinator], Sensor
             name=device_name,
             manufacturer=DEVICE_MANUFACTURER,
             model=DEVICE_MODEL,
-            sw_version=get_integration_version(),
             configuration_url="https://www.developer.saxo/openapi/appmanagement",
         )
 
@@ -673,7 +657,6 @@ class SaxoCashTransferBalanceSensor(CoordinatorEntity[SaxoCoordinator], SensorEn
             name=device_name,
             manufacturer=DEVICE_MANUFACTURER,
             model=DEVICE_MODEL,
-            sw_version=get_integration_version(),
             configuration_url="https://www.developer.saxo/openapi/appmanagement",
         )
 
@@ -775,7 +758,6 @@ class SaxoTokenExpirySensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
             name=device_name,
             manufacturer=DEVICE_MANUFACTURER,
             model=DEVICE_MODEL,
-            sw_version=get_integration_version(),
         )
 
     @property
@@ -866,7 +848,6 @@ class SaxoMarketStatusSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
             name=device_name,
             manufacturer=DEVICE_MANUFACTURER,
             model=DEVICE_MODEL,
-            sw_version=get_integration_version(),
         )
 
     @property
@@ -973,7 +954,6 @@ class SaxoLastUpdateSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
             name=device_name,
             manufacturer=DEVICE_MANUFACTURER,
             model=DEVICE_MODEL,
-            sw_version=get_integration_version(),
         )
 
     @property
