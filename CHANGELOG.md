@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.3] - 2025-09-17
+
+### Fixed
+- **Performance Sensor Availability**: Fixed performance sensors showing as unavailable despite API data being correctly fetched
+  - Added proper `available` property to `SaxoPerformanceSensorBase` class
+  - Performance sensors now check if they can retrieve performance values from coordinator
+  - Affects Investment Performance, YTD, Month, and Quarter performance sensors
+
+### Technical Improvements
+- Enhanced availability logic for performance sensors to validate data accessibility
+- Improved error handling when checking performance value availability
+
 ## [2.1.2] - 2025-09-17
 
 ### Fixed

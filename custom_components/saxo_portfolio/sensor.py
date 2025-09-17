@@ -651,6 +651,21 @@ class SaxoPerformanceSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity
         """
         raise NotImplementedError("Subclasses must implement _get_time_period method")
 
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        if not self.coordinator.last_update_success:
+            return False
+        if not self.coordinator.data:
+            return False
+
+        # Check if we can get a performance value
+        try:
+            performance_value = self._get_performance_value()
+            return performance_value is not None
+        except Exception:
+            return False
+
     def _get_period_dates(self) -> dict[str, str] | None:
         """Calculate From and Thru dates based on the time period.
 
