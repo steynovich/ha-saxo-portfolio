@@ -5,9 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.1.0-beta.1] - 2025-09-17
+## [2.1.0-beta.2] - 2025-09-17
 
-### Added
+### Fixed
+- **Token Refresh**: Added redirect_uri to config entry to fix OAuth token refresh failures
+- **State Class**: Changed accumulated profit/loss sensor state_class from 'measurement' to 'total' for proper Home Assistant compatibility
+
+### Added (from beta.1)
 - **Configurable Market Timezone**: Select from 9 major market timezones for intelligent scheduling
 - **"Any" Mode**: Option to disable market hours detection with fixed 15-minute update intervals
 - **Options Flow**: Change timezone configuration after initial setup through integration options
