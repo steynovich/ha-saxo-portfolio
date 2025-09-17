@@ -335,7 +335,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 redirect_uri = "https://my.home-assistant.io/redirect/oauth"
                 _LOGGER.info(
                     "No redirect_uri in config entry, using fallback: %s (consider reconfiguring integration)",
-                    redirect_uri
+                    redirect_uri,
                 )
 
             refresh_data["redirect_uri"] = redirect_uri
@@ -581,7 +581,9 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         if client_details:
                             _LOGGER.debug(
                                 "Client details response keys: %s",
-                                list(client_details.keys()) if client_details else "No data"
+                                list(client_details.keys())
+                                if client_details
+                                else "No data",
                             )
 
                             client_key = client_details.get("ClientKey")
@@ -722,7 +724,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         if client_details:
                             _LOGGER.debug(
                                 "Fetched client details keys for account info: %s",
-                                list(client_details.keys())
+                                list(client_details.keys()),
                             )
                     except Exception:
                         _LOGGER.debug("Could not fetch client details for account info")
@@ -736,7 +738,11 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         client_name,
                     )
                 else:
-                    _LOGGER.debug("No client details available - using cached/default values: AccountId: %s, Name: '%s'", account_id, client_name)
+                    _LOGGER.debug(
+                        "No client details available - using cached/default values: AccountId: %s, Name: '%s'",
+                        account_id,
+                        client_name,
+                    )
 
                     # Update performance data cache if we fetched new data
                     if should_update_performance:

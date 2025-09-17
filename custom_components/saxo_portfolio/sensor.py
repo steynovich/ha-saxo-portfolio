@@ -478,10 +478,12 @@ class SaxoAccumulatedProfitLossSensor(CoordinatorEntity[SaxoCoordinator], Sensor
 
         attrs = {
             "attribution": ATTRIBUTION,
-            "last_updated": getattr(
-                self.coordinator, "_performance_last_updated", None
-            ),
         }
+
+        # Add last updated timestamp from coordinator data
+        last_updated = self.coordinator.data.get("last_updated")
+        if last_updated:
+            attrs["last_updated"] = last_updated
 
         # Add currency information
         currency = self.coordinator.get_currency()
@@ -624,18 +626,16 @@ class SaxoPerformanceSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity
         if not self.coordinator.data:
             return {}
 
-        # Get last updated timestamp and format it as ISO string
-        last_updated = getattr(self.coordinator, "_performance_last_updated", None)
-        if last_updated is not None:
-            last_updated_str = last_updated.isoformat()
-        else:
-            last_updated_str = None
-
         attrs = {
             "attribution": ATTRIBUTION,
-            "last_updated": last_updated_str,
             "time_period": self._get_time_period(),
         }
+
+        # Add last updated timestamp from coordinator data
+        if self.coordinator.data:
+            last_updated = self.coordinator.data.get("last_updated")
+            if last_updated:
+                attrs["last_updated"] = last_updated
 
         # Add From and Thru attributes based on time period
         period_dates = self._get_period_dates()
@@ -698,19 +698,7 @@ class SaxoPerformanceSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity
             # Unknown time period
             return None
 
-        return {
-            "from": from_date.isoformat(),
-            "thru": thru_date.isoformat()
-        }
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data is not None
-            and self._data_key in self.coordinator.data
-        )
+        return {"from": from_date.isoformat(), "thru": thru_date.isoformat()}
 
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
@@ -855,15 +843,16 @@ class SaxoCashTransferBalanceSensor(CoordinatorEntity[SaxoCoordinator], SensorEn
 
         attrs = {
             "attribution": ATTRIBUTION,
-            "last_updated": getattr(
-                self.coordinator, "_performance_last_updated", None
-            ),
         }
 
-        if self.coordinator.data:
-            # Add currency information
-            currency = self.coordinator.get_currency()
-            attrs["currency"] = currency
+        # Add last updated timestamp from coordinator data
+        last_updated = self.coordinator.data.get("last_updated")
+        if last_updated:
+            attrs["last_updated"] = last_updated
+
+        # Add currency information
+        currency = self.coordinator.get_currency()
+        attrs["currency"] = currency
 
         return attrs
 

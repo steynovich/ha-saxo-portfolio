@@ -625,8 +625,6 @@ class SaxoApiClient:
             )
             raise APIError("Failed to fetch performance v4 Quarter data")
 
-
-
     async def close(self):
         """Close the HTTP session."""
         if self._session and not self._session.closed:
