@@ -631,8 +631,15 @@ class SaxoPerformanceSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity
             "time_period": self._get_time_period(),
         }
 
-        # Add last updated timestamp from coordinator data
-        if self.coordinator.data:
+        # Add last updated timestamp from performance cache, fallback to general timestamp
+        if (
+            hasattr(self.coordinator, "_performance_last_updated")
+            and self.coordinator._performance_last_updated
+        ):
+            attrs["last_updated"] = (
+                self.coordinator._performance_last_updated.isoformat()
+            )
+        elif self.coordinator.data:
             last_updated = self.coordinator.data.get("last_updated")
             if last_updated:
                 attrs["last_updated"] = last_updated

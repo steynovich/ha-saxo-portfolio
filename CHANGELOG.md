@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.5] - 2025-09-17
+
+### Fixed
+- **Performance Sensor Last Updated Attribute**: Fixed performance sensors last_updated attribute showing as unknown or missing
+  - Performance sensors now use performance cache timestamp (`_performance_last_updated`) when available
+  - Added fallback to general coordinator timestamp when performance cache is not yet populated
+  - Ensures performance sensors always display accurate last updated information
+
 ## [2.1.3] - 2025-09-17
 
 ### Fixed
