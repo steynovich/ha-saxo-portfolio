@@ -53,7 +53,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._api_client: SaxoApiClient | None = None
         self._last_token_check = datetime.now()
         self._token_refresh_lock = asyncio.Lock()
-        self._last_successful_update = None
+        self._last_successful_update: datetime | None = None
 
         # Get configured timezone
         self._timezone = config_entry.data.get(CONF_TIMEZONE, DEFAULT_TIMEZONE)
@@ -618,7 +618,13 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.update_interval = new_interval
 
         # Fetch the portfolio data
-        return await self._fetch_portfolio_data()
+        data = await self._fetch_portfolio_data()
+
+        # Store the last successful update time
+        if data is not None:
+            self._last_successful_update = dt_util.utcnow()
+
+        return data
 
     async def async_shutdown(self) -> None:
         """Shutdown the coordinator and cleanup resources."""
@@ -627,6 +633,11 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._api_client = None
 
         await super().async_shutdown()
+
+    @property
+    def last_successful_update_time(self) -> datetime | None:
+        """Get the last successful update time."""
+        return self._last_successful_update
 
     def get_cash_balance(self) -> float:
         """Get cash balance from data.

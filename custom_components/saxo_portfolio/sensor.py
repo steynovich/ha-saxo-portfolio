@@ -959,20 +959,16 @@ class SaxoLastUpdateSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
     @property
     def native_value(self) -> datetime | None:
         """Return the last update time."""
-        # The DataUpdateCoordinator sets last_update_time_utc after first successful update
-        # It may be None initially until the first update completes
+        # Use our custom property that tracks successful updates
+        if hasattr(self.coordinator, "last_successful_update_time"):
+            return self.coordinator.last_successful_update_time
+
+        # Fallback to DataUpdateCoordinator's built-in property if available
         if (
             hasattr(self.coordinator, "last_update_time_utc")
             and self.coordinator.last_update_time_utc is not None
         ):
             return self.coordinator.last_update_time_utc
-
-        # Check if we have last_update_success_time as fallback
-        if (
-            hasattr(self.coordinator, "last_update_success_time")
-            and self.coordinator.last_update_success_time is not None
-        ):
-            return self.coordinator.last_update_success_time
 
         return None
 
