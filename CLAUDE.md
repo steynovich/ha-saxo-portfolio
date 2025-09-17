@@ -119,7 +119,7 @@ python -m py_compile custom_components/saxo_portfolio/sensor.py
 - `api/saxo_client.py:502-540`: get_performance_v4_ytd() method for year-to-date performance
 - `const.py:118`: PERFORMANCE_UPDATE_INTERVAL constant (1 hour)
 
-## Recent Changes (v2.2.2+)
+## Recent Changes (v2.1.2+)
 - **Expanded to sixteen entities**: Added comprehensive portfolio monitoring including Month/Quarter performance tracking
 - **Additional Performance Sensors**: Month-to-Date and Quarter-to-Date investment performance sensors
   - SaxoMonthInvestmentPerformanceSensor using "Month" StandardPeriod
