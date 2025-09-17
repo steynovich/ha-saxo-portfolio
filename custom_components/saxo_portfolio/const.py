@@ -44,6 +44,76 @@ MARKET_CLOSE_MINUTE: Final = 0
 # Weekdays (Monday = 0, Sunday = 6)
 MARKET_WEEKDAYS: Final = [0, 1, 2, 3, 4]  # Monday through Friday
 
+# Timezone configuration
+CONF_TIMEZONE: Final = "timezone"
+DEFAULT_TIMEZONE: Final = "America/New_York"
+
+# Available timezones for market hours detection
+TIMEZONE_OPTIONS: Final = {
+    "America/New_York": "New York (NYSE/NASDAQ)",
+    "Europe/London": "London (LSE)",
+    "Europe/Amsterdam": "Amsterdam (Euronext)",
+    "Europe/Paris": "Paris (Euronext)",
+    "Europe/Frankfurt": "Frankfurt (XETRA)",
+    "Asia/Tokyo": "Tokyo (TSE)",
+    "Asia/Hong_Kong": "Hong Kong (HKEX)",
+    "Asia/Singapore": "Singapore (SGX)",
+    "Australia/Sydney": "Sydney (ASX)",
+    "any": "Any - Disable intelligent scheduling",
+}
+
+# Market hours per timezone (local time)
+MARKET_HOURS: Final = {
+    "America/New_York": {
+        "open": (9, 30),
+        "close": (16, 0),
+        "weekdays": [0, 1, 2, 3, 4],
+    },
+    "Europe/London": {
+        "open": (8, 0),
+        "close": (16, 30),
+        "weekdays": [0, 1, 2, 3, 4],
+    },
+    "Europe/Amsterdam": {
+        "open": (9, 0),
+        "close": (17, 30),
+        "weekdays": [0, 1, 2, 3, 4],
+    },
+    "Europe/Paris": {
+        "open": (9, 0),
+        "close": (17, 30),
+        "weekdays": [0, 1, 2, 3, 4],
+    },
+    "Europe/Frankfurt": {
+        "open": (9, 0),
+        "close": (17, 30),
+        "weekdays": [0, 1, 2, 3, 4],
+    },
+    "Asia/Tokyo": {
+        "open": (9, 0),
+        "close": (15, 0),
+        "weekdays": [0, 1, 2, 3, 4],
+    },
+    "Asia/Hong_Kong": {
+        "open": (9, 30),
+        "close": (16, 0),
+        "weekdays": [0, 1, 2, 3, 4],
+    },
+    "Asia/Singapore": {
+        "open": (9, 0),
+        "close": (17, 0),
+        "weekdays": [0, 1, 2, 3, 4],
+    },
+    "Australia/Sydney": {
+        "open": (10, 0),
+        "close": (16, 0),
+        "weekdays": [0, 1, 2, 3, 4],
+    },
+}
+
+# Update interval for "any" timezone (no intelligent scheduling)
+DEFAULT_UPDATE_INTERVAL_ANY: Final = timedelta(minutes=15)
+
 
 # Configuration flow
 CONF_ENTITY_PREFIX: Final = "entity_prefix"

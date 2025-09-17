@@ -6,15 +6,15 @@
 [![HACS Action](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hacs.yml/badge.svg)](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hacs.yml)
 [![Hassfest](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hassfest.yml/badge.svg)](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hassfest.yml)
 
-A **Platinum-grade** Home Assistant integration for monitoring your Saxo Bank portfolio through their OpenAPI. Features OAuth 2.0 authentication, intelligent update scheduling based on market hours, automatic entity naming based on your Saxo Client ID, and comprehensive performance tracking.
+A **Platinum-grade** Home Assistant integration for monitoring your Saxo Bank portfolio through their OpenAPI. Features OAuth 2.0 authentication, intelligent update scheduling based on market hours, automatic entity naming based on your Saxo Client ID, and comprehensive portfolio monitoring with six dedicated sensors.
 
 ## Features
 
 - 🔐 **Enterprise-Grade Security**: OAuth 2.0 with Home Assistant credential management, encrypted token storage, and comprehensive data masking
-- 💰 **Comprehensive Portfolio Tracking**: Real-time balance monitoring and performance tracking from multiple Saxo API endpoints
+- 💰 **Six Comprehensive Sensors**: Real-time balance, performance metrics, and cash transfer tracking from multiple Saxo API endpoints
 - 🏷️ **Automatic Entity Naming**: Entity names auto-generated using your Saxo Client ID (e.g., `saxo_123456_cash_balance`)
-- 🕒 **Intelligent Scheduling**: Dynamic update intervals (5 min during market hours, 30 min after hours) with Eastern Time market detection
-- 📊 **Performance Analytics**: All-time profit/loss tracking with accumulated performance metrics
+- 🕒 **Intelligent Scheduling**: Configurable market timezone with dynamic update intervals (5 min during market hours, 30 min after hours)
+- 📊 **Performance Analytics**: All-time profit/loss, investment returns, and cash transfer balance tracking
 - 🏭 **Production Ready**: Uses production Saxo API endpoints for live data
 - 🔄 **Robust API Handling**: Advanced rate limiting, exponential backoff, and automatic retry logic
 - 🛡️ **Security-First Design**: CSRF protection, SSL certificate verification, and sanitized logging
@@ -23,22 +23,22 @@ A **Platinum-grade** Home Assistant integration for monitoring your Saxo Bank po
 
 ## Supported Sensors
 
-The integration provides **6 comprehensive sensors** that automatically use your Saxo Client ID for unique entity naming:
+The integration provides **six comprehensive sensors** that automatically use your Saxo Client ID for unique entity naming:
 
 ### Balance & Portfolio Sensors
 - **Cash Balance**: Available cash in your Saxo portfolio (`sensor.saxo_{clientid}_cash_balance`)
-- **Total Value**: Total portfolio value including cash and investments (`sensor.saxo_{clientid}_total_value`) 
+- **Total Value**: Total portfolio value including cash and investments (`sensor.saxo_{clientid}_total_value`)
 - **Non-Margin Positions Value**: Value of non-margin trading positions (`sensor.saxo_{clientid}_non_margin_positions_value`)
 
-### Performance Analytics
+### Performance & Transfer Analytics
 - **Accumulated Profit/Loss**: All-time performance tracking from Saxo's historical API (`sensor.saxo_{clientid}_accumulated_profit_loss`)
 - **Investment Performance**: Overall portfolio return percentage from performance timeseries (`sensor.saxo_{clientid}_investment_performance`)
-- **Cash Transfer Balance**: Latest cash transfer value from performance data (`sensor.saxo_{clientid}_cash_transfer_balance`)
+- **Cash Transfer Balance**: Latest cash transfer value tracking deposits and withdrawals (`sensor.saxo_{clientid}_cash_transfer_balance`)
 
 ### Key Features
 - **API Endpoints Used**: `/port/v1/balances/me`, `/port/v1/clients/me`, `/hist/v3/perf/`, `/hist/v4/performance/timeseries`
 - **Currency Support**: Automatically detects and displays the appropriate currency unit
-- **Performance Data**: ReturnFraction converted to percentage, latest cash transfer tracking
+- **Performance Metrics**: Investment returns as percentage, cash transfer balance tracking
 - **Client ID Integration**: Entity names automatically use your actual Saxo Client ID for unique identification
 
 ## Prerequisites
@@ -79,20 +79,35 @@ The integration provides **6 comprehensive sensors** that automatically use your
 1. Go to Settings → Devices & Services
 2. Click "Add Integration" and search for "Saxo Portfolio"
 3. Follow the OAuth authentication flow with Saxo's production environment
-4. The integration will automatically fetch your Client ID and create appropriately named entities
+4. Select your primary trading market timezone (or "Any" to disable intelligent scheduling)
+5. The integration will automatically fetch your Client ID and create appropriately named entities
 
 ## Configuration Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
+| Market Timezone | Select your primary trading market for intelligent scheduling | America/New_York |
 | Update Interval (Market Hours) | How often to fetch data during market hours | 5 minutes |
 | Update Interval (After Hours) | How often to fetch data after market hours | 30 minutes |
+| Update Interval (Any Mode) | Fixed interval when "Any" timezone is selected | 15 minutes |
 
-**Note**: Entity prefixes are now automatically generated using your Saxo Client ID, eliminating the need for manual configuration.
+### Supported Market Timezones
+- **America/New_York**: NYSE/NASDAQ (9:30 AM - 4:00 PM ET)
+- **Europe/London**: LSE (8:00 AM - 4:30 PM GMT/BST)
+- **Europe/Amsterdam**: Euronext (9:00 AM - 5:30 PM CET/CEST)
+- **Europe/Paris**: Euronext (9:00 AM - 5:30 PM CET/CEST)
+- **Europe/Frankfurt**: XETRA (9:00 AM - 5:30 PM CET/CEST)
+- **Asia/Tokyo**: TSE (9:00 AM - 3:00 PM JST)
+- **Asia/Hong_Kong**: HKEX (9:30 AM - 4:00 PM HKT)
+- **Asia/Singapore**: SGX (9:00 AM - 5:00 PM SGT)
+- **Australia/Sydney**: ASX (10:00 AM - 4:00 PM AEDT/AEST)
+- **Any**: Disable intelligent scheduling (fixed 15-minute intervals)
+
+**Note**: Entity prefixes are now automatically generated using your Saxo Client ID, eliminating the need for manual configuration. You can change the market timezone at any time through the integration options.
 
 ## Entities Created
 
-The integration automatically creates **6 sensors** using your Saxo Client ID:
+The integration automatically creates **six sensors** using your Saxo Client ID:
 
 ### Automatic Entity Naming (Example: Client ID "123456")
 - `sensor.saxo_123456_cash_balance` - Available cash balance
@@ -106,7 +121,7 @@ The integration automatically creates **6 sensors** using your Saxo Client ID:
 - **Currency**: Portfolio currency (EUR, USD, etc.) - automatically detected
 - **Cross-Reference**: Sensors include related values for context
 - **Last Updated**: Timestamp of last data refresh
-- **Performance Data**: Historical profit/loss calculations
+- **Performance Metrics**: Historical profit/loss and return calculations
 - **Attribution**: Data source identification
 
 ## Security & Privacy
@@ -124,11 +139,14 @@ This integration implements enterprise-grade security practices:
 
 See [SECURITY.md](SECURITY.md) for comprehensive security documentation and user guidelines.
 
-## Market Hours
+## Market Hours Detection
 
-The integration automatically detects market hours (Monday-Friday, 9:30 AM - 4:00 PM ET) and adjusts update frequency accordingly:
-- **Market Hours**: Updates every 5 minutes
-- **After Hours**: Updates every 30 minutes
+The integration intelligently adjusts update frequency based on your configured market timezone:
+- **Market Hours**: Updates every 5 minutes when your selected market is open
+- **After Hours**: Updates every 30 minutes when your selected market is closed
+- **"Any" Mode**: Fixed 15-minute updates regardless of time (no market hours detection)
+
+The integration automatically handles daylight saving time transitions for all supported markets.
 
 ## Troubleshooting
 
