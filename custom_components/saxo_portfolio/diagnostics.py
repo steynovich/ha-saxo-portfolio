@@ -47,16 +47,27 @@ async def async_get_config_entry_diagnostics(
 
     # Get coordinator status
     coordinator_data = {
-        "last_update_success": coordinator.last_update_success,
+        "last_update_success": coordinator.last_update_success
+        if hasattr(coordinator, "last_update_success")
+        else None,
         "last_update_time": (
-            coordinator.last_update_time.isoformat()
-            if coordinator.last_update_time
+            coordinator.last_update_time_utc.isoformat()
+            if hasattr(coordinator, "last_update_time_utc")
+            and coordinator.last_update_time_utc
             else None
         ),
-        "update_interval": str(coordinator.update_interval),
+        "update_interval": str(coordinator.update_interval)
+        if hasattr(coordinator, "update_interval")
+        else None,
         "configured_timezone": getattr(coordinator, "_timezone", "Unknown"),
         "is_market_hours": coordinator._is_market_hours()
         if hasattr(coordinator, "_is_market_hours")
+        else None,
+        "has_data": coordinator.data is not None
+        if hasattr(coordinator, "data")
+        else False,
+        "last_exception": str(coordinator.last_exception)
+        if hasattr(coordinator, "last_exception") and coordinator.last_exception
         else None,
     }
 
@@ -130,17 +141,19 @@ async def async_get_config_entry_diagnostics(
             expiry_datetime = datetime.fromtimestamp(expires_at)
             current_datetime = datetime.fromtimestamp(current_time)
 
-            token_status.update({
-                "expires_at_timestamp": expires_at,
-                "expires_at_iso": expiry_datetime.isoformat(),
-                "current_time_iso": current_datetime.isoformat(),
-                "expires_in_seconds": int(time_until_expiry),
-                "expires_in_minutes": round(time_until_expiry / 60, 1),
-                "expires_in_hours": round(time_until_expiry / 3600, 2),
-                "is_expired": time_until_expiry <= 0,
-                "needs_refresh_soon": time_until_expiry <= 300,  # 5 minutes
-                "needs_refresh_urgent": time_until_expiry <= 60,  # 1 minute
-            })
+            token_status.update(
+                {
+                    "expires_at_timestamp": expires_at,
+                    "expires_at_iso": expiry_datetime.isoformat(),
+                    "current_time_iso": current_datetime.isoformat(),
+                    "expires_in_seconds": int(time_until_expiry),
+                    "expires_in_minutes": round(time_until_expiry / 60, 1),
+                    "expires_in_hours": round(time_until_expiry / 3600, 2),
+                    "is_expired": time_until_expiry <= 0,
+                    "needs_refresh_soon": time_until_expiry <= 300,  # 5 minutes
+                    "needs_refresh_urgent": time_until_expiry <= 60,  # 1 minute
+                }
+            )
 
             # Add human-readable status
             if time_until_expiry <= 0:
@@ -150,9 +163,13 @@ async def async_get_config_entry_diagnostics(
             elif time_until_expiry <= 300:
                 token_status["status"] = "WARNING - Expires in less than 5 minutes"
             elif time_until_expiry <= 3600:
-                token_status["status"] = f"OK - Expires in {round(time_until_expiry / 60)} minutes"
+                token_status["status"] = (
+                    f"OK - Expires in {round(time_until_expiry / 60)} minutes"
+                )
             else:
-                token_status["status"] = f"OK - Expires in {round(time_until_expiry / 3600, 1)} hours"
+                token_status["status"] = (
+                    f"OK - Expires in {round(time_until_expiry / 3600, 1)} hours"
+                )
 
     # Get version from manifest
     manifest_path = Path(__file__).parent / "manifest.json"
