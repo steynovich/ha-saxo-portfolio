@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+import time
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
@@ -110,8 +113,6 @@ async def async_get_config_entry_diagnostics(
     token_status = {}
     if "token" in entry.data:
         token_data = entry.data["token"]
-        import time
-
         current_time = time.time()
 
         token_status = {
@@ -127,9 +128,18 @@ async def async_get_config_entry_diagnostics(
             token_status["is_expired"] = time_until_expiry <= 0
             token_status["needs_refresh_soon"] = time_until_expiry <= 300  # 5 minutes
 
+    # Get version from manifest
+    manifest_path = Path(__file__).parent / "manifest.json"
+    version = "unknown"
+    try:
+        manifest = json.loads(manifest_path.read_text())
+        version = manifest.get("version", "unknown")
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
     # Integration information
     integration_info = {
-        "version": "2.1.0-beta.2",
+        "version": version,
         "sensors_configured": 6,
         "sensor_types": [
             "cash_balance",
