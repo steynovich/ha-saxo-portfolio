@@ -421,7 +421,7 @@ class SaxoAccumulatedProfitLossSensor(CoordinatorEntity[SaxoCoordinator], Sensor
     """Representation of a Saxo Portfolio Accumulated Profit/Loss sensor."""
 
     _attr_device_class = "monetary"
-    _attr_state_class = "measurement"
+    _attr_state_class = "total"
     _attr_icon = "mdi:trending-up"
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
