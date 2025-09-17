@@ -6,7 +6,7 @@ from datetime import datetime
 import logging
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
@@ -929,7 +929,7 @@ class SaxoLastUpdateSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
     """Representation of a Saxo Last Update diagnostic sensor."""
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_device_class = "timestamp"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:update"
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
@@ -967,8 +967,21 @@ class SaxoLastUpdateSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
     @property
     def native_value(self) -> datetime | None:
         """Return the last update time."""
-        if hasattr(self.coordinator, "last_update_time_utc"):
+        # The DataUpdateCoordinator sets last_update_time_utc after first successful update
+        # It may be None initially until the first update completes
+        if (
+            hasattr(self.coordinator, "last_update_time_utc")
+            and self.coordinator.last_update_time_utc is not None
+        ):
             return self.coordinator.last_update_time_utc
+
+        # Check if we have last_update_success_time as fallback
+        if (
+            hasattr(self.coordinator, "last_update_success_time")
+            and self.coordinator.last_update_success_time is not None
+        ):
+            return self.coordinator.last_update_success_time
+
         return None
 
     @property
@@ -994,4 +1007,6 @@ class SaxoLastUpdateSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        return True
+        # Always available since it's a diagnostic sensor
+        # But we could check if coordinator has been initialized
+        return self.coordinator is not None
