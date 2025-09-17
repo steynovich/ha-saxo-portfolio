@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Coordinator status and update intervals
   - Market hours detection status
   - Dynamic version reading from manifest.json
+- **Diagnostic Sensors**: Four dedicated diagnostic entities for real-time monitoring
+  - Token Expiry sensor with countdown and status indicators
+  - Market Status sensor showing current market state
+  - Last Update sensor with timestamp tracking
+  - Timezone sensor displaying configuration details
 
 ### Enhanced
 - **Token Diagnostics**: Comprehensive expiry tracking with status indicators (OK/WARNING/CRITICAL/EXPIRED)

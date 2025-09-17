@@ -56,6 +56,7 @@ async def async_setup_entry(
         SaxoTokenExpirySensor(coordinator),
         SaxoMarketStatusSensor(coordinator),
         SaxoLastUpdateSensor(coordinator),
+        SaxoTimezoneSensor(coordinator),
     ]
 
     _LOGGER.info(
@@ -998,3 +999,106 @@ class SaxoLastUpdateSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
         # Always available since it's a diagnostic sensor
         # But we could check if coordinator has been initialized
         return self.coordinator is not None
+
+
+class SaxoTimezoneSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+    """Representation of a Saxo Timezone Configuration diagnostic sensor."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:earth"
+
+    def __init__(self, coordinator: SaxoCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+
+        # Get entity prefix from ClientId with saxo_ prefix
+        client_id = coordinator.get_client_id()
+        entity_prefix = f"saxo_{client_id}".lower()
+
+        self._attr_unique_id = f"{entity_prefix}_timezone"
+        self._attr_name = f"Saxo {client_id} Timezone"
+        self.entity_id = f"sensor.{entity_prefix}_timezone"
+
+        _LOGGER.debug(
+            "Initialized timezone sensor with unique_id: %s, name: %s",
+            self._attr_unique_id,
+            self._attr_name,
+        )
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        client_id = self.coordinator.get_client_id()
+        device_name = f"Saxo {client_id} Portfolio"
+
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
+            name=device_name,
+            manufacturer=DEVICE_MANUFACTURER,
+            model=DEVICE_MODEL,
+        )
+
+    @property
+    def native_value(self) -> str:
+        """Return the configured timezone."""
+        timezone = getattr(self.coordinator, "_timezone", "Unknown")
+
+        if timezone == "any":
+            return "Any (Fixed Schedule)"
+
+        return timezone
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        from .const import (
+            MARKET_HOURS,
+            CONF_TIMEZONE,
+            DEFAULT_UPDATE_INTERVAL_MARKET_HOURS,
+            DEFAULT_UPDATE_INTERVAL_AFTER_HOURS,
+            DEFAULT_UPDATE_INTERVAL_ANY,
+        )
+
+        timezone = getattr(self.coordinator, "_timezone", "Unknown")
+        attrs = {
+            "configured_timezone": timezone,
+            "config_entry_timezone": self.coordinator.config_entry.data.get(
+                CONF_TIMEZONE, "Not configured"
+            ),
+        }
+
+        if timezone == "any":
+            attrs["mode"] = "Fixed interval"
+            attrs["update_interval"] = str(DEFAULT_UPDATE_INTERVAL_ANY)
+            attrs["market_hours_detection"] = False
+        elif timezone in MARKET_HOURS:
+            market_info = MARKET_HOURS[timezone]
+            attrs["mode"] = "Market hours detection"
+            attrs["market_hours_detection"] = True
+            attrs["market_open"] = (
+                f"{market_info['open'][0]:02d}:{market_info['open'][1]:02d}"
+            )
+            attrs["market_close"] = (
+                f"{market_info['close'][0]:02d}:{market_info['close'][1]:02d}"
+            )
+            attrs["trading_days"] = market_info["weekdays"]
+            attrs["update_interval_market"] = str(DEFAULT_UPDATE_INTERVAL_MARKET_HOURS)
+            attrs["update_interval_after"] = str(DEFAULT_UPDATE_INTERVAL_AFTER_HOURS)
+
+            # Show current market status
+            is_market_hours = (
+                self.coordinator._is_market_hours()
+                if hasattr(self.coordinator, "_is_market_hours")
+                else False
+            )
+            attrs["current_market_status"] = "Open" if is_market_hours else "Closed"
+        else:
+            attrs["mode"] = "Unknown configuration"
+            attrs["error"] = f"Unknown timezone: {timezone}"
+
+        return attrs
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return True

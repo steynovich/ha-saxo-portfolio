@@ -107,15 +107,21 @@ The integration provides **six comprehensive sensors** that automatically use yo
 
 ## Entities Created
 
-The integration automatically creates **six sensors** using your Saxo Client ID:
+The integration automatically creates **ten entities** using your Saxo Client ID:
 
-### Automatic Entity Naming (Example: Client ID "123456")
+### Portfolio Sensors (Example: Client ID "123456")
 - `sensor.saxo_123456_cash_balance` - Available cash balance
 - `sensor.saxo_123456_total_value` - Total portfolio value
 - `sensor.saxo_123456_non_margin_positions_value` - Non-margin positions value
 - `sensor.saxo_123456_accumulated_profit_loss` - All-time profit/loss performance
 - `sensor.saxo_123456_investment_performance` - Overall portfolio return percentage
 - `sensor.saxo_123456_cash_transfer_balance` - Latest cash transfer balance
+
+### Diagnostic Sensors (Example: Client ID "123456")
+- `sensor.saxo_123456_token_expiry` - OAuth token expiration countdown and status
+- `sensor.saxo_123456_market_status` - Current market status (Open/Closed/Fixed Schedule)
+- `sensor.saxo_123456_last_update` - Last successful data update timestamp
+- `sensor.saxo_123456_timezone` - Configured timezone and market hours settings
 
 ### Entity Attributes
 - **Currency**: Portfolio currency (EUR, USD, etc.) - automatically detected
@@ -164,6 +170,23 @@ The integration automatically handles daylight saving time transitions for all s
 **Missing Data**
 - Ensure your Saxo account has the required permissions for portfolio data
 - Verify your production application credentials are correctly configured
+
+### Diagnostic Information
+
+The integration provides comprehensive diagnostic sensors and data to help troubleshoot issues:
+
+**Diagnostic Sensors**: Monitor integration health in real-time
+- **Token Expiry**: Shows countdown to token expiration with status indicators (OK/WARNING/CRITICAL/EXPIRED)
+- **Market Status**: Displays current market state (Open/Closed) and update intervals
+- **Last Update**: Timestamp of the last successful data refresh
+- **Timezone**: Shows configured timezone and market hours settings
+
+**Built-in Diagnostics**: Available via Settings → Devices & Services → Saxo Portfolio → Download Diagnostics
+- Timezone configuration and market hours detection
+- Token expiry information with human-readable timestamps
+- Coordinator status and update intervals
+- Data availability and error information
+- All sensitive information automatically redacted
 
 ### Enable Debug Logging
 
