@@ -125,6 +125,9 @@ class SaxoPortfolioFlowHandler(
             data = {**self._oauth_data}
             data[CONF_TIMEZONE] = user_input[CONF_TIMEZONE]
 
+            # Add redirect_uri for token refresh (required by Saxo)
+            data["redirect_uri"] = "https://my.home-assistant.io/redirect/oauth"
+
             # Debug OAuth data structure (without sensitive info)
             debug_data = {k: v for k, v in data.items() if k != "token"}
             if "token" in data:
