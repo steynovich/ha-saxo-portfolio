@@ -96,7 +96,7 @@ python -m py_compile custom_components/saxo_portfolio/sensor.py
 - `api/saxo_client.py:464-502`: get_performance_v4() method for new endpoint
 - `const.py:23`: API_PERFORMANCE_V4_ENDPOINT constant
 
-## Recent Changes (v2.1.0-beta.4)
+## Recent Changes (v2.1.0)
 - **Expanded to ten entities**: Added comprehensive portfolio monitoring with diagnostic capabilities
 - **Diagnostic Sensors**: Four new diagnostic entities for real-time monitoring
   - Token Expiry sensor with countdown and status indicators
