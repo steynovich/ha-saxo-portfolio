@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0-beta.1] - 2025-09-17
+
+### Added
+- **Configurable Market Timezone**: Select from 9 major market timezones for intelligent scheduling
+- **"Any" Mode**: Option to disable market hours detection with fixed 15-minute update intervals
+- **Options Flow**: Change timezone configuration after initial setup through integration options
+- **Global Market Support**: NYSE, LSE, Euronext, XETRA, TSE, HKEX, SGX, ASX markets
+- **Timezone Selection Step**: New configuration step during initial setup to select market timezone
+
+### Enhanced
+- **Intelligent Scheduling**: Dynamic update intervals based on selected market hours
+- **Backward Compatibility**: Default timezone set to America/New_York for existing installations
+- **Market Hours Detection**: Automatic DST handling for all supported timezones
+- **Update Intervals**: 5 min (market hours), 30 min (after hours), 15 min ("any" mode)
+
+### Technical Improvements
+- Added comprehensive timezone constants and market hours configuration
+- Updated coordinator to use configurable timezone instead of hardcoded ET
+- Enhanced config flow with timezone selection and options flow handler
+- Added UI strings for timezone configuration in strings.json
+
 ## [2.0.3] - 2025-09-12
 
 ### Added
