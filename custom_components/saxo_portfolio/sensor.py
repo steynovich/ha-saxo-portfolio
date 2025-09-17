@@ -9,7 +9,7 @@ from typing import Any
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -731,7 +731,7 @@ class SaxoCashTransferBalanceSensor(CoordinatorEntity[SaxoCoordinator], SensorEn
 class SaxoTokenExpirySensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
     """Representation of a Saxo Token Expiry diagnostic sensor."""
 
-    _attr_entity_category = "diagnostic"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:clock-alert-outline"
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
@@ -822,7 +822,7 @@ class SaxoTokenExpirySensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
 class SaxoMarketStatusSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
     """Representation of a Saxo Market Status diagnostic sensor."""
 
-    _attr_entity_category = "diagnostic"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:chart-timeline-variant"
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
@@ -928,7 +928,7 @@ class SaxoMarketStatusSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
 class SaxoLastUpdateSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
     """Representation of a Saxo Last Update diagnostic sensor."""
 
-    _attr_entity_category = "diagnostic"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_device_class = "timestamp"
     _attr_icon = "mdi:update"
 
