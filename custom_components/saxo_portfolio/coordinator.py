@@ -923,7 +923,9 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await self._api_client.close()
                 _LOGGER.debug("Successfully closed API client during shutdown")
             except Exception as e:
-                _LOGGER.warning("Error closing API client during shutdown: %s", e, exc_info=True)
+                _LOGGER.warning(
+                    "Error closing API client during shutdown: %s", e, exc_info=True
+                )
             finally:
                 self._api_client = None
 
