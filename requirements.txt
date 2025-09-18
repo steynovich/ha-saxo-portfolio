@@ -1,5 +1,5 @@
 homeassistant>=2024.1.0
-saxo-openapi>=1.0.0
+saxo-openapi>=0.6.0
 aiohttp>=3.8.0
 pytz>=2023.3
 pytest>=7.0.0

@@ -8,8 +8,9 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo, EntityCategory
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -35,7 +36,7 @@ class SaxoSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
         sensor_type: str,
         display_name: str,
         *,
-        device_class: str | None = None,
+        device_class: SensorDeviceClass | None = None,
         icon: str | None = None,
         unit_of_measurement: str | None = None,
         entity_category: EntityCategory | None = None,
@@ -111,6 +112,8 @@ class SaxoSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
                 # Use the longer of 15 minutes or 3x the current update interval
                 update_interval_seconds = (
                     self.coordinator.update_interval.total_seconds()
+                    if self.coordinator.update_interval
+                    else 300  # Default to 5 minutes
                 )
                 max_failure_time = max(
                     15 * 60, 3 * update_interval_seconds
@@ -156,7 +159,7 @@ class SaxoBalanceSensorBase(SaxoSensorBase):
             coordinator,
             sensor_type,
             display_name,
-            device_class="monetary",
+            device_class=SensorDeviceClass.MONETARY,
             icon=icon,
             unit_of_measurement=coordinator.get_currency(),
         )
@@ -332,7 +335,7 @@ class SaxoAccumulatedProfitLossSensor(SaxoSensorBase):
             coordinator,
             "accumulated_profit_loss",
             "Portfolio Accumulated Profit/Loss",
-            device_class="monetary",
+            device_class=SensorDeviceClass.MONETARY,
             icon="mdi:trending-up",
             unit_of_measurement=coordinator.get_currency(),
         )
@@ -914,10 +917,10 @@ class SaxoLastUpdateSensor(SaxoDiagnosticSensorBase):
 
         # Fallback to DataUpdateCoordinator's built-in property if available
         if (
-            hasattr(self.coordinator, "last_update_time_utc")
-            and self.coordinator.last_update_time_utc is not None
+            hasattr(self.coordinator, "last_successful_update_time")
+            and self.coordinator.last_successful_update_time is not None
         ):
-            return self.coordinator.last_update_time_utc
+            return self.coordinator.last_successful_update_time
 
         return None
 
