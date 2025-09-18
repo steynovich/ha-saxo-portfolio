@@ -95,9 +95,11 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._api_client is not None:
             # Simple check: if the current token is different from the client's token
             # we need to recreate the client
-            current_token = getattr(self._api_client, 'access_token', None)
+            current_token = getattr(self._api_client, "access_token", None)
             if current_token != access_token:
-                _LOGGER.debug("Token changed, closing old API client and creating new one")
+                _LOGGER.debug(
+                    "Token changed, closing old API client and creating new one"
+                )
                 # Store reference to old client and schedule safe closure
                 old_client = self._api_client
                 self._api_client = None
