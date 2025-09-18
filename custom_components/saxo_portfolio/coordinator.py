@@ -98,9 +98,12 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             current_token = getattr(self._api_client, 'access_token', None)
             if current_token != access_token:
                 _LOGGER.debug("Token changed, closing old API client and creating new one")
-                # Schedule the old client for closure (don't await here since this is a property)
-                self.hass.async_create_task(self._api_client.close())
+                # Store reference to old client and schedule safe closure
+                old_client = self._api_client
                 self._api_client = None
+                # Create task to close the old client safely with error handling
+                if old_client:
+                    self.hass.async_create_task(self._close_old_client(old_client))
 
         if self._api_client is None:
             # Debug token details (without exposing the actual token)
@@ -140,6 +143,16 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._api_client = SaxoApiClient(access_token, base_url)
 
         return self._api_client
+
+    async def _close_old_client(self, client: SaxoApiClient) -> None:
+        """Safely close an old API client with proper error handling."""
+        try:
+            if client:
+                _LOGGER.debug("Closing old API client session")
+                await client.close()
+                _LOGGER.debug("Successfully closed old API client session")
+        except Exception as e:
+            _LOGGER.warning("Error while closing old API client: %s", e)
 
     def _should_update_performance_data(self) -> bool:
         """Check if performance data should be updated based on cache age.

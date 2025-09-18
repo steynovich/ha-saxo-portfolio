@@ -7,13 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.8] - 2025-09-18
+
 ### Fixed
-- **Unclosed Client Session During Token Refresh**: Fixed memory leak from unclosed aiohttp sessions
-  - Enhanced api_client property to properly close old clients when tokens change
-  - Added token comparison logic to detect when client needs recreation
+- **Unclosed Client Session During Token Refresh**: Enhanced fix for memory leak from unclosed aiohttp sessions
+  - Improved api_client property with safer old client closure handling
+  - Added dedicated `_close_old_client()` method with proper error handling and logging
+  - Enhanced token comparison logic to detect when client needs recreation
   - Uses async_create_task to properly close old client sessions during token refresh
   - Eliminates "Unclosed client session" errors during OAuth token refresh cycles
-  - Prevents memory leaks and improves resource management
+  - Prevents memory leaks and improves resource management with comprehensive error handling
 
 ## [2.1.7] - 2025-01-18
 
@@ -332,6 +335,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [2.2.1]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.2.1
 [2.2.0]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.2.0
+[2.1.8]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.1.8
+[2.1.7]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.1.7
 [2.1.6]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.1.6
 [2.1.5]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.1.5
 [2.1.1]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.1.1

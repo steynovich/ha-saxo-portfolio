@@ -1,6 +1,6 @@
 # ha-saxo Development Guidelines
 
-Auto-generated from current implementation. Last updated: 2025-01-18
+Auto-generated from current implementation. Last updated: 2025-09-18
 
 ## Active Technologies
 - Home Assistant Custom Integration
@@ -172,12 +172,13 @@ max_failure_time = max(15 * 60, 3 * update_interval_seconds)
 - `tests/integration/test_sticky_availability.py`: Comprehensive tests for availability behavior
 
 ## Recent Changes (v2.1.8+)
-- **Resource Management Improvements**: Enhanced HTTP client session handling during token refresh
-  - Fixed "Unclosed client session" errors during OAuth token refresh cycles
-  - Added proper cleanup of old API clients when tokens change via `coordinator.py:94-103`
-  - Enhanced `api_client` property with token comparison logic to detect recreation needs
-  - Uses `async_create_task()` for proper async cleanup of old client sessions
-  - Prevents memory leaks and improves long-term resource management
+- **Enhanced Resource Management**: Improved HTTP client session handling during token refresh with comprehensive error handling
+  - Enhanced fix for "Unclosed client session" errors during OAuth token refresh cycles
+  - Added dedicated `_close_old_client()` method with proper error handling and logging via `coordinator.py:146-154`
+  - Improved `api_client` property with safer old client closure handling via `coordinator.py:94-106`
+  - Enhanced token comparison logic to detect when client needs recreation
+  - Uses `async_create_task()` for proper async cleanup of old client sessions with error recovery
+  - Prevents memory leaks and improves long-term resource management with comprehensive logging
 
 ## Recent Changes (v2.1.6+)
 - **Comprehensive Test Suite Optimization**: Updated all tests to reflect architecture improvements
