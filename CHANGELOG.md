@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Options Flow Deprecation Warning**: Fixed deprecated config_entry assignment for Home Assistant 2025.12 compatibility
+  - Replaced manual config_entry assignment with dynamic property retrieval
+  - Updated SaxoOptionsFlowHandler to use modern Home Assistant pattern
+  - Resolves deprecation warning: "sets option flow config_entry explicitly"
+  - Ensures compatibility with future Home Assistant versions
+
 ## [2.1.6] - 2025-09-18
 
 ### Fixed

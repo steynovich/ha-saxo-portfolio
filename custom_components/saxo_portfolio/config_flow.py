@@ -179,11 +179,16 @@ class SaxoPortfolioFlowHandler(
         config_entry: config_entries.ConfigEntry,
     ) -> config_entries.OptionsFlow:
         """Get the options flow for this handler."""
-        return SaxoOptionsFlowHandler(config_entry)
+        return SaxoOptionsFlowHandler()
 
 
 class SaxoOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle Saxo Portfolio options."""
+
+    @property
+    def config_entry(self) -> config_entries.ConfigEntry:
+        """Return config entry."""
+        return self.hass.config_entries.async_get_entry(self.handler)
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
