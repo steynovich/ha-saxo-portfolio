@@ -1,6 +1,6 @@
 # ha-saxo Development Guidelines
 
-Auto-generated from current implementation. Last updated: 2025-09-17
+Auto-generated from current implementation. Last updated: 2025-01-18
 
 ## Active Technologies
 - Home Assistant Custom Integration
@@ -15,7 +15,7 @@ custom_components/saxo_portfolio/
 ├── __init__.py                 # Integration setup
 ├── config_flow.py             # OAuth configuration flow with prefix support
 ├── coordinator.py             # Data update coordinator with market hours logic
-├── sensor.py                  # Seven comprehensive sensors with automatic client ID naming
+├── sensor.py                  # Sixteen optimized sensors with shared base classes and automatic client ID naming
 ├── const.py                   # Constants and configuration
 ├── application_credentials.py  # OAuth credential management
 └── api/
@@ -71,6 +71,7 @@ python -m py_compile custom_components/saxo_portfolio/sensor.py
 - **Performance Caching**: Smart caching system that updates performance data hourly while maintaining real-time balance updates
 - **Rate Limiting**: Intelligent API throttling with exponential backoff
 - **Comprehensive Diagnostics**: Built-in diagnostic support and real-time monitoring sensors
+- **Optimized Architecture**: Shared base classes reduce code duplication by 31% while maintaining all functionality
 
 ### Entity Naming Pattern
 - All entities use Client ID: `sensor.saxo_{client_id}_{sensor_type}`
@@ -99,27 +100,114 @@ python -m py_compile custom_components/saxo_portfolio/sensor.py
 - Automatic token refresh with proper security handling
 - Entity names automatically generated from Saxo Client ID
 
+### Sticky Availability System
+
+#### Enhanced Availability Logic
+The integration implements a sophisticated "sticky availability" system to prevent sensors from flashing unavailable during normal coordinator updates:
+
+**Problem Solved**: Home Assistant's `DataUpdateCoordinator` temporarily sets `last_update_success = False` at the start of each update cycle, causing sensors to briefly show as unavailable every 5-30 minutes.
+
+**Solution**: Multi-tiered availability logic in `SaxoSensorBase.available` (Lines 84-123):
+
+1. **Immediate Unavailable**: No data at all → `False`
+2. **Immediate Available**: Current update successful → `True`
+3. **Sticky Logic**: Update in progress but recent success → Check failure threshold
+4. **Failure Threshold**: 15+ minutes OR 3+ failed update cycles → `False`
+
+**Threshold Calculation**:
+```python
+max_failure_time = max(15 * 60, 3 * update_interval_seconds)
+```
+
+**Benefits**:
+- ✅ No UI flashing during normal 1-2 second API updates
+- ✅ Quick detection of real authentication/network issues
+- ✅ Adaptive thresholds (market hours: 5min, after hours: 30min)
+- ✅ Graceful first startup and sustained failure handling
+
+**Enhanced Sensors**:
+- `SaxoAccumulatedProfitLossSensor`: Base availability + data validation
+- `SaxoPerformanceSensorBase`: Base availability + performance value validation
+- `SaxoCashTransferBalanceSensor`: Base availability + specific data checks
+
+### Optimized Sensor Architecture
+
+#### Base Class Hierarchy
+- **`SaxoSensorBase`** (Lines 29-104): Common functionality for all sensors
+  - Unified entity naming, device_info, basic attributes, lifecycle methods
+  - Consolidates 200+ lines of duplicated code across all sensors
+- **`SaxoBalanceSensorBase`** (Lines 106-173): Specialized for monetary balance sensors
+  - Inherits from SaxoSensorBase, adds currency handling and validation
+  - Used by: Cash Balance, Total Value, Non-Margin Positions, Cash Transfer Balance
+- **`SaxoDiagnosticSensorBase`** (Lines 175-199): Specialized for diagnostic sensors
+  - Inherits from SaxoSensorBase, sets EntityCategory.DIAGNOSTIC
+  - Used by: Client ID, Account ID, Name, Token Expiry, Market Status, Last Update, Timezone
+- **`SaxoPerformanceSensorBase`** (Lines 340-502): Enhanced performance sensor base
+  - Inherits from SaxoSensorBase, adds time period handling and performance caching
+  - Used by: Investment Performance (All/YTD/Month/Quarter time periods)
+
+#### Optimized Sensor Implementations
+- **Balance Sensors** (~10 lines each, was ~100): SaxoCashBalanceSensor, SaxoTotalValueSensor, SaxoNonMarginPositionsValueSensor, SaxoCashTransferBalanceSensor
+- **Performance Sensors** (~15 lines each): SaxoInvestmentPerformanceSensor, SaxoYTDInvestmentPerformanceSensor, SaxoMonthInvestmentPerformanceSensor, SaxoQuarterInvestmentPerformanceSensor
+- **Diagnostic Sensors** (~15-25 lines each, was ~40-60): SaxoClientIDSensor, SaxoAccountIDSensor, SaxoNameSensor, SaxoTokenExpirySensor, SaxoMarketStatusSensor, SaxoLastUpdateSensor, SaxoTimezoneSensor
+- **Special Sensors** (~30 lines): SaxoAccumulatedProfitLossSensor (inherits from SaxoSensorBase with custom logic)
+
 ### Key Files
-- `sensor.py:56-62`: All thirteen entity classes instantiated in async_setup_entry (7 portfolio + 6 diagnostic)
-- `sensor.py:527-643`: Base performance sensor class with code deduplication (SaxoPerformanceSensorBase)
-  - Includes enhanced extra_state_attributes with last_updated and time_period
-  - Abstract _get_time_period() method for StandardPeriod values
-- `sensor.py:670-689`: Investment performance sensors with time_period attributes
-  - SaxoInvestmentPerformanceSensor: time_period="AllTime"
-  - SaxoYTDInvestmentPerformanceSensor: time_period="Year"
-- `sensor.py:661-757`: Cash transfer balance sensor implementation
-- `sensor.py:779-862`: Account/Client ID diagnostic sensors (SaxoClientIDSensor, SaxoAccountIDSensor)
-- `sensor.py:863-1277`: Other diagnostic sensor implementations (Token, Market Status, Last Update, Timezone)
+- `sensor.py:201-243`: All sixteen entity classes instantiated in async_setup_entry
+- `sensor.py:29-199`: Shared base class hierarchy (SaxoSensorBase, SaxoBalanceSensorBase, SaxoDiagnosticSensorBase)
+- `sensor.py:84-123`: Enhanced availability logic with sticky availability to prevent UI flashing
+- `sensor.py:340-502`: Enhanced performance sensor base class with time period handling
+- `sensor.py:247-286`: Optimized balance sensor implementations using base classes
+- `sensor.py:634-678`: Optimized diagnostic sensor implementations using base classes
 - `coordinator.py:132-151`: Performance cache validation logic (_should_update_performance_data)
 - `coordinator.py:484-618`: Smart performance data caching with hourly updates
+- `coordinator.py:57`: Last successful update tracking (_last_successful_update)
+- `coordinator.py:866-869`: Last successful update time property accessor
 - `coordinator.py:790-799`: Account ID getter method (get_account_id)
 - `coordinator.py:634`: Account ID data extraction from balance API
 - `diagnostics.py`: Comprehensive diagnostic information collection
 - `api/saxo_client.py:464-501`: get_performance_v4() method for all-time performance
 - `api/saxo_client.py:502-540`: get_performance_v4_ytd() method for year-to-date performance
 - `const.py:118`: PERFORMANCE_UPDATE_INTERVAL constant (1 hour)
+- `tests/integration/test_sticky_availability.py`: Comprehensive tests for availability behavior
 
-## Recent Changes (v2.1.2+)
+## Recent Changes (v2.1.6+)
+- **Comprehensive Test Suite Optimization**: Updated all tests to reflect architecture improvements
+  - Contract tests validate new base class hierarchy and shared functionality
+  - Integration tests verify sticky availability behavior across all sensor types
+  - Removed test dependencies on non-existent sensor classes
+  - Added comprehensive test coverage for availability edge cases
+  - Test files properly formatted and follow pytest best practices
+- **Documentation Update**: Enhanced technical documentation with detailed architecture information
+  - Updated CLAUDE.md with complete base class hierarchy details
+  - Added comprehensive availability system documentation with code examples
+  - Updated file references and line numbers for accuracy
+  - Enhanced troubleshooting and development guidelines
+
+## Recent Changes (v2.1.5)
+- **Improved Sensor Availability During Updates**: Fixed sensors briefly showing as unavailable during coordinator updates
+  - Implemented "sticky availability" logic that keeps sensors available during normal update cycles
+  - Sensors only become unavailable after sustained failures (15+ minutes or 3 failed update cycles)
+  - Prevents UI flashing and maintains stable sensor states during API fetches
+  - Graceful handling of startup scenarios and genuine failures
+  - Enhanced availability logic in `SaxoSensorBase`, `SaxoAccumulatedProfitLossSensor`, `SaxoPerformanceSensorBase`, and `SaxoCashTransferBalanceSensor`
+- **Device Info Cleanup**: Removed firmware version from device information display
+  - Explicitly set `sw_version=None` in `DeviceInfo` to prevent automatic version display
+  - Cleaner device presentation in Home Assistant UI
+
+## Previous Changes (v2.1.4+)
+- **Major Sensor Architecture Optimization**: Implemented shared base class hierarchy
+  - Reduced code duplication by 31% (from 1,472+ lines to 1,017 lines)
+  - Created `SaxoSensorBase` for common functionality across all sensors
+  - Created `SaxoBalanceSensorBase` for monetary balance sensors with currency handling
+  - Created `SaxoDiagnosticSensorBase` for diagnostic sensors with proper categorization
+  - Enhanced `SaxoPerformanceSensorBase` to inherit from `SaxoSensorBase`
+  - Maintained all existing functionality while improving maintainability
+  - Balance sensors reduced from ~100 lines each to ~10 lines each
+  - Diagnostic sensors reduced from ~40-60 lines each to ~15-25 lines each
+  - All tests updated to reflect the new optimized architecture
+
+## Previous Changes (v2.1.2+)
 - **Expanded to sixteen entities**: Added comprehensive portfolio monitoring including Month/Quarter performance tracking
 - **Additional Performance Sensors**: Month-to-Date and Quarter-to-Date investment performance sensors
   - SaxoMonthInvestmentPerformanceSensor using "Month" StandardPeriod

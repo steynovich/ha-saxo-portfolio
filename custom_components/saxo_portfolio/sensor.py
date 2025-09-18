@@ -26,6 +26,215 @@ from .coordinator import SaxoCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 
+class SaxoSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+    """Base class for all Saxo Portfolio sensors."""
+
+    def __init__(
+        self,
+        coordinator: SaxoCoordinator,
+        sensor_type: str,
+        display_name: str,
+        *,
+        device_class: str | None = None,
+        icon: str | None = None,
+        unit_of_measurement: str | None = None,
+        entity_category: EntityCategory | None = None,
+    ) -> None:
+        """Initialize the base sensor."""
+        super().__init__(coordinator)
+
+        # Get entity prefix from ClientId with saxo_ prefix
+        client_id = coordinator.get_client_id()
+        entity_prefix = f"saxo_{client_id}".lower()
+
+        self._attr_unique_id = f"{entity_prefix}_{sensor_type}"
+        self._attr_name = f"Saxo {client_id} {display_name}"
+        self.entity_id = f"sensor.{entity_prefix}_{sensor_type}"
+        self._attr_device_class = device_class
+        self._attr_icon = icon
+        self._attr_entity_category = entity_category
+        self._attr_native_unit_of_measurement = unit_of_measurement
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        client_id = self.coordinator.get_client_id()
+        device_name = f"Saxo {client_id} Portfolio"
+
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
+            name=device_name,
+            manufacturer=DEVICE_MANUFACTURER,
+            model=DEVICE_MODEL,
+            configuration_url="https://www.developer.saxo/openapi/appmanagement",
+            sw_version=None,  # Explicitly remove firmware version from device info
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the base state attributes."""
+        attributes = {"attribution": ATTRIBUTION}
+
+        if self.coordinator.data:
+            last_updated = self.coordinator.data.get("last_updated")
+            if last_updated:
+                attributes["last_updated"] = last_updated
+
+        return attributes
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available.
+
+        Uses improved availability logic to prevent sensors from flashing
+        unavailable during normal coordinator updates. Sensors remain available
+        as long as they have data and haven't had sustained failures.
+        """
+        # If we have no data at all, we're definitely unavailable
+        if self.coordinator.data is None:
+            return False
+
+        # If the last update was successful, we're available
+        if self.coordinator.last_update_success:
+            return True
+
+        # If we have data but the current update is failing, check if it's a sustained failure
+        if hasattr(self.coordinator, "last_successful_update_time"):
+            last_success = self.coordinator.last_successful_update_time
+            if last_success is not None:
+                from homeassistant.util import dt as dt_util
+
+                # Calculate how long it's been since last successful update
+                time_since_success = dt_util.utcnow() - last_success
+
+                # Allow for up to 3 update cycles before marking unavailable
+                # Use the longer of 15 minutes or 3x the current update interval
+                update_interval_seconds = (
+                    self.coordinator.update_interval.total_seconds()
+                )
+                max_failure_time = max(
+                    15 * 60, 3 * update_interval_seconds
+                )  # 15 min minimum
+
+                # Stay available if we haven't exceeded the failure threshold
+                if time_since_success.total_seconds() < max_failure_time:
+                    return True
+
+        # Default to unavailable only after sustained failures
+        return False
+
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass."""
+        await super().async_added_to_hass()
+        _LOGGER.debug(
+            "%s sensor %s added to Home Assistant", self._attr_name, self.entity_id
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        """When entity will be removed from hass."""
+        _LOGGER.debug(
+            "%s sensor %s being removed from Home Assistant",
+            self._attr_name,
+            self.entity_id,
+        )
+        await super().async_will_remove_from_hass()
+
+
+class SaxoBalanceSensorBase(SaxoSensorBase):
+    """Base class for Saxo Portfolio balance sensors."""
+
+    def __init__(
+        self,
+        coordinator: SaxoCoordinator,
+        sensor_type: str,
+        display_name: str,
+        icon: str,
+        coordinator_method: str,
+    ) -> None:
+        """Initialize the balance sensor."""
+        super().__init__(
+            coordinator,
+            sensor_type,
+            display_name,
+            device_class="monetary",
+            icon=icon,
+            unit_of_measurement=coordinator.get_currency(),
+        )
+        self._coordinator_method = coordinator_method
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the state of the sensor."""
+        if not self.coordinator.last_update_success or not self.coordinator.data:
+            return None
+
+        try:
+            # Get balance using coordinator method
+            balance = getattr(self.coordinator, self._coordinator_method)()
+
+            if balance is None:
+                return None
+
+            # Validate and format numeric value
+            if isinstance(balance, int | float):
+                import math
+
+                if not math.isfinite(balance):
+                    _LOGGER.warning("Invalid %s value: %s", self._attr_name, balance)
+                    return None
+
+                # Round financial value to 2 decimal places
+                return round(float(balance), 2)
+
+            return balance
+
+        except Exception as e:
+            _LOGGER.error(
+                "Error getting %s: %s",
+                self._attr_name,
+                type(e).__name__,
+            )
+            return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the state attributes."""
+        attributes = super().extra_state_attributes
+
+        if self.coordinator.data:
+            # Add currency information
+            currency = self.coordinator.get_currency()
+            attributes["currency"] = currency
+
+        return attributes
+
+
+class SaxoDiagnosticSensorBase(SaxoSensorBase):
+    """Base class for Saxo Portfolio diagnostic sensors."""
+
+    def __init__(
+        self,
+        coordinator: SaxoCoordinator,
+        sensor_type: str,
+        display_name: str,
+        icon: str,
+    ) -> None:
+        """Initialize the diagnostic sensor."""
+        super().__init__(
+            coordinator,
+            sensor_type,
+            display_name,
+            icon=icon,
+            entity_category=EntityCategory.DIAGNOSTIC,
+        )
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        # Diagnostic sensors are generally always available
+        return True
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -72,389 +281,62 @@ async def async_setup_entry(
     async_add_entities(entities, True)
 
 
-class SaxoCashBalanceSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+class SaxoCashBalanceSensor(SaxoBalanceSensorBase):
     """Representation of a Saxo Portfolio Cash Balance sensor."""
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
-
-        # Get entity prefix from ClientId with saxo_ prefix
-        client_id = coordinator.get_client_id()
-        entity_prefix = f"saxo_{client_id}".lower()
-
-        self._attr_unique_id = f"{entity_prefix}_cash_balance"
-        self._attr_name = f"Saxo {client_id} Portfolio Cash Balance"
-        # Use object_id to control the entity_id generation
-        self.entity_id = f"sensor.{entity_prefix}_cash_balance"
-        self._attr_device_class = "monetary"
-        self._attr_icon = "mdi:cash"
-        self._attr_entity_category = None
-
-        # Set unit of measurement to currency from coordinator
-        self._attr_native_unit_of_measurement = coordinator.get_currency()
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        # Get ClientId for device name
-        client_id = self.coordinator.get_client_id()
-        device_name = f"Saxo {client_id} Portfolio"
-
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
-            name=device_name,
-            manufacturer=DEVICE_MANUFACTURER,
-            model=DEVICE_MODEL,
-            configuration_url="https://www.developer.saxo/openapi/appmanagement",
+        super().__init__(
+            coordinator,
+            "cash_balance",
+            "Portfolio Cash Balance",
+            "mdi:cash",
+            "get_cash_balance",
         )
 
-    @property
-    def native_value(self) -> StateType:
-        """Return the state of the sensor."""
-        if not self.coordinator.last_update_success or not self.coordinator.data:
-            return None
 
-        try:
-            # Get cash balance using coordinator method
-            cash_balance = self.coordinator.get_cash_balance()
-
-            if cash_balance is None:
-                return None
-
-            # Validate and format numeric value
-            if isinstance(cash_balance, int | float):
-                import math
-
-                if not math.isfinite(cash_balance):
-                    _LOGGER.warning("Invalid cash balance value: %s", cash_balance)
-                    return None
-
-                # Round financial value to 2 decimal places
-                return round(float(cash_balance), 2)
-
-            return cash_balance
-
-        except Exception as e:
-            _LOGGER.error(
-                "Error getting cash balance: %s",
-                type(e).__name__,
-            )
-            return None
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return the state attributes."""
-        attributes = {
-            "attribution": ATTRIBUTION,
-        }
-
-        if self.coordinator.data:
-            # Add currency information
-            currency = self.coordinator.get_currency()
-            attributes["currency"] = currency
-
-            # Add last updated timestamp
-            last_updated = self.coordinator.data.get("last_updated")
-            if last_updated:
-                attributes["last_updated"] = last_updated
-
-        return attributes
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return (
-            self.coordinator.last_update_success and self.coordinator.data is not None
-        )
-
-    async def async_added_to_hass(self) -> None:
-        """When entity is added to hass."""
-        await super().async_added_to_hass()
-        _LOGGER.debug("Cash balance sensor %s added to Home Assistant", self.entity_id)
-
-    async def async_will_remove_from_hass(self) -> None:
-        """When entity will be removed from hass."""
-        _LOGGER.debug(
-            "Cash balance sensor %s being removed from Home Assistant", self.entity_id
-        )
-        await super().async_will_remove_from_hass()
-
-
-class SaxoTotalValueSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+class SaxoTotalValueSensor(SaxoBalanceSensorBase):
     """Representation of a Saxo Portfolio Total Value sensor."""
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
-
-        # Get entity prefix from ClientId with saxo_ prefix
-        client_id = coordinator.get_client_id()
-        entity_prefix = f"saxo_{client_id}".lower()
-
-        self._attr_unique_id = f"{entity_prefix}_total_value"
-        self._attr_name = f"Saxo {client_id} Portfolio Total Value"
-        # Use object_id to control the entity_id generation
-        self.entity_id = f"sensor.{entity_prefix}_total_value"
-        self._attr_device_class = "monetary"
-        self._attr_icon = "mdi:wallet"
-        self._attr_entity_category = None
-
-        # Set unit of measurement to currency from coordinator
-        self._attr_native_unit_of_measurement = coordinator.get_currency()
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        # Get ClientId for device name
-        client_id = self.coordinator.get_client_id()
-        device_name = f"Saxo {client_id} Portfolio"
-
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
-            name=device_name,
-            manufacturer=DEVICE_MANUFACTURER,
-            model=DEVICE_MODEL,
-            configuration_url="https://www.developer.saxo/openapi/appmanagement",
+        super().__init__(
+            coordinator,
+            "total_value",
+            "Portfolio Total Value",
+            "mdi:wallet",
+            "get_total_value",
         )
 
-    @property
-    def native_value(self) -> StateType:
-        """Return the state of the sensor."""
-        if not self.coordinator.last_update_success or not self.coordinator.data:
-            return None
 
-        try:
-            # Get total value using coordinator method
-            total_value = self.coordinator.get_total_value()
-
-            if total_value is None:
-                return None
-
-            # Validate and format numeric value
-            if isinstance(total_value, int | float):
-                import math
-
-                if not math.isfinite(total_value):
-                    _LOGGER.warning("Invalid total value: %s", total_value)
-                    return None
-
-                # Round financial value to 2 decimal places
-                return round(float(total_value), 2)
-
-            return total_value
-
-        except Exception as e:
-            _LOGGER.error(
-                "Error getting total value: %s",
-                type(e).__name__,
-            )
-            return None
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return the state attributes."""
-        attributes = {
-            "attribution": ATTRIBUTION,
-        }
-
-        if self.coordinator.data:
-            # Add currency information
-            currency = self.coordinator.get_currency()
-            attributes["currency"] = currency
-
-            # Add last updated timestamp
-            last_updated = self.coordinator.data.get("last_updated")
-            if last_updated:
-                attributes["last_updated"] = last_updated
-
-        return attributes
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return (
-            self.coordinator.last_update_success and self.coordinator.data is not None
-        )
-
-    async def async_added_to_hass(self) -> None:
-        """When entity is added to hass."""
-        await super().async_added_to_hass()
-        _LOGGER.debug("Total value sensor %s added to Home Assistant", self.entity_id)
-
-    async def async_will_remove_from_hass(self) -> None:
-        """When entity will be removed from hass."""
-        _LOGGER.debug(
-            "Total value sensor %s being removed from Home Assistant", self.entity_id
-        )
-        await super().async_will_remove_from_hass()
-
-
-class SaxoNonMarginPositionsValueSensor(
-    CoordinatorEntity[SaxoCoordinator], SensorEntity
-):
+class SaxoNonMarginPositionsValueSensor(SaxoBalanceSensorBase):
     """Representation of a Saxo Portfolio Non-Margin Positions Value sensor."""
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
-
-        # Get entity prefix from ClientId with saxo_ prefix
-        client_id = coordinator.get_client_id()
-        entity_prefix = f"saxo_{client_id}".lower()
-
-        self._attr_unique_id = f"{entity_prefix}_non_margin_positions_value"
-        self._attr_name = f"Saxo {client_id} Portfolio Non-Margin Positions Value"
-        # Use object_id to control the entity_id generation
-        self.entity_id = f"sensor.{entity_prefix}_non_margin_positions_value"
-        self._attr_device_class = "monetary"
-        self._attr_icon = "mdi:finance"
-        self._attr_entity_category = None
-
-        # Set unit of measurement to currency from coordinator
-        self._attr_native_unit_of_measurement = coordinator.get_currency()
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        # Get ClientId for device name
-        client_id = self.coordinator.get_client_id()
-        device_name = f"Saxo {client_id} Portfolio"
-
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
-            name=device_name,
-            manufacturer=DEVICE_MANUFACTURER,
-            model=DEVICE_MODEL,
-            configuration_url="https://www.developer.saxo/openapi/appmanagement",
+        super().__init__(
+            coordinator,
+            "non_margin_positions_value",
+            "Portfolio Non-Margin Positions Value",
+            "mdi:finance",
+            "get_non_margin_positions_value",
         )
 
-    @property
-    def native_value(self) -> StateType:
-        """Return the state of the sensor."""
-        if not self.coordinator.last_update_success or not self.coordinator.data:
-            return None
 
-        try:
-            # Get non-margin positions value using coordinator method
-            positions_value = self.coordinator.get_non_margin_positions_value()
-
-            if positions_value is None:
-                return None
-
-            # Validate and format numeric value
-            if isinstance(positions_value, int | float):
-                import math
-
-                if not math.isfinite(positions_value):
-                    _LOGGER.warning(
-                        "Invalid non-margin positions value: %s", positions_value
-                    )
-                    return None
-
-                # Round financial value to 2 decimal places
-                return round(float(positions_value), 2)
-
-            return positions_value
-
-        except Exception as e:
-            _LOGGER.error(
-                "Error getting non-margin positions value: %s",
-                type(e).__name__,
-            )
-            return None
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return the state attributes."""
-        attributes = {
-            "attribution": ATTRIBUTION,
-        }
-
-        if self.coordinator.data:
-            # Add currency information
-            currency = self.coordinator.get_currency()
-            attributes["currency"] = currency
-
-            # Add last updated timestamp
-            last_updated = self.coordinator.data.get("last_updated")
-            if last_updated:
-                attributes["last_updated"] = last_updated
-
-        return attributes
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return (
-            self.coordinator.last_update_success and self.coordinator.data is not None
-        )
-
-    async def async_added_to_hass(self) -> None:
-        """When entity is added to hass."""
-        await super().async_added_to_hass()
-        _LOGGER.debug(
-            "Non-margin positions value sensor %s added to Home Assistant",
-            self.entity_id,
-        )
-
-    async def async_will_remove_from_hass(self) -> None:
-        """When entity will be removed from hass."""
-        _LOGGER.debug(
-            "Non-margin positions value sensor %s being removed from Home Assistant",
-            self.entity_id,
-        )
-        await super().async_will_remove_from_hass()
-
-
-class SaxoAccumulatedProfitLossSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+class SaxoAccumulatedProfitLossSensor(SaxoSensorBase):
     """Representation of a Saxo Portfolio Accumulated Profit/Loss sensor."""
-
-    _attr_device_class = "monetary"
-    _attr_state_class = "total"
-    _attr_icon = "mdi:trending-up"
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
-
-        # Get entity prefix from ClientId with saxo_ prefix
-        client_id = coordinator.get_client_id()
-        entity_prefix = f"saxo_{client_id}".lower()
-
-        self._attr_unique_id = f"{entity_prefix}_accumulated_profit_loss"
-        self._attr_name = f"Saxo {client_id} Portfolio Accumulated Profit/Loss"
-
-        # Set unit of measurement to currency from coordinator
-        self._attr_native_unit_of_measurement = coordinator.get_currency()
-
-        _LOGGER.debug(
-            "Initialized accumulated profit/loss sensor with unique_id: %s, name: %s",
-            self._attr_unique_id,
-            self._attr_name,
+        super().__init__(
+            coordinator,
+            "accumulated_profit_loss",
+            "Portfolio Accumulated Profit/Loss",
+            device_class="monetary",
+            icon="mdi:trending-up",
+            unit_of_measurement=coordinator.get_currency(),
         )
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        # Get ClientId for device name
-        client_id = self.coordinator.get_client_id()
-        device_name = f"Saxo {client_id} Portfolio"
-
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
-            name=device_name,
-            manufacturer=DEVICE_MANUFACTURER,
-            model=DEVICE_MODEL,
-            configuration_url="https://www.developer.saxo/openapi/appmanagement",
-        )
-
-    @property
-    def native_unit_of_measurement(self) -> str | None:
-        """Return the unit of measurement."""
-        if self.coordinator.data:
-            return self.coordinator.get_currency()
-        return None
+        self._attr_state_class = "total"
 
     @property
     def native_value(self) -> StateType:
@@ -473,50 +355,27 @@ class SaxoAccumulatedProfitLossSensor(CoordinatorEntity[SaxoCoordinator], Sensor
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra attributes for the sensor."""
-        if not self.coordinator.data:
-            return {}
+        attributes = super().extra_state_attributes
 
-        attrs = {
-            "attribution": ATTRIBUTION,
-        }
+        if self.coordinator.data:
+            # Add currency information
+            currency = self.coordinator.get_currency()
+            attributes["currency"] = currency
 
-        # Add last updated timestamp from coordinator data
-        last_updated = self.coordinator.data.get("last_updated")
-        if last_updated:
-            attrs["last_updated"] = last_updated
-
-        # Add currency information
-        currency = self.coordinator.get_currency()
-        attrs["currency"] = currency
-
-        return attrs
+        return attributes
 
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data is not None
-            and "ytd_earnings_percentage" in self.coordinator.data
-        )
+        # Use improved availability from base class
+        if not super().available:
+            return False
 
-    async def async_added_to_hass(self) -> None:
-        """When entity is added to hass."""
-        await super().async_added_to_hass()
-        _LOGGER.debug(
-            "Accumulated profit/loss sensor %s added to Home Assistant", self.entity_id
-        )
-
-    async def async_will_remove_from_hass(self) -> None:
-        """When entity will be removed from hass."""
-        _LOGGER.debug(
-            "Accumulated profit/loss sensor %s being removed from Home Assistant",
-            self.entity_id,
-        )
-        await super().async_will_remove_from_hass()
+        # Additional check: ensure ytd_earnings_percentage data is present
+        return "ytd_earnings_percentage" in (self.coordinator.data or {})
 
 
-class SaxoPerformanceSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+class SaxoPerformanceSensorBase(SaxoSensorBase):
     """Base class for Saxo Portfolio Performance sensors."""
 
     def __init__(
@@ -535,37 +394,14 @@ class SaxoPerformanceSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity
             data_key: Key to fetch data from coordinator data dict
 
         """
-        super().__init__(coordinator)
-
-        # Get entity prefix from ClientId with saxo_ prefix
-        client_id = coordinator.get_client_id()
-        entity_prefix = f"saxo_{client_id}".lower()
-
-        self._attr_unique_id = f"{entity_prefix}_{sensor_type}"
-        self._attr_name = f"Saxo {client_id} Portfolio {display_name}"
-        # Use object_id to control the entity_id generation
-        self.entity_id = f"sensor.{entity_prefix}_{sensor_type}"
-        self._attr_device_class = None
-        self._attr_icon = "mdi:trending-up"
-        self._attr_entity_category = None
-        self._attr_native_unit_of_measurement = "%"
-
-        self._data_key = data_key
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        # Get ClientId for device name
-        client_id = self.coordinator.get_client_id()
-        device_name = f"Saxo {client_id} Portfolio"
-
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
-            name=device_name,
-            manufacturer=DEVICE_MANUFACTURER,
-            model=DEVICE_MODEL,
-            configuration_url="https://www.developer.saxo/openapi/appmanagement",
+        super().__init__(
+            coordinator,
+            sensor_type,
+            f"Portfolio {display_name}",
+            icon="mdi:trending-up",
+            unit_of_measurement="%",
         )
+        self._data_key = data_key
 
     @property
     def native_value(self) -> StateType:
@@ -623,13 +459,13 @@ class SaxoPerformanceSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra attributes for the sensor."""
-        if not self.coordinator.data:
-            return {}
+        # Get base attributes from parent class
+        attrs = super().extra_state_attributes
 
-        attrs = {
-            "attribution": ATTRIBUTION,
-            "time_period": self._get_time_period(),
-        }
+        if not self.coordinator.data:
+            return attrs
+
+        attrs["time_period"] = self._get_time_period()
 
         # Add last updated timestamp from performance cache, fallback to general timestamp
         if (
@@ -639,10 +475,6 @@ class SaxoPerformanceSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity
             attrs["last_updated"] = (
                 self.coordinator._performance_last_updated.isoformat()
             )
-        elif self.coordinator.data:
-            last_updated = self.coordinator.data.get("last_updated")
-            if last_updated:
-                attrs["last_updated"] = last_updated
 
         # Add From and Thru attributes based on time period
         period_dates = self._get_period_dates()
@@ -661,12 +493,11 @@ class SaxoPerformanceSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        if not self.coordinator.last_update_success:
-            return False
-        if not self.coordinator.data:
+        # Use improved availability from base class
+        if not super().available:
             return False
 
-        # Check if we can get a performance value
+        # Additional check: ensure we can get a performance value
         try:
             performance_value = self._get_performance_value()
             return performance_value is not None
@@ -707,22 +538,6 @@ class SaxoPerformanceSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity
 
         return {"from": from_date.isoformat(), "thru": thru_date.isoformat()}
 
-    async def async_added_to_hass(self) -> None:
-        """When entity is added to hass."""
-        await super().async_added_to_hass()
-        _LOGGER.debug(
-            "%s sensor %s added to Home Assistant", self._attr_name, self.entity_id
-        )
-
-    async def async_will_remove_from_hass(self) -> None:
-        """When entity will be removed from hass."""
-        _LOGGER.debug(
-            "%s sensor %s being removed from Home Assistant",
-            self._attr_name,
-            self.entity_id,
-        )
-        await super().async_will_remove_from_hass()
-
 
 class SaxoInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
     """Representation of a Saxo Portfolio Investment Performance sensor."""
@@ -744,148 +559,30 @@ class SaxoInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
         """Get the time period for this sensor."""
         return "AllTime"
 
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return extra attributes for the Investment Performance sensor."""
-        # Get base attributes from parent class
-        attrs = super().extra_state_attributes
-
-        # Add InceptionDay attribute for all-time performance tracking
-        try:
-            # Get the real InceptionDay from the performance summary API
-            inception_day = self.coordinator.get_inception_day()
-            if inception_day:
-                attrs["inception_day"] = inception_day
-            else:
-                # If no InceptionDay is available, use a fallback
-                attrs["inception_day"] = "2020-01-01"
-
-        except Exception:
-            # If there's any error getting inception day, use a fallback
-            attrs["inception_day"] = "2020-01-01"
-
-        return attrs
 
 
-class SaxoCashTransferBalanceSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+class SaxoCashTransferBalanceSensor(SaxoBalanceSensorBase):
     """Representation of a Saxo Portfolio Cash Transfer Balance sensor."""
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
-
-        # Get entity prefix from ClientId with saxo_ prefix
-        client_id = coordinator.get_client_id()
-        entity_prefix = f"saxo_{client_id}".lower()
-
-        self._attr_unique_id = f"{entity_prefix}_cash_transfer_balance"
-        self._attr_name = f"Saxo {client_id} Portfolio Cash Transfer Balance"
-        # Use object_id to control the entity_id generation
-        self.entity_id = f"sensor.{entity_prefix}_cash_transfer_balance"
-        self._attr_device_class = "monetary"
-        self._attr_icon = "mdi:bank-transfer"
-        self._attr_entity_category = None
-
-        # Set unit of measurement to currency from coordinator
-        self._attr_native_unit_of_measurement = coordinator.get_currency()
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        # Get ClientId for device name
-        client_id = self.coordinator.get_client_id()
-        device_name = f"Saxo {client_id} Portfolio"
-
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
-            name=device_name,
-            manufacturer=DEVICE_MANUFACTURER,
-            model=DEVICE_MODEL,
-            configuration_url="https://www.developer.saxo/openapi/appmanagement",
+        super().__init__(
+            coordinator,
+            "cash_transfer_balance",
+            "Portfolio Cash Transfer Balance",
+            "mdi:bank-transfer",
+            "get_cash_transfer_balance",
         )
-
-    @property
-    def native_value(self) -> StateType:
-        """Return the state of the sensor."""
-        if not self.coordinator.last_update_success or not self.coordinator.data:
-            return None
-
-        try:
-            # Get cash transfer balance using coordinator method
-            cash_transfer_balance = self.coordinator.get_cash_transfer_balance()
-
-            if cash_transfer_balance is None:
-                return None
-
-            # Validate and format numeric value
-            if isinstance(cash_transfer_balance, int | float):
-                import math
-
-                if not math.isfinite(cash_transfer_balance):
-                    _LOGGER.warning(
-                        "Cash transfer balance is not finite: %s",
-                        cash_transfer_balance,
-                    )
-                    return None
-
-                # Round to 2 decimal places for currency display
-                return round(cash_transfer_balance, 2)
-            else:
-                _LOGGER.warning(
-                    "Cash transfer balance is not numeric: %s (type: %s)",
-                    cash_transfer_balance,
-                    type(cash_transfer_balance),
-                )
-                return None
-
-        except Exception as e:
-            _LOGGER.error("Error getting cash transfer balance: %s", type(e).__name__)
-            return None
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return extra attributes for the sensor."""
-        if not self.coordinator.data:
-            return {}
-
-        attrs = {
-            "attribution": ATTRIBUTION,
-        }
-
-        # Add last updated timestamp from coordinator data
-        last_updated = self.coordinator.data.get("last_updated")
-        if last_updated:
-            attrs["last_updated"] = last_updated
-
-        # Add currency information
-        currency = self.coordinator.get_currency()
-        attrs["currency"] = currency
-
-        return attrs
 
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data is not None
-            and "cash_transfer_balance" in self.coordinator.data
-        )
+        # Use improved availability from base class
+        if not super().available:
+            return False
 
-    async def async_added_to_hass(self) -> None:
-        """When entity is added to hass."""
-        await super().async_added_to_hass()
-        _LOGGER.debug(
-            "Cash transfer balance sensor %s added to Home Assistant", self.entity_id
-        )
-
-    async def async_will_remove_from_hass(self) -> None:
-        """When entity will be removed from hass."""
-        _LOGGER.debug(
-            "Cash transfer balance sensor %s being removed from Home Assistant",
-            self.entity_id,
-        )
-        await super().async_will_remove_from_hass()
+        # Additional check: ensure cash_transfer_balance data is present
+        return "cash_transfer_balance" in (self.coordinator.data or {})
 
 
 class SaxoYTDInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
@@ -951,35 +648,16 @@ class SaxoQuarterInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
         return "Quarter"
 
 
-class SaxoClientIDSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+class SaxoClientIDSensor(SaxoDiagnosticSensorBase):
     """Representation of a Saxo Client ID diagnostic sensor."""
-
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_icon = "mdi:identifier"
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
-
-        # Get entity prefix from ClientId with saxo_ prefix
-        client_id = coordinator.get_client_id()
-        entity_prefix = f"saxo_{client_id}".lower()
-
-        self._attr_unique_id = f"{entity_prefix}_client_id"
-        self._attr_name = f"Saxo {client_id} Client ID"
-        self.entity_id = f"sensor.{entity_prefix}_client_id"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        client_id = self.coordinator.get_client_id()
-        device_name = f"Saxo {client_id} Portfolio"
-
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
-            name=device_name,
-            manufacturer=DEVICE_MANUFACTURER,
-            model=DEVICE_MODEL,
+        super().__init__(
+            coordinator,
+            "client_id",
+            "Client ID",
+            "mdi:identifier",
         )
 
     @property
@@ -993,35 +671,16 @@ class SaxoClientIDSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
         return self.coordinator.get_client_id() != "unknown"
 
 
-class SaxoAccountIDSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+class SaxoAccountIDSensor(SaxoDiagnosticSensorBase):
     """Representation of a Saxo Account ID diagnostic sensor."""
-
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_icon = "mdi:account"
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
-
-        # Get entity prefix from ClientId with saxo_ prefix
-        client_id = coordinator.get_client_id()
-        entity_prefix = f"saxo_{client_id}".lower()
-
-        self._attr_unique_id = f"{entity_prefix}_account_id"
-        self._attr_name = f"Saxo {client_id} Account ID"
-        self.entity_id = f"sensor.{entity_prefix}_account_id"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        client_id = self.coordinator.get_client_id()
-        device_name = f"Saxo {client_id} Portfolio"
-
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
-            name=device_name,
-            manufacturer=DEVICE_MANUFACTURER,
-            model=DEVICE_MODEL,
+        super().__init__(
+            coordinator,
+            "account_id",
+            "Account ID",
+            "mdi:account",
         )
 
     @property
@@ -1035,43 +694,23 @@ class SaxoAccountIDSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
         return self.coordinator.get_account_id() != "unknown"
 
 
-class SaxoNameSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+class SaxoNameSensor(SaxoDiagnosticSensorBase):
     """Representation of a Saxo Name diagnostic sensor."""
-
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_icon = "mdi:account-box"
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
-
-        # Get entity prefix from ClientId with saxo_ prefix
-        client_id = coordinator.get_client_id()
-        entity_prefix = f"saxo_{client_id}".lower()
-
-        self._attr_unique_id = f"{entity_prefix}_name"
-        self._attr_name = f"Saxo {client_id} Name"
-        self.entity_id = f"sensor.{entity_prefix}_name"
-        self._attr_icon = "mdi:account-box"
+        super().__init__(
+            coordinator,
+            "name",
+            "Name",
+            "mdi:account-box",
+        )
 
         _LOGGER.debug(
             "Initialized Name sensor - unique_id: %s, name: %s, icon: %s",
             self._attr_unique_id,
             self._attr_name,
             self._attr_icon,
-        )
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        client_id = self.coordinator.get_client_id()
-        device_name = f"Saxo {client_id} Portfolio"
-
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
-            name=device_name,
-            manufacturer=DEVICE_MANUFACTURER,
-            model=DEVICE_MODEL,
         )
 
     @property
@@ -1091,41 +730,22 @@ class SaxoNameSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
         return "mdi:account-box"
 
 
-class SaxoTokenExpirySensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+class SaxoTokenExpirySensor(SaxoDiagnosticSensorBase):
     """Representation of a Saxo Token Expiry diagnostic sensor."""
-
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_icon = "mdi:clock-alert-outline"
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
-
-        # Get entity prefix from ClientId with saxo_ prefix
-        client_id = coordinator.get_client_id()
-        entity_prefix = f"saxo_{client_id}".lower()
-
-        self._attr_unique_id = f"{entity_prefix}_token_expiry"
-        self._attr_name = f"Saxo {client_id} Token Expiry"
-        self.entity_id = f"sensor.{entity_prefix}_token_expiry"
+        super().__init__(
+            coordinator,
+            "token_expiry",
+            "Token Expiry",
+            "mdi:clock-alert-outline",
+        )
 
         _LOGGER.debug(
             "Initialized token expiry sensor with unique_id: %s, name: %s",
             self._attr_unique_id,
             self._attr_name,
-        )
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        client_id = self.coordinator.get_client_id()
-        device_name = f"Saxo {client_id} Portfolio"
-
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
-            name=device_name,
-            manufacturer=DEVICE_MANUFACTURER,
-            model=DEVICE_MODEL,
         )
 
     @property
@@ -1181,41 +801,22 @@ class SaxoTokenExpirySensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
         return self.coordinator.config_entry.data.get("token") is not None
 
 
-class SaxoMarketStatusSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+class SaxoMarketStatusSensor(SaxoDiagnosticSensorBase):
     """Representation of a Saxo Market Status diagnostic sensor."""
-
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_icon = "mdi:chart-timeline-variant"
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
-
-        # Get entity prefix from ClientId with saxo_ prefix
-        client_id = coordinator.get_client_id()
-        entity_prefix = f"saxo_{client_id}".lower()
-
-        self._attr_unique_id = f"{entity_prefix}_market_status"
-        self._attr_name = f"Saxo {client_id} Market Status"
-        self.entity_id = f"sensor.{entity_prefix}_market_status"
+        super().__init__(
+            coordinator,
+            "market_status",
+            "Market Status",
+            "mdi:chart-timeline-variant",
+        )
 
         _LOGGER.debug(
             "Initialized market status sensor with unique_id: %s, name: %s",
             self._attr_unique_id,
             self._attr_name,
-        )
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        client_id = self.coordinator.get_client_id()
-        device_name = f"Saxo {client_id} Portfolio"
-
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
-            name=device_name,
-            manufacturer=DEVICE_MANUFACTURER,
-            model=DEVICE_MODEL,
         )
 
     @property
@@ -1286,42 +887,23 @@ class SaxoMarketStatusSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
         return True
 
 
-class SaxoLastUpdateSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+class SaxoLastUpdateSensor(SaxoDiagnosticSensorBase):
     """Representation of a Saxo Last Update diagnostic sensor."""
-
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
-    _attr_icon = "mdi:update"
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
-
-        # Get entity prefix from ClientId with saxo_ prefix
-        client_id = coordinator.get_client_id()
-        entity_prefix = f"saxo_{client_id}".lower()
-
-        self._attr_unique_id = f"{entity_prefix}_last_update"
-        self._attr_name = f"Saxo {client_id} Last Update"
-        self.entity_id = f"sensor.{entity_prefix}_last_update"
+        super().__init__(
+            coordinator,
+            "last_update",
+            "Last Update",
+            "mdi:update",
+        )
+        self._attr_device_class = SensorDeviceClass.TIMESTAMP
 
         _LOGGER.debug(
             "Initialized last update sensor with unique_id: %s, name: %s",
             self._attr_unique_id,
             self._attr_name,
-        )
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        client_id = self.coordinator.get_client_id()
-        device_name = f"Saxo {client_id} Portfolio"
-
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
-            name=device_name,
-            manufacturer=DEVICE_MANUFACTURER,
-            model=DEVICE_MODEL,
         )
 
     @property
@@ -1368,41 +950,22 @@ class SaxoLastUpdateSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
         return self.coordinator is not None
 
 
-class SaxoTimezoneSensor(CoordinatorEntity[SaxoCoordinator], SensorEntity):
+class SaxoTimezoneSensor(SaxoDiagnosticSensorBase):
     """Representation of a Saxo Timezone Configuration diagnostic sensor."""
-
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_icon = "mdi:earth"
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
-
-        # Get entity prefix from ClientId with saxo_ prefix
-        client_id = coordinator.get_client_id()
-        entity_prefix = f"saxo_{client_id}".lower()
-
-        self._attr_unique_id = f"{entity_prefix}_timezone"
-        self._attr_name = f"Saxo {client_id} Timezone"
-        self.entity_id = f"sensor.{entity_prefix}_timezone"
+        super().__init__(
+            coordinator,
+            "timezone",
+            "Timezone",
+            "mdi:earth",
+        )
 
         _LOGGER.debug(
             "Initialized timezone sensor with unique_id: %s, name: %s",
             self._attr_unique_id,
             self._attr_name,
-        )
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        client_id = self.coordinator.get_client_id()
-        device_name = f"Saxo {client_id} Portfolio"
-
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
-            name=device_name,
-            manufacturer=DEVICE_MANUFACTURER,
-            model=DEVICE_MODEL,
         )
 
     @property

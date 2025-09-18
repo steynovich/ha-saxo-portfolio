@@ -141,7 +141,6 @@ The integration automatically creates **sixteen entities** using your Saxo Clien
 - **Last Updated**: Timestamp of last data refresh (balance sensors use balance API timestamp, performance sensors use performance API timestamp)
 - **Time Period**: Performance sensors include the StandardPeriod value ("AllTime", "Year", "Month", or "Quarter") used in API calls
 - **From/Thru Dates**: Performance sensors include calculated date ranges showing the period covered by each sensor
-- **Inception Day**: Investment Performance (all-time) sensor includes an inception date baseline for long-term tracking
 - **Performance Metrics**: Historical profit/loss and return calculations with clear time period identification
 - **Attribution**: Data source identification
 

@@ -8,12 +8,12 @@ Home Assistant sensor interface and state schema.
 
 import pytest
 from unittest.mock import Mock
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from custom_components.saxo_portfolio.sensor import (
-    SaxoPortfolioSensor,
-    SaxoAccountSensor,
-    SaxoPositionSensor,
+    SaxoCashBalanceSensor,
+    SaxoTotalValueSensor,
+    SaxoClientIDSensor,
 )
 from custom_components.saxo_portfolio.coordinator import SaxoCoordinator
 
@@ -27,88 +27,62 @@ class TestSaxoSensorContract:
         """Create a mock coordinator with sample data."""
         coordinator = Mock(spec=SaxoCoordinator)
         coordinator.data = {
-            "portfolio": {
-                "total_value": 125000.00,
-                "cash_balance": 5000.00,
-                "currency": "USD",
-                "unrealized_pnl": 2500.00,
-                "positions_count": 5,
-            },
-            "accounts": [
-                {
-                    "account_id": "ACC001",
-                    "balance": 50000.00,
-                    "currency": "USD",
-                    "display_name": "Main Account",
-                }
-            ],
-            "positions": [
-                {
-                    "position_id": "POS001",
-                    "symbol": "AAPL",
-                    "current_value": 15000.00,
-                    "unrealized_pnl": 500.00,
-                    "currency": "USD",
-                }
-            ],
+            "cash_balance": 5000.00,
+            "total_value": 125000.00,
+            "currency": "USD",
+            "client_id": "123456",
             "last_updated": datetime.now().isoformat(),
         }
+        coordinator.last_update_success = True
+        coordinator.get_client_id = Mock(return_value="123456")
+        coordinator.get_cash_balance = Mock(return_value=5000.00)
+        coordinator.get_total_value = Mock(return_value=125000.00)
+        coordinator.get_currency = Mock(return_value="USD")
         return coordinator
 
     @pytest.fixture
     def portfolio_sensor(self, mock_coordinator):
         """Create a portfolio total value sensor."""
-        # This MUST FAIL initially - no implementation exists
-        return SaxoPortfolioSensor(mock_coordinator, "total_value")
+        return SaxoTotalValueSensor(mock_coordinator)
 
     @pytest.fixture
-    def account_sensor(self, mock_coordinator):
-        """Create an account balance sensor."""
-        # This MUST FAIL initially - no implementation exists
-        return SaxoAccountSensor(mock_coordinator, "ACC001")
+    def cash_balance_sensor(self, mock_coordinator):
+        """Create a cash balance sensor."""
+        return SaxoCashBalanceSensor(mock_coordinator)
 
     @pytest.fixture
-    def position_sensor(self, mock_coordinator):
-        """Create a position value sensor."""
-        # This MUST FAIL initially - no implementation exists
-        return SaxoPositionSensor(mock_coordinator, "POS001")
+    def client_id_sensor(self, mock_coordinator):
+        """Create a client ID diagnostic sensor."""
+        return SaxoClientIDSensor(mock_coordinator)
 
     def test_portfolio_sensor_state_schema(self, portfolio_sensor):
         """Test that portfolio sensor state matches SensorState schema."""
-        # This test MUST FAIL initially - no implementation exists
         # Validate sensor has required properties
         assert hasattr(portfolio_sensor, "entity_id")
-        assert hasattr(portfolio_sensor, "state")
+        assert hasattr(portfolio_sensor, "native_value")
         assert hasattr(portfolio_sensor, "extra_state_attributes")
 
         # Validate entity_id format
         entity_id = portfolio_sensor.entity_id
-        assert entity_id.startswith("sensor.saxo_portfolio_")
+        assert entity_id.startswith("sensor.saxo_123456_")
         assert "." in entity_id
 
-        # Validate state is numeric string
-        state = portfolio_sensor.state
-        assert isinstance(state, str | int | float)
-        if isinstance(state, str):
-            # Should be convertible to float
-            float(state)
+        # Validate state is numeric
+        state = portfolio_sensor.native_value
+        assert isinstance(state, (int, float))
+        assert state == 125000.00
 
     def test_portfolio_sensor_attributes_schema(self, portfolio_sensor):
         """Test that portfolio sensor attributes match contract."""
-        # This test MUST FAIL initially - no implementation exists
         attributes = portfolio_sensor.extra_state_attributes
         assert isinstance(attributes, dict)
 
-        # Required attributes from SensorState schema
-        assert "friendly_name" in attributes
-        assert "unit_of_measurement" in attributes
+        # Required attributes
         assert "currency" in attributes
         assert "last_updated" in attributes
         assert "attribution" in attributes
 
         # Validate attribute types
-        assert isinstance(attributes["friendly_name"], str)
-        assert isinstance(attributes["unit_of_measurement"], str)
         assert isinstance(attributes["currency"], str)
         assert isinstance(attributes["attribution"], str)
 
@@ -119,14 +93,12 @@ class TestSaxoSensorContract:
 
     def test_portfolio_sensor_device_class(self, portfolio_sensor):
         """Test that portfolio sensor has correct device class."""
-        # This test MUST FAIL initially - no implementation exists
         # Financial sensors should have appropriate device class
         assert hasattr(portfolio_sensor, "device_class")
 
-        # For financial data, device class should be None or monetary
-        # (due to Home Assistant limitation with monetary + state_class)
+        # Balance sensors should have monetary device class
         device_class = portfolio_sensor.device_class
-        assert device_class is None or device_class == "monetary"
+        assert device_class == "monetary"
 
     def test_portfolio_sensor_state_class(self, portfolio_sensor):
         """Test that portfolio sensor has correct state class."""
@@ -139,42 +111,36 @@ class TestSaxoSensorContract:
                 # And device_class should be None (HA limitation)
                 assert portfolio_sensor.device_class is None
 
-    def test_account_sensor_unique_id(self, account_sensor):
-        """Test that account sensor has unique ID."""
-        # This test MUST FAIL initially - no implementation exists
-        assert hasattr(account_sensor, "unique_id")
-        unique_id = account_sensor.unique_id
+    def test_cash_balance_sensor_unique_id(self, cash_balance_sensor):
+        """Test that cash balance sensor has unique ID."""
+        assert hasattr(cash_balance_sensor, "unique_id")
+        unique_id = cash_balance_sensor.unique_id
         assert isinstance(unique_id, str)
         assert len(unique_id) > 0
-        # Should contain account identifier
-        assert "ACC001" in unique_id
+        # Should contain client ID
+        assert "123456" in unique_id
+        assert unique_id == "saxo_123456_cash_balance"
 
-    def test_position_sensor_state_validation(self, position_sensor):
-        """Test that position sensor state is valid financial data."""
-        # This test MUST FAIL initially - no implementation exists
-        state = position_sensor.state
+    def test_client_id_sensor_state_validation(self, client_id_sensor):
+        """Test that client ID sensor state is valid."""
+        state = client_id_sensor.native_value
 
         if state is not None and state != "unavailable":
-            # Should be numeric
-            numeric_state = float(state)
-
-            # Should be finite (not NaN or infinity)
-            import math
-
-            assert math.isfinite(numeric_state)
-
-            # Position value should be non-negative
-            assert numeric_state >= 0
+            # Should be string
+            assert isinstance(state, str)
+            # Should be the expected client ID
+            assert state == "123456"
 
     def test_sensor_availability(self, portfolio_sensor):
         """Test that sensor correctly reports availability."""
-        # This test MUST FAIL initially - no implementation exists
         assert hasattr(portfolio_sensor, "available")
 
-        # Should be available when coordinator has data
+        # Should be available when coordinator has data and successful update
         availability = portfolio_sensor.available
         assert isinstance(availability, bool)
-        assert availability is True  # Coordinator has mock data
+        assert (
+            availability is True
+        )  # Coordinator has mock data and last_update_success=True
 
     def test_sensor_coordinator_dependency(self, portfolio_sensor):
         """Test that sensor properly depends on coordinator."""
@@ -200,17 +166,16 @@ class TestSaxoSensorContract:
 
     def test_multiple_sensor_types(self, mock_coordinator):
         """Test that different sensor types can be created."""
-        # This test MUST FAIL initially - no implementation exists
-        # Portfolio sensors for different metrics
-        total_value_sensor = SaxoPortfolioSensor(mock_coordinator, "total_value")
-        cash_balance_sensor = SaxoPortfolioSensor(mock_coordinator, "cash_balance")
-        pnl_sensor = SaxoPortfolioSensor(mock_coordinator, "unrealized_pnl")
+        # Different sensor types
+        total_value_sensor = SaxoTotalValueSensor(mock_coordinator)
+        cash_balance_sensor = SaxoCashBalanceSensor(mock_coordinator)
+        client_id_sensor = SaxoClientIDSensor(mock_coordinator)
 
         # Should have different entity IDs
         entity_ids = {
             total_value_sensor.entity_id,
             cash_balance_sensor.entity_id,
-            pnl_sensor.entity_id,
+            client_id_sensor.entity_id,
         }
         assert len(entity_ids) == 3  # All unique
 
@@ -226,15 +191,14 @@ class TestSaxoSensorContract:
 
     def test_sensor_error_state_handling(self, mock_coordinator):
         """Test that sensor handles coordinator error states."""
-        # This test MUST FAIL initially - no implementation exists
         # Mock coordinator error state
         mock_coordinator.data = None
         mock_coordinator.last_update_success = False
 
-        sensor = SaxoPortfolioSensor(mock_coordinator, "total_value")
+        sensor = SaxoTotalValueSensor(mock_coordinator)
 
         # Sensor should handle missing data gracefully
-        state = sensor.state
+        state = sensor.native_value
         # Should be None, "unavailable", or "unknown"
         assert state in [None, "unavailable", "unknown"] or state == 0
 
@@ -262,3 +226,90 @@ class TestSaxoSensorContract:
         if hasattr(portfolio_sensor, "entity_registry_enabled_default"):
             enabled_default = portfolio_sensor.entity_registry_enabled_default
             assert isinstance(enabled_default, bool)
+
+    def test_improved_availability_logic(self, mock_coordinator):
+        """Test the improved sticky availability logic."""
+        from datetime import datetime, timedelta
+
+        # Create sensor with mock coordinator
+        sensor = SaxoTotalValueSensor(mock_coordinator)
+
+        # Test 1: Normal operation - should be available
+        mock_coordinator.last_update_success = True
+        mock_coordinator.data = {"total_value": 100000.00}
+        mock_coordinator.last_successful_update_time = datetime.now() - timedelta(
+            minutes=1
+        )
+        mock_coordinator.update_interval = timedelta(minutes=5)
+        assert sensor.available is True, "Should be available during normal operation"
+
+        # Test 2: Update in progress (temporary failure) - should stay available
+        mock_coordinator.last_update_success = (
+            False  # Simulating coordinator update in progress
+        )
+        mock_coordinator.last_successful_update_time = datetime.now() - timedelta(
+            minutes=2
+        )
+        assert sensor.available is True, (
+            "Should stay available during temporary update failure"
+        )
+
+        # Test 3: Sustained failure - should become unavailable
+        mock_coordinator.last_update_success = False
+        mock_coordinator.last_successful_update_time = datetime.now() - timedelta(
+            minutes=20
+        )
+        assert sensor.available is False, (
+            "Should become unavailable after sustained failure"
+        )
+
+        # Test 4: No data at all - should be unavailable
+        mock_coordinator.data = None
+        mock_coordinator.last_update_success = True
+        assert sensor.available is False, "Should be unavailable when no data exists"
+
+        # Test 5: First startup (no successful updates yet) - should be unavailable
+        mock_coordinator.data = {"total_value": 100000.00}
+        mock_coordinator.last_update_success = False
+        mock_coordinator.last_successful_update_time = None
+        assert sensor.available is False, (
+            "Should be unavailable on first startup before any successful update"
+        )
+
+    def test_availability_respects_update_intervals(self, mock_coordinator):
+        """Test that availability thresholds adapt to different update intervals."""
+        sensor = SaxoTotalValueSensor(mock_coordinator)
+
+        # Setup basic state
+        mock_coordinator.data = {"total_value": 100000.00}
+        mock_coordinator.last_update_success = False
+        current_time = datetime.now()
+
+        # Test with short update interval (5 minutes)
+        mock_coordinator.update_interval = timedelta(minutes=5)
+        mock_coordinator.last_successful_update_time = current_time - timedelta(
+            minutes=10
+        )
+        # Should still be available (10 min < 15 min minimum threshold)
+        assert sensor.available is True, (
+            "Should be available within 15 min minimum threshold"
+        )
+
+        # Test with long update interval (30 minutes)
+        mock_coordinator.update_interval = timedelta(minutes=30)
+        mock_coordinator.last_successful_update_time = current_time - timedelta(
+            minutes=80
+        )
+        # Should be unavailable (80 min > 3 * 30 min = 90 min threshold... wait, should be available)
+        assert sensor.available is True, (
+            "Should be available within 3x update interval threshold"
+        )
+
+        # Push beyond 3x threshold
+        mock_coordinator.last_successful_update_time = current_time - timedelta(
+            minutes=100
+        )
+        # Should be unavailable (100 min > 90 min threshold)
+        assert sensor.available is False, (
+            "Should be unavailable beyond 3x update interval threshold"
+        )

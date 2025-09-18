@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.6] - 2025-09-18
+
+### Fixed
+- **Performance Sensor Inception Date Issue**: Resolved misleading inception date display
+  - Removed hardcoded "2020-01-01" fallback that was showing incorrect inception dates for all performance sensors
+  - Removed `inception_day` attribute entirely as the required API FieldGroups are not available in the timeseries endpoint
+  - Validated against Saxo API specifications - `InceptionDay` field is only available in `/hist/v4/performance/summary` endpoint
+  - AllTime performance sensors now show generic "inception" indicator instead of specific dates
+  - Prevents display of misleading dates while maintaining sensor functionality
+
+### Improved
+- **Major Sensor Architecture Optimization**: Implemented shared base class hierarchy
+  - Reduced code duplication by 31% (from 1,472+ lines to 1,017 lines)
+  - Created `SaxoSensorBase` for common functionality across all sensors
+  - Created `SaxoBalanceSensorBase` for monetary balance sensors with currency handling
+  - Created `SaxoDiagnosticSensorBase` for diagnostic sensors with proper categorization
+  - Enhanced `SaxoPerformanceSensorBase` to inherit from `SaxoSensorBase`
+  - Maintained all existing functionality while improving maintainability
+- **Enhanced Sensor Availability During Updates**: Fixed sensors briefly showing as unavailable during coordinator updates
+  - Implemented "sticky availability" logic that keeps sensors available during normal update cycles
+  - Sensors only become unavailable after sustained failures (15+ minutes or 3 failed update cycles)
+  - Prevents UI flashing and maintains stable sensor states during API fetches
+  - Graceful handling of startup scenarios and genuine failures
+  - Enhanced availability logic in all sensor base classes
+- **Device Info Cleanup**: Removed firmware version from device information display
+  - Explicitly set `sw_version=None` in `DeviceInfo` to prevent automatic version display
+  - Cleaner device presentation in Home Assistant UI
+
+### Technical Improvements
+- Balance sensors reduced from ~100 lines each to ~10 lines each
+- Diagnostic sensors reduced from ~40-60 lines each to ~15-25 lines each
+- Comprehensive test suite updated to validate new architecture
+- Enhanced availability logic with adaptive thresholds based on update intervals
+- Improved code maintainability and extensibility for future sensor additions
+
 ## [2.1.5] - 2025-09-17
 
 ### Fixed
@@ -278,6 +313,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [2.2.1]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.2.1
 [2.2.0]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.2.0
+[2.1.6]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.1.6
+[2.1.5]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.1.5
 [2.1.1]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.1.1
 [2.1.0]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.1.0
 [2.0.3]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.0.3

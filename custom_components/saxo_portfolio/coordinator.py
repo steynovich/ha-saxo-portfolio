@@ -507,6 +507,28 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     list(balance_data.keys()) if balance_data else "No balance data",
                 )
 
+                # Check if balance data contains any date fields that might be inception-related
+                if balance_data:
+                    date_fields = [
+                        key
+                        for key in balance_data
+                        if any(
+                            date_word in key.lower()
+                            for date_word in [
+                                "date",
+                                "day",
+                                "inception",
+                                "created",
+                                "start",
+                            ]
+                        )
+                    ]
+                    if date_fields:
+                        _LOGGER.debug(
+                            "Balance data contains potential date fields: %s",
+                            {field: balance_data[field] for field in date_fields},
+                        )
+
                 # Remove detailed margin info to reduce log noise
                 if "MarginCollateralNotAvailableDetail" in balance_data:
                     del balance_data["MarginCollateralNotAvailableDetail"]
@@ -518,7 +540,6 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 month_investment_performance_percentage = 0.0
                 quarter_investment_performance_percentage = 0.0
                 cash_transfer_balance = 0.0
-                inception_day = None
                 client_id = "unknown"
                 account_id = "unknown"
                 client_name = "unknown"
@@ -558,9 +579,6 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     )
                     cash_transfer_balance = self._performance_data_cache.get(
                         "cash_transfer_balance", 0.0
-                    )
-                    inception_day = self._performance_data_cache.get(
-                        "inception_day", None
                     )
                     client_id = self._performance_data_cache.get("client_id", "unknown")
                     account_id = self._performance_data_cache.get(
@@ -609,6 +627,14 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                         client_key
                                     )
 
+                                    # Log performance data structure for debugging
+                                    _LOGGER.debug(
+                                        "Performance v3 data keys: %s",
+                                        list(performance_data.keys())
+                                        if performance_data
+                                        else "No data",
+                                    )
+
                                     # Extract AccumulatedProfitLoss from BalancePerformance
                                     balance_performance = performance_data.get(
                                         "BalancePerformance", {}
@@ -616,6 +642,24 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                     accumulated_profit_loss = balance_performance.get(
                                         "AccumulatedProfitLoss", 0.0
                                     )
+
+                                    # Check if there's an inception date in the v3 performance data
+                                    if "InceptionDate" in performance_data:
+                                        inception_day = performance_data.get(
+                                            "InceptionDate"
+                                        )
+                                        _LOGGER.debug(
+                                            "Found InceptionDate in performance v3 data: %s",
+                                            inception_day,
+                                        )
+                                    elif "FirstTradingDay" in performance_data:
+                                        inception_day = performance_data.get(
+                                            "FirstTradingDay"
+                                        )
+                                        _LOGGER.debug(
+                                            "Found FirstTradingDay in performance v3 data: %s",
+                                            inception_day,
+                                        )
 
                                     # Use AccumulatedProfitLoss as YTD earnings percentage
                                     ytd_earnings_percentage = accumulated_profit_loss
@@ -647,15 +691,6 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                         return_fraction * 100.0
                                     )
 
-                                    # Also try to extract InceptionDay if available in v4 performance data
-                                    inception_day = performance_v4_data.get(
-                                        "InceptionDay"
-                                    )
-                                    if inception_day:
-                                        _LOGGER.debug(
-                                            "Found InceptionDay in performance v4 data: %s",
-                                            inception_day,
-                                        )
 
                                     # Extract latest CashTransfer value
                                     balance = performance_v4_data.get("Balance", {})
@@ -753,7 +788,6 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             "month_investment_performance_percentage": month_investment_performance_percentage,
                             "quarter_investment_performance_percentage": quarter_investment_performance_percentage,
                             "cash_transfer_balance": cash_transfer_balance,
-                            "inception_day": inception_day,
                             "client_id": client_id,
                             "account_id": account_id,
                             "client_name": client_name,
@@ -775,7 +809,6 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "month_investment_performance_percentage": month_investment_performance_percentage,
                     "quarter_investment_performance_percentage": quarter_investment_performance_percentage,
                     "cash_transfer_balance": cash_transfer_balance,
-                    "inception_day": inception_day,
                     "client_id": client_id,
                     "account_id": account_id,
                     "client_name": client_name,
@@ -989,16 +1022,6 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return 0.0
         return self.data.get("quarter_investment_performance_percentage", 0.0)
 
-    def get_inception_day(self) -> str | None:
-        """Get InceptionDay from performance summary API.
-
-        Returns:
-            InceptionDay (first account deposit date) or None if not available
-
-        """
-        if not self.data:
-            return None
-        return self.data.get("inception_day")
 
     def get_account_id(self) -> str:
         """Get AccountId from account data.
