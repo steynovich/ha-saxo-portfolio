@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Unclosed Client Session During Token Refresh**: Fixed memory leak from unclosed aiohttp sessions
+  - Enhanced api_client property to properly close old clients when tokens change
+  - Added token comparison logic to detect when client needs recreation
+  - Uses async_create_task to properly close old client sessions during token refresh
+  - Eliminates "Unclosed client session" errors during OAuth token refresh cycles
+  - Prevents memory leaks and improves resource management
+
 ## [2.1.7] - 2025-01-18
 
 ### Fixed

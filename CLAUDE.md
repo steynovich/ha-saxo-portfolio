@@ -171,6 +171,14 @@ max_failure_time = max(15 * 60, 3 * update_interval_seconds)
 - `const.py:118`: PERFORMANCE_UPDATE_INTERVAL constant (1 hour)
 - `tests/integration/test_sticky_availability.py`: Comprehensive tests for availability behavior
 
+## Recent Changes (v2.1.8+)
+- **Resource Management Improvements**: Enhanced HTTP client session handling during token refresh
+  - Fixed "Unclosed client session" errors during OAuth token refresh cycles
+  - Added proper cleanup of old API clients when tokens change via `coordinator.py:94-103`
+  - Enhanced `api_client` property with token comparison logic to detect recreation needs
+  - Uses `async_create_task()` for proper async cleanup of old client sessions
+  - Prevents memory leaks and improves long-term resource management
+
 ## Recent Changes (v2.1.6+)
 - **Comprehensive Test Suite Optimization**: Updated all tests to reflect architecture improvements
   - Contract tests validate new base class hierarchy and shared functionality

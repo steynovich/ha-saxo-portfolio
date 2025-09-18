@@ -84,13 +84,25 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     @property
     def api_client(self) -> SaxoApiClient:
         """Get or create API client."""
+        # Check if we need to recreate the client (token refresh case)
+        token_data = self.config_entry.data.get("token", {})
+        access_token = token_data.get("access_token")
+
+        if not access_token:
+            raise ConfigEntryAuthFailed("No access token available")
+
+        # If client exists but token might have changed, close old client first
+        if self._api_client is not None:
+            # Simple check: if the current token is different from the client's token
+            # we need to recreate the client
+            current_token = getattr(self._api_client, 'access_token', None)
+            if current_token != access_token:
+                _LOGGER.debug("Token changed, closing old API client and creating new one")
+                # Schedule the old client for closure (don't await here since this is a property)
+                self.hass.async_create_task(self._api_client.close())
+                self._api_client = None
+
         if self._api_client is None:
-            token_data = self.config_entry.data.get("token", {})
-            access_token = token_data.get("access_token")
-
-            if not access_token:
-                raise ConfigEntryAuthFailed("No access token available")
-
             # Debug token details (without exposing the actual token)
             token_type = token_data.get("token_type", "unknown")
             expires_at = token_data.get("expires_at")
