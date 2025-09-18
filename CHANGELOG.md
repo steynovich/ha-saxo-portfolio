@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2025-09-18
+
+### Fixed
+- **HTTP Session Management**: Enhanced session cleanup to prevent "Unclosed client session" errors
+  - Improved error handling in API client close methods with comprehensive logging
+  - Enhanced session recreation detection and logging in API client
+  - Added robust error handling to coordinator shutdown methods
+  - Better exception logging with stack traces for debugging session issues
+  - Ensures proper cleanup during integration unload and token refresh operations
+
+### Technical Improvements
+- Added detailed logging for session creation, closure, and error scenarios
+- Enhanced async_shutdown method with proper exception handling
+- Improved _close_old_client method with comprehensive error recovery
+- Better debugging capabilities for HTTP session lifecycle management
+
 ## [2.2.0] - 2025-09-18
 
 ### Breaking Changes

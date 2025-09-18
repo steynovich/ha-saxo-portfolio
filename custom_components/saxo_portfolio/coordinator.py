@@ -154,7 +154,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await client.close()
                 _LOGGER.debug("Successfully closed old API client session")
         except Exception as e:
-            _LOGGER.warning("Error while closing old API client: %s", e)
+            _LOGGER.warning("Error while closing old API client: %s", e, exc_info=True)
 
     def _should_update_performance_data(self) -> bool:
         """Check if performance data should be updated based on cache age.
@@ -916,9 +916,16 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_shutdown(self) -> None:
         """Shutdown the coordinator and cleanup resources."""
+        _LOGGER.debug("Shutting down Saxo coordinator")
+
         if self._api_client:
-            await self._api_client.close()
-            self._api_client = None
+            try:
+                await self._api_client.close()
+                _LOGGER.debug("Successfully closed API client during shutdown")
+            except Exception as e:
+                _LOGGER.warning("Error closing API client during shutdown: %s", e, exc_info=True)
+            finally:
+                self._api_client = None
 
         await super().async_shutdown()
 

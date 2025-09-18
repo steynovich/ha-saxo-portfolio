@@ -155,6 +155,9 @@ class SaxoApiClient:
     def session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session."""
         if self._session is None or self._session.closed:
+            if self._session is not None and self._session.closed:
+                _LOGGER.debug("Previous session was closed, creating new session")
+
             timeout = aiohttp.ClientTimeout(
                 connect=API_TIMEOUT_CONNECT,
                 sock_read=API_TIMEOUT_READ,
@@ -175,7 +178,7 @@ class SaxoApiClient:
             }
 
             _LOGGER.debug(
-                "Creating API session with auth header length: %d, user-agent: %s",
+                "Creating new API session with auth header length: %d, user-agent: %s",
                 len(auth_header),
                 headers["User-Agent"],
             )
@@ -628,4 +631,11 @@ class SaxoApiClient:
     async def close(self):
         """Close the HTTP session."""
         if self._session and not self._session.closed:
-            await self._session.close()
+            _LOGGER.debug("Closing HTTP session")
+            try:
+                await self._session.close()
+                _LOGGER.debug("HTTP session closed successfully")
+            except Exception as e:
+                _LOGGER.warning("Error closing HTTP session: %s", e, exc_info=True)
+        else:
+            _LOGGER.debug("HTTP session already closed or None")
