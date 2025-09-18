@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2025-09-18
+
+### Breaking Changes
+- **Python Version Requirement**: Updated minimum Python version requirement to 3.13+
+  - Removed support for Python 3.11 and 3.12
+  - Updated all project configuration files to require Python 3.13+
+  - GitHub Actions workflows now test only Python 3.13
+  - Enhanced compatibility with latest Python features and improvements
+
+### Enhanced
+- **Python 3.13 Support**: Full compatibility with Python 3.13
+  - Updated pyproject.toml with Python 3.13 classifiers and requirements
+  - Updated ruff configuration to target Python 3.13
+  - Updated MyPy configuration for Python 3.13 type checking
+  - Enhanced development toolchain for modern Python features
+
+### Technical Improvements
+- Streamlined Python version support for better maintainability
+- Updated CI/CD pipeline to use Python 3.13 exclusively
+- Enhanced type checking and linting with Python 3.13 target
+- Improved code quality tools configuration for latest Python version
+
 ## [2.1.9] - 2025-09-18
 
 ### Enhanced

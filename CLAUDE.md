@@ -6,7 +6,7 @@ Auto-generated from current implementation. Last updated: 2025-09-18
 - Home Assistant Custom Integration
 - OAuth 2.0 Authentication
 - Saxo Bank OpenAPI
-- Python 3.11+
+- Python 3.13+
 - HACS Compatible
 
 ## Project Structure

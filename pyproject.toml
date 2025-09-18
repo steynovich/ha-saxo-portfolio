@@ -9,15 +9,14 @@ description = "Home Assistant integration for Saxo Portfolio monitoring"
 authors = [{name = "Home Assistant Community", email = "hello@home-assistant.io"}]
 license = {text = "MIT"}
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Home Automation",
 ]
 dependencies = [
@@ -48,7 +47,7 @@ include-package-data = true
 include = ["custom_components*"]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = [
@@ -94,7 +93,7 @@ fixture-parentheses = false
 keep-runtime-typing = true
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 ignore_errors = true
 follow_imports = "silent"
 ignore_missing_imports = true
