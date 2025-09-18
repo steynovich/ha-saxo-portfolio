@@ -560,7 +560,6 @@ class SaxoInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
         return "AllTime"
 
 
-
 class SaxoCashTransferBalanceSensor(SaxoBalanceSensorBase):
     """Representation of a Saxo Portfolio Cash Transfer Balance sensor."""
 

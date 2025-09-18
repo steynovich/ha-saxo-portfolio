@@ -691,7 +691,6 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                         return_fraction * 100.0
                                     )
 
-
                                     # Extract latest CashTransfer value
                                     balance = performance_v4_data.get("Balance", {})
                                     cash_transfer_list = balance.get("CashTransfer", [])
@@ -1021,7 +1020,6 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not self.data:
             return 0.0
         return self.data.get("quarter_investment_performance_percentage", 0.0)
-
 
     def get_account_id(self) -> str:
         """Get AccountId from account data.
