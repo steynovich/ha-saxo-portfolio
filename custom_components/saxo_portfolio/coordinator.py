@@ -60,6 +60,10 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._performance_data_cache: dict[str, Any] = {}
         self._performance_last_updated: datetime | None = None
 
+        # Track if sensors were skipped due to unknown client name
+        self._sensors_initialized = False
+        self._last_known_client_name = "unknown"
+
         # Get configured timezone
         self._timezone = config_entry.data.get(CONF_TIMEZONE, DEFAULT_TIMEZONE)
 
@@ -912,6 +916,28 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if data is not None:
             self._last_successful_update = dt_util.utcnow()
 
+            # Check if client name has changed from unknown to a valid name
+            # This indicates that sensor setup should be attempted again
+            current_client_name = data.get("client_name", "unknown")
+            if (
+                self._last_known_client_name == "unknown"
+                and current_client_name != "unknown"
+                and not self._sensors_initialized
+            ):
+                _LOGGER.info(
+                    "Client name is now available ('%s') - scheduling config entry reload to initialize sensors",
+                    current_client_name,
+                )
+                self._last_known_client_name = current_client_name
+
+                # Schedule config entry reload to create sensors
+                self.hass.async_create_task(
+                    self.hass.config_entries.async_reload(self.config_entry.entry_id)
+                )
+            else:
+                # Update last known client name for future comparisons
+                self._last_known_client_name = current_client_name
+
         return data
 
     async def async_shutdown(self) -> None:
@@ -1078,6 +1104,16 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not self.data:
             return "unknown"
         return self.data.get("client_name", "unknown")
+
+    def mark_sensors_initialized(self) -> None:
+        """Mark that sensors have been successfully initialized.
+
+        This prevents unnecessary config entry reloads once sensors are created.
+        """
+        self._sensors_initialized = True
+        _LOGGER.debug(
+            "Marked sensors as initialized for entry %s", self.config_entry.entry_id
+        )
 
     async def async_update_interval_if_needed(self) -> None:
         """Check and update the refresh interval based on current market status.

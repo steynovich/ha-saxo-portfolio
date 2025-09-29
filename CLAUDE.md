@@ -100,6 +100,13 @@ python -m py_compile custom_components/saxo_portfolio/sensor.py
 - Automatic token refresh with proper security handling
 - Entity names automatically generated from Saxo Client ID
 
+### Conditional Sensor Creation
+- **Unknown Client Name Protection**: Sensors are only created when client data is successfully retrieved from the Saxo API
+- **Automatic Retry**: If client name is "unknown" during initial setup, sensor creation is skipped and automatically retried when client data becomes available
+- **Config Entry Reload**: The integration automatically reloads the config entry when client data changes from "unknown" to a valid client name
+- **Device Registration**: Home Assistant devices are only registered once valid client information is available, preventing orphaned devices
+- **Enhanced Logging**: Clear warning messages when sensor setup is skipped due to unknown client data, with guidance for users
+
 ### Sticky Availability System
 
 #### Enhanced Availability Logic
@@ -170,6 +177,16 @@ max_failure_time = max(15 * 60, 3 * update_interval_seconds)
 - `api/saxo_client.py:502-540`: get_performance_v4_ytd() method for year-to-date performance
 - `const.py:118`: PERFORMANCE_UPDATE_INTERVAL constant (1 hour)
 - `tests/integration/test_sticky_availability.py`: Comprehensive tests for availability behavior
+
+## Recent Changes (v2.2.3+)
+- **Conditional Sensor Creation**: Enhanced integration robustness with unknown client name protection
+  - Sensors are only created when valid client data is available from the Saxo API
+  - Automatic config entry reload when client data becomes available via `coordinator.py:919-939`
+  - Sensor setup validation in `sensor.py:273-282` checks for unknown client names
+  - Enhanced error handling with clear user guidance via warning messages
+  - Prevents orphaned devices and entities when API authentication initially fails
+  - Sensor initialization tracking via `coordinator.py:1108-1114` prevents unnecessary reloads
+  - Comprehensive test coverage in `tests/integration/test_sensor_creation.py:214-294`
 
 ## Recent Changes (v2.1.8+)
 - **Enhanced Resource Management**: Improved HTTP client session handling during token refresh with comprehensive error handling

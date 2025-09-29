@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 
 from custom_components.saxo_portfolio import async_setup_entry
-from custom_components.saxo_portfolio.const import DOMAIN
+from custom_components.saxo_portfolio.const import DOMAIN, DATA_COORDINATOR
 from custom_components.saxo_portfolio.coordinator import SaxoCoordinator
 from custom_components.saxo_portfolio.sensor import (
     SaxoCashBalanceSensor,
@@ -134,13 +134,13 @@ class TestSensorCreationAndUpdates:
             assert mock_config_entry.entry_id in mock_hass.data[DOMAIN]
 
     @pytest.mark.asyncio
-    async def test_sensor_platform_setup(
+    async def test_sensor_platform_setup_with_known_client_name(
         self, mock_hass, mock_config_entry, mock_saxo_api_data
     ):
-        """Test that sensor platform creates expected sensors."""
+        """Test that sensor platform creates expected sensors when client name is available."""
         # This test MUST FAIL initially - no implementation exists
 
-        # Mock coordinator with current data structure
+        # Mock coordinator with current data structure and known client name
         mock_coordinator = Mock(spec=SaxoCoordinator)
         mock_coordinator.data = {
             "cash_balance": 5000.00,
@@ -159,6 +159,12 @@ class TestSensorCreationAndUpdates:
         mock_coordinator.get_client_id = Mock(return_value="123456")
         mock_coordinator.get_account_id = Mock(return_value="ACC001")
         mock_coordinator.get_client_name = Mock(return_value="Main Trading Account")
+        mock_coordinator.mark_sensors_initialized = Mock()
+
+        # Store coordinator in hass data
+        mock_hass.data = {
+            DOMAIN: {mock_config_entry.entry_id: {DATA_COORDINATOR: mock_coordinator}}
+        }
 
         # Setup sensor platform
         from custom_components.saxo_portfolio.sensor import (
@@ -171,6 +177,9 @@ class TestSensorCreationAndUpdates:
 
         # Should create and add sensor entities
         mock_add_entities.assert_called_once()
+
+        # Should mark sensors as initialized
+        mock_coordinator.mark_sensors_initialized.assert_called_once()
 
         # Get the sensors that were created
         call_args = mock_add_entities.call_args
@@ -202,6 +211,92 @@ class TestSensorCreationAndUpdates:
 
         for expected_class in expected_classes:
             assert expected_class in sensor_classes
+
+    @pytest.mark.asyncio
+    async def test_sensor_platform_setup_skipped_when_client_name_unknown(
+        self, mock_hass, mock_config_entry
+    ):
+        """Test that sensor setup is skipped when client name is unknown."""
+        # Mock coordinator with unknown client name
+        mock_coordinator = Mock(spec=SaxoCoordinator)
+        mock_coordinator.get_client_name = Mock(return_value="unknown")
+        mock_coordinator.mark_sensors_initialized = Mock()
+
+        # Store coordinator in hass data
+        mock_hass.data = {
+            DOMAIN: {mock_config_entry.entry_id: {DATA_COORDINATOR: mock_coordinator}}
+        }
+
+        # Setup sensor platform
+        from custom_components.saxo_portfolio.sensor import (
+            async_setup_entry as setup_sensors,
+        )
+
+        mock_add_entities = Mock()
+
+        await setup_sensors(mock_hass, mock_config_entry, mock_add_entities)
+
+        # Should NOT create any sensor entities
+        mock_add_entities.assert_not_called()
+
+        # Should NOT mark sensors as initialized
+        mock_coordinator.mark_sensors_initialized.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_config_entry_reload_when_client_name_becomes_available(self):
+        """Test that config entry is reloaded when client name changes from unknown to known."""
+        from custom_components.saxo_portfolio.coordinator import SaxoCoordinator
+        from unittest.mock import AsyncMock
+
+        # Create mock hass with config entries
+        mock_hass = Mock()
+        mock_hass.config_entries = Mock()
+        mock_hass.config_entries.async_reload = AsyncMock()
+        mock_hass.async_create_task = Mock()
+
+        # Create mock config entry
+        mock_config_entry = Mock()
+        mock_config_entry.entry_id = "test_entry"
+        mock_config_entry.data = {
+            "token": {
+                "access_token": "test_token",
+                "refresh_token": "test_refresh",
+                "expires_at": (datetime.now() + timedelta(hours=1)).timestamp(),
+            }
+        }
+
+        # Create coordinator instance
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+
+        # Initial state - client name unknown, sensors not initialized
+        assert coordinator._last_known_client_name == "unknown"
+        assert coordinator._sensors_initialized is False
+
+        # Mock the _fetch_portfolio_data method to return data with client name
+        with patch.object(
+            coordinator, "_fetch_portfolio_data", new_callable=AsyncMock
+        ) as mock_fetch:
+            mock_fetch.return_value = {
+                "client_name": "Test Client Name",
+                "client_id": "123456",
+                "cash_balance": 1000.0,
+                "total_value": 10000.0,
+                "last_updated": datetime.now().isoformat(),
+            }
+
+            # Call _async_update_data to simulate coordinator update
+            result = await coordinator._async_update_data()
+
+            # Should return the data
+            assert result is not None
+            assert result["client_name"] == "Test Client Name"
+
+            # Should schedule config entry reload
+            mock_hass.async_create_task.assert_called_once()
+
+            # Verify the task being created is for reloading the config entry
+            task_call = mock_hass.async_create_task.call_args
+            assert task_call is not None
 
     @pytest.mark.asyncio
     async def test_sensor_state_updates_from_coordinator_data(

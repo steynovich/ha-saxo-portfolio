@@ -270,6 +270,23 @@ async def async_setup_entry(
         DATA_COORDINATOR
     ]
 
+    # Check if client name is available - do not create sensors if unknown
+    client_name = coordinator.get_client_name()
+    if client_name == "unknown":
+        _LOGGER.warning(
+            "Client name is unknown - skipping sensor setup for entry %s. "
+            "This usually means the initial API call failed or is still in progress. "
+            "Sensors will be created after a successful config entry reload when client data is available.",
+            config_entry.entry_id,
+        )
+        return
+
+    _LOGGER.debug(
+        "Client name '%s' available - proceeding with sensor setup for entry %s",
+        client_name,
+        config_entry.entry_id,
+    )
+
     # Create sensors for balance data
     entities: list[SensorEntity] = [
         SaxoCashBalanceSensor(coordinator),
@@ -292,11 +309,15 @@ async def async_setup_entry(
     ]
 
     _LOGGER.info(
-        "Setting up %d Saxo Portfolio sensors for entry %s",
+        "Setting up %d Saxo Portfolio sensors for client '%s' (entry %s)",
         len(entities),
+        client_name,
         config_entry.entry_id,
     )
     async_add_entities(entities, True)
+
+    # Mark sensors as initialized in the coordinator
+    coordinator.mark_sensors_initialized()
 
 
 class SaxoCashBalanceSensor(SaxoBalanceSensorBase):

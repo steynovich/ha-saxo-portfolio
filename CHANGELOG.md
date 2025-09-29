@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.3] - 2025-09-29
+
+### Added
+- **Conditional Sensor Creation**: Enhanced integration robustness with unknown client name protection
+  - Sensors are only created when valid client data is successfully retrieved from the Saxo API
+  - Prevents orphaned devices and entities when API authentication initially fails
+  - Automatic config entry reload when client data becomes available
+  - Clear warning messages with user guidance when sensor setup is skipped
+
+### Improved
+- **Enhanced Error Handling**: Better handling of scenarios where client information is unavailable
+  - Integration gracefully handles temporary API unavailability during initial setup
+  - Automatic recovery when client data becomes available without user intervention
+  - Prevents unnecessary entity registry entries for incomplete integrations
+- **Testing Coverage**: Added comprehensive tests for conditional sensor creation behavior
+  - Tests validate both successful creation and proper skipping scenarios
+  - Enhanced test coverage for config entry reload functionality
+
+### Technical Details
+- Added client name validation in `async_setup_entry()` before sensor creation
+- Implemented automatic config entry reload detection and scheduling
+- Enhanced coordinator tracking for sensor initialization status
+- Improved logging with actionable user guidance for troubleshooting
+
 ## [2.2.2] - 2025-09-29
 
 ### Fixed
