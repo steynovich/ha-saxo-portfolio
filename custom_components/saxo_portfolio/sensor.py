@@ -100,31 +100,46 @@ class SaxoSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
             return True
 
         # If we have data but the current update is failing, check if it's a sustained failure
-        if hasattr(self.coordinator, "last_successful_update_time"):
-            last_success = self.coordinator.last_successful_update_time
-            if last_success is not None:
-                from homeassistant.util import dt as dt_util
+        # We have data (checked above), so we should stay available unless there's a sustained failure
+        if not hasattr(self.coordinator, "last_successful_update_time"):
+            # If we have data but no successful update time tracking, stay available
+            # This ensures compatibility with older coordinators and first updates
+            return True
 
-                # Calculate how long it's been since last successful update
-                time_since_success = dt_util.utcnow() - last_success
+        last_success = self.coordinator.last_successful_update_time
+        if last_success is None:
+            # No successful update time recorded yet but we have data, stay available
+            # This handles the case during initial startup when coordinator has data
+            # but hasn't recorded a successful update time yet
+            return True
 
-                # Allow for up to 3 update cycles before marking unavailable
-                # Use the longer of 15 minutes or 3x the current update interval
-                update_interval_seconds = (
-                    self.coordinator.update_interval.total_seconds()
-                    if self.coordinator.update_interval
-                    else 300  # Default to 5 minutes
-                )
-                max_failure_time = max(
-                    15 * 60, 3 * update_interval_seconds
-                )  # 15 min minimum
+        from homeassistant.util import dt as dt_util
 
-                # Stay available if we haven't exceeded the failure threshold
-                if time_since_success.total_seconds() < max_failure_time:
-                    return True
+        # Calculate how long it's been since last successful update
+        # Ensure both timestamps are timezone-aware for comparison
+        current_time = dt_util.utcnow()
+        if last_success.tzinfo is None:
+            # Convert naive datetime to UTC-aware
+            import pytz
 
-        # Default to unavailable only after sustained failures
-        return False
+            last_success = pytz.UTC.localize(last_success)
+        time_since_success = current_time - last_success
+
+        # Allow for up to 3 update cycles before marking unavailable
+        # Use the longer of 15 minutes or 3x the current update interval
+        update_interval_seconds = (
+            self.coordinator.update_interval.total_seconds()
+            if self.coordinator.update_interval
+            else 300  # Default to 5 minutes
+        )
+        max_failure_time = max(15 * 60, 3 * update_interval_seconds)  # 15 min minimum
+
+        # Stay available if we haven't exceeded the failure threshold
+        if time_since_success.total_seconds() < max_failure_time:
+            return True
+        else:
+            # Sustained failure detected
+            return False
 
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""

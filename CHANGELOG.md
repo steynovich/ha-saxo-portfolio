@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.2] - 2025-09-29
+
+### Fixed
+- **Sensor Availability Stability**: Improved sensor availability logic to prevent brief unavailability during updates
+  - Enhanced sticky availability system to maintain sensor availability during normal coordinator updates
+  - Sensors now only become unavailable after sustained failures (15+ minutes or 3x update interval)
+  - Fixed timezone-aware datetime comparison issues in availability calculations
+  - Improved edge case handling for initial startup and missing update timestamps
+  - Sensors remain available during OAuth token refresh operations
+  - Better handling of coordinators without last_successful_update_time attribute
+
+### Technical Improvements
+- Refactored availability logic in SaxoSensorBase for better maintainability
+- Added proper timezone conversion for datetime comparisons (UTC-aware)
+- Improved graceful degradation when update timestamps are unavailable
+- Enhanced code readability with clearer logic flow and documentation
+
 ## [2.2.1] - 2025-09-18
 
 ### Fixed
