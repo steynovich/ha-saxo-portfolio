@@ -270,12 +270,23 @@ class SaxoApiClient:
                             retry_after = int(response.headers.get("Retry-After", 60))
                             rate_limit_reset = response.headers.get("X-RateLimit-Reset")
 
-                            _LOGGER.warning(
-                                "Rate limited (attempt %d/%d), retry after %d seconds",
-                                attempt + 1,
-                                MAX_RETRIES,
-                                retry_after,
-                            )
+                            # Use debug level on first attempt, warning on subsequent attempts
+                            if attempt == 0:
+                                _LOGGER.debug(
+                                    "Rate limited by Saxo API (attempt %d/%d), retry after %d seconds. "
+                                    "This is normal during startup or high API usage periods.",
+                                    attempt + 1,
+                                    MAX_RETRIES,
+                                    retry_after,
+                                )
+                            else:
+                                _LOGGER.warning(
+                                    "Rate limited by Saxo API (attempt %d/%d), retry after %d seconds. "
+                                    "Multiple rate limit hits may indicate network issues or high API load.",
+                                    attempt + 1,
+                                    MAX_RETRIES,
+                                    retry_after,
+                                )
 
                             # Update rate limiter with server response
                             self._rate_limiter.set_rate_limited_until(retry_after)

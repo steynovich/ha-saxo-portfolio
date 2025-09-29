@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.6] - 2025-09-29
+
+### Improved
+- **Enhanced Rate Limiting Messages**: Improved rate limiting error reporting for better user experience
+  - Changed first rate limit occurrence from WARNING to DEBUG level to reduce startup noise
+  - Added context-aware messages explaining rate limiting is normal during startup and high API usage
+  - Enhanced error messages to distinguish between expected rate limiting and potential issues
+  - Added startup phase tracking to provide better context for initial integration setup
+
+### Fixed
+- **Startup Experience**: Reduced confusing rate limit warnings during integration startup
+  - Rate limiting during startup is normal behavior and no longer generates warning messages
+  - Subsequent rate limit hits still generate warnings to indicate potential issues
+  - Added helpful context about when rate limiting is expected vs concerning
+
+### Technical Improvements
+- Startup phase detection in coordinator for first 3 successful updates
+- Context-aware rate limiting messages in API client with better user guidance
+- Enhanced logging to help users understand normal vs problematic rate limiting scenarios
+
 ## [2.2.5] - 2025-09-29
 
 ### Improved

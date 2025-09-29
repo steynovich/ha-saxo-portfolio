@@ -67,6 +67,10 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._sensors_initialized = False
         self._last_known_client_name = "unknown"
 
+        # Track startup phase for better error messaging
+        self._is_startup_phase = True
+        self._successful_updates_count = 0
+
         # Get configured timezone
         self._timezone = config_entry.data.get(CONF_TIMEZONE, DEFAULT_TIMEZONE)
 
@@ -966,6 +970,18 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if data is not None:
             self._last_successful_update = dt_util.utcnow()
 
+            # Track successful updates and exit startup phase after a few successes
+            self._successful_updates_count += 1
+            if (
+                self._successful_updates_count >= 3
+            ):  # Exit startup after 3 successful updates
+                if self._is_startup_phase:  # Only log once when exiting startup
+                    _LOGGER.debug(
+                        "Integration startup phase completed after %d successful updates",
+                        self._successful_updates_count,
+                    )
+                self._is_startup_phase = False
+
             # Check if client name has changed from unknown to a valid name
             # This indicates that sensor setup should be attempted again
             current_client_name = data.get("client_name", "unknown")
@@ -1164,6 +1180,16 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.debug(
             "Marked sensors as initialized for entry %s", self.config_entry.entry_id
         )
+
+    @property
+    def is_startup_phase(self) -> bool:
+        """Check if the coordinator is still in startup phase.
+
+        Returns:
+            True if still in startup phase (first few updates), False otherwise
+
+        """
+        return self._is_startup_phase
 
     async def async_update_interval_if_needed(self) -> None:
         """Check and update the refresh interval based on current market status.

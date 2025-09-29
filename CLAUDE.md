@@ -178,6 +178,14 @@ max_failure_time = max(15 * 60, 3 * update_interval_seconds)
 - `const.py:118`: PERFORMANCE_UPDATE_INTERVAL constant (1 hour)
 - `tests/integration/test_sticky_availability.py`: Comprehensive tests for availability behavior
 
+## Recent Changes (v2.2.6+)
+- **Enhanced Rate Limiting Messages**: Improved rate limiting experience and reduced startup noise
+  - Changed first rate limit occurrence from WARNING to DEBUG level in `api/saxo_client.py:274-289`
+  - Added context-aware messages explaining when rate limiting is normal vs concerning
+  - Startup phase tracking in `coordinator.py:70-72` for better error context during first 3 updates
+  - Enhanced rate limiting messages distinguish between expected (startup/high usage) and problematic scenarios
+  - Completion logging when startup phase ends via `coordinator.py:976-981`
+
 ## Recent Changes (v2.2.5+)
 - **Enhanced Timeout Handling**: Significantly improved network resilience and error reporting
   - Increased coordinator timeout from 30s to 90s in `const.py:161` for multiple API calls
