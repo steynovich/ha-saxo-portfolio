@@ -178,6 +178,16 @@ max_failure_time = max(15 * 60, 3 * update_interval_seconds)
 - `const.py:118`: PERFORMANCE_UPDATE_INTERVAL constant (1 hour)
 - `tests/integration/test_sticky_availability.py`: Comprehensive tests for availability behavior
 
+## Recent Changes (v2.2.5+)
+- **Enhanced Timeout Handling**: Significantly improved network resilience and error reporting
+  - Increased coordinator timeout from 30s to 90s in `const.py:161` for multiple API calls
+  - Added progressive timeouts: Balance (45s), Performance (60s), Client Info (30s) in `const.py:156-158`
+  - Enhanced timeout error handling in `coordinator.py:876-903` with timing context and user guidance
+  - Smart timeout warning system: first occurrence as WARNING, subsequent as DEBUG for 5 minutes
+  - Comprehensive request timing logs in `coordinator.py:544-545` and `coordinator.py:862-863`
+  - Progressive timeout implementation in `coordinator.py:541-542`, `633`, `662`, `716`, `205`
+  - Improved error recovery with actionable network connectivity guidance
+
 ## Recent Changes (v2.2.4+)
 - **Logging Optimization**: Improved log cleanliness by reducing verbose OAuth token management messages
   - Changed "Token expires very soon, immediate refresh needed" from WARNING to DEBUG level in `coordinator.py:308`

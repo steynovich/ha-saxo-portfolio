@@ -23,6 +23,9 @@ from homeassistant.util import dt as dt_util
 
 from .api.saxo_client import SaxoApiClient, AuthenticationError, APIError
 from .const import (
+    API_TIMEOUT_BALANCE,
+    API_TIMEOUT_CLIENT_INFO,
+    API_TIMEOUT_PERFORMANCE,
     CONF_TIMEZONE,
     COORDINATOR_UPDATE_TIMEOUT,
     DEFAULT_TIMEZONE,
@@ -199,7 +202,8 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         try:
             method = getattr(client, method_name)
-            performance_data = await method(client_key)
+            async with async_timeout.timeout(API_TIMEOUT_PERFORMANCE):
+                performance_data = await method(client_key)
 
             key_figures = performance_data.get("KeyFigures", {})
             return_fraction = key_figures.get("ReturnFraction", 0.0)
@@ -530,9 +534,15 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
             # Fetch balance data only
+            fetch_start_time = datetime.now()
             async with async_timeout.timeout(COORDINATOR_UPDATE_TIMEOUT):
-                # Get balance data (only required endpoint)
-                balance_data = await client.get_account_balance()
+                # Get balance data (only required endpoint) with specific timeout
+                balance_start_time = datetime.now()
+                async with async_timeout.timeout(API_TIMEOUT_BALANCE):
+                    balance_data = await client.get_account_balance()
+
+                balance_duration = (datetime.now() - balance_start_time).total_seconds()
+                _LOGGER.debug("Balance data fetch completed in %.2fs", balance_duration)
                 _LOGGER.debug(
                     "Balance data keys: %s",
                     list(balance_data.keys()) if balance_data else "No balance data",
@@ -624,9 +634,10 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                 # Only fetch performance data if cache is stale
                 if should_update_performance:
-                    # Get client details (ClientKey, ClientId, etc.)
+                    # Get client details (ClientKey, ClientId, etc.) with specific timeout
                     try:
-                        client_details = await client.get_client_details()
+                        async with async_timeout.timeout(API_TIMEOUT_CLIENT_INFO):
+                            client_details = await client.get_client_details()
                         if client_details:
                             _LOGGER.debug(
                                 "Client details response keys: %s",
@@ -654,9 +665,12 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                     "Found ClientKey from client details, attempting performance fetch"
                                 )
                                 try:
-                                    performance_data = await client.get_performance(
-                                        client_key
-                                    )
+                                    async with async_timeout.timeout(
+                                        API_TIMEOUT_PERFORMANCE
+                                    ):
+                                        performance_data = await client.get_performance(
+                                            client_key
+                                        )
 
                                     # Log performance data structure for debugging
                                     _LOGGER.debug(
@@ -707,9 +721,12 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                                 # Also try to fetch v4 performance data
                                 try:
-                                    performance_v4_data = (
-                                        await client.get_performance_v4(client_key)
-                                    )
+                                    async with async_timeout.timeout(
+                                        API_TIMEOUT_PERFORMANCE
+                                    ):
+                                        performance_v4_data = (
+                                            await client.get_performance_v4(client_key)
+                                        )
 
                                     # Extract ReturnFraction from KeyFigures (multiply by 100 for percentage)
                                     key_figures = performance_v4_data.get(
@@ -845,6 +862,12 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "last_updated": datetime.now().isoformat(),
                 }
 
+                # Log total fetch duration
+                total_duration = (datetime.now() - fetch_start_time).total_seconds()
+                _LOGGER.debug(
+                    "Complete portfolio data fetch completed in %.2fs", total_duration
+                )
+
         except AuthenticationError as e:
             _LOGGER.error(
                 "Authentication error for production environment: %s. "
@@ -857,8 +880,35 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ) from e
 
         except TimeoutError as e:
-            _LOGGER.error("Timeout fetching portfolio data")
-            raise UpdateFailed("Timeout fetching portfolio data") from e
+            # Calculate how long the fetch attempt took
+            if "fetch_start_time" in locals():
+                actual_duration = (datetime.now() - fetch_start_time).total_seconds()
+                timeout_msg = (
+                    f"Timeout fetching portfolio data after {actual_duration:.1f}s "
+                    f"(limit: {COORDINATOR_UPDATE_TIMEOUT}s). "
+                    f"This may indicate network connectivity issues or high Saxo API load. "
+                    f"The integration will automatically retry on the next update cycle."
+                )
+            else:
+                timeout_msg = (
+                    f"Timeout fetching portfolio data after {COORDINATOR_UPDATE_TIMEOUT}s. "
+                    f"This may indicate network connectivity issues or high Saxo API load. "
+                    f"The integration will automatically retry on the next update cycle."
+                )
+
+            # First occurrence as warning, subsequent as debug to reduce noise
+            if (
+                not hasattr(self, "_last_timeout_warning")
+                or (datetime.now() - self._last_timeout_warning).total_seconds() > 300
+            ):  # 5 minutes
+                _LOGGER.warning(timeout_msg)
+                self._last_timeout_warning = datetime.now()
+            else:
+                _LOGGER.debug(timeout_msg)
+
+            raise UpdateFailed(
+                "Network timeout - check connectivity and try again"
+            ) from e
 
         except APIError as e:
             _LOGGER.error("API error fetching portfolio data: %s", type(e).__name__)

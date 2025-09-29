@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.5] - 2025-09-29
+
+### Improved
+- **Enhanced Timeout Handling**: Significantly improved timeout management and error reporting
+  - Increased coordinator timeout from 30s to 90s to accommodate multiple API calls
+  - Added progressive timeouts: Balance (45s), Performance (60s), Client Info (30s)
+  - Enhanced timeout error messages with actual timing information and user guidance
+  - Implemented smart timeout warning system (first warning, then debug level for 5 minutes)
+  - Added comprehensive timing logs for debugging API performance issues
+
+### Fixed
+- **Network Resilience**: Better handling of network connectivity issues and high API load scenarios
+  - Timeout errors now provide actionable guidance instead of generic error messages
+  - Improved error recovery with detailed context about network conditions
+  - Reduced timeout error noise while maintaining visibility into genuine issues
+
+### Technical Improvements
+- Progressive timeout implementation for different API endpoint types
+- Enhanced logging with request timing information for troubleshooting
+- Improved error message context with actual vs expected timing
+- Better separation of concerns between critical and optional data fetching
+
 ## [2.2.4] - 2025-09-29
 
 ### Improved
