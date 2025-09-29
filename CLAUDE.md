@@ -178,6 +178,13 @@ max_failure_time = max(15 * 60, 3 * update_interval_seconds)
 - `const.py:118`: PERFORMANCE_UPDATE_INTERVAL constant (1 hour)
 - `tests/integration/test_sticky_availability.py`: Comprehensive tests for availability behavior
 
+## Recent Changes (v2.2.4+)
+- **Logging Optimization**: Improved log cleanliness by reducing verbose OAuth token management messages
+  - Changed "Token expires very soon, immediate refresh needed" from WARNING to DEBUG level in `coordinator.py:308`
+  - Token refresh operations are normal behavior that don't require user attention
+  - Cleaner Home Assistant logs with reduced noise from routine OAuth operations
+  - Enhanced user experience with less verbose logging for standard operations
+
 ## Recent Changes (v2.2.3+)
 - **Conditional Sensor Creation**: Enhanced integration robustness with unknown client name protection
   - Sensors are only created when valid client data is available from the Saxo API

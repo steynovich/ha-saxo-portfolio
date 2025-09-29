@@ -305,7 +305,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                 # Validate token still has minimum validity
                 if current_time >= (expiry_time - TOKEN_MIN_VALIDITY):
-                    _LOGGER.warning("Token expires very soon, immediate refresh needed")
+                    _LOGGER.debug("Token expires very soon, immediate refresh needed")
 
                 await self._refresh_oauth_token()
 
