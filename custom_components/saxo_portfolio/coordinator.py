@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta, time
 import zoneinfo
 from typing import Any
@@ -42,6 +43,22 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+@dataclass
+class PerformanceCache:
+    """Cache for performance data."""
+
+    ytd_earnings_percentage: float = 0.0
+    investment_performance_percentage: float = 0.0
+    ytd_investment_performance_percentage: float = 0.0
+    month_investment_performance_percentage: float = 0.0
+    quarter_investment_performance_percentage: float = 0.0
+    cash_transfer_balance: float = 0.0
+    client_id: str = "unknown"
+    account_id: str = "unknown"
+    client_name: str = "unknown"
+    last_updated: datetime | None = None
+
+
 class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Saxo Portfolio data coordinator."""
 
@@ -60,8 +77,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_successful_update: datetime | None = None
 
         # Performance data caching
-        self._performance_data_cache: dict[str, Any] = {}
-        self._performance_last_updated: datetime | None = None
+        self._performance_cache = PerformanceCache()
 
         # Track if sensors were skipped due to unknown client name
         self._sensors_initialized = False
@@ -92,68 +108,77 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             always_update=False,
         )
 
+    def _should_recreate_api_client(self, access_token: str) -> bool:
+        """Check if API client needs recreation due to token change.
+
+        Args:
+            access_token: Current access token from config
+
+        Returns:
+            True if client should be recreated
+
+        """
+        if self._api_client is None:
+            return True
+
+        current_token = getattr(self._api_client, "access_token", None)
+        if current_token != access_token:
+            _LOGGER.debug("Token changed, API client needs recreation")
+            return True
+
+        return False
+
+    def _create_api_client(self, access_token: str) -> SaxoApiClient:
+        """Create new API client with token.
+
+        Args:
+            access_token: OAuth access token
+
+        Returns:
+            New SaxoApiClient instance
+
+        """
+        from .const import SAXO_API_BASE_URL
+
+        token_data = self.config_entry.data.get("token", {})
+        token_type = token_data.get("token_type", "unknown")
+        expires_at = token_data.get("expires_at")
+
+        if expires_at:
+            expires_datetime = datetime.fromtimestamp(expires_at)
+            is_expired = datetime.now() > expires_datetime
+            _LOGGER.debug(
+                "Creating API client - token type: %s, expires: %s, is_expired: %s",
+                token_type,
+                expires_datetime.isoformat(),
+                is_expired,
+            )
+        else:
+            _LOGGER.debug(
+                "Creating API client - token type: %s, no expiry info", token_type
+            )
+
+        return SaxoApiClient(access_token, SAXO_API_BASE_URL)
+
     @property
     def api_client(self) -> SaxoApiClient:
-        """Get or create API client."""
-        # Check if we need to recreate the client (token refresh case)
+        """Get API client, creating or recreating as needed."""
         token_data = self.config_entry.data.get("token", {})
         access_token = token_data.get("access_token")
 
         if not access_token:
             raise ConfigEntryAuthFailed("No access token available")
 
-        # If client exists but token might have changed, close old client first
-        if self._api_client is not None:
-            # Simple check: if the current token is different from the client's token
-            # we need to recreate the client
-            current_token = getattr(self._api_client, "access_token", None)
-            if current_token != access_token:
-                _LOGGER.debug(
-                    "Token changed, closing old API client and creating new one"
-                )
-                # Store reference to old client and schedule safe closure
+        # Check if client needs recreation
+        if self._should_recreate_api_client(access_token):
+            # Close old client if it exists
+            if self._api_client is not None:
                 old_client = self._api_client
                 self._api_client = None
-                # Create task to close the old client safely with error handling
-                if old_client:
-                    self.hass.async_create_task(self._close_old_client(old_client))
+                self.hass.async_create_task(self._close_old_client(old_client))
 
-        if self._api_client is None:
-            # Debug token details (without exposing the actual token)
-            token_type = token_data.get("token_type", "unknown")
-            expires_at = token_data.get("expires_at")
-            has_refresh_token = bool(token_data.get("refresh_token"))
-
-            if expires_at:
-                expires_datetime = datetime.fromtimestamp(expires_at)
-                is_expired = datetime.now() > expires_datetime
-                _LOGGER.debug(
-                    "Token details - type: %s, expires_at: %s, is_expired: %s, has_refresh: %s",
-                    token_type,
-                    expires_datetime.isoformat(),
-                    is_expired,
-                    has_refresh_token,
-                )
-            else:
-                _LOGGER.debug(
-                    "Token details - type: %s, no expiry info, has_refresh: %s",
-                    token_type,
-                    has_refresh_token,
-                )
-
-            # Get base URL - always use production
-            from .const import SAXO_API_BASE_URL
-
-            base_url = SAXO_API_BASE_URL
-
-            _LOGGER.debug(
-                "Creating API client for production environment, base_url: %s, token_length: %d",
-                base_url,
-                len(access_token) if access_token else 0,
-            )
-
-            # Don't pass session - let API client create its own with auth headers
-            self._api_client = SaxoApiClient(access_token, base_url)
+            # Create new client
+            self._api_client = self._create_api_client(access_token)
 
         return self._api_client
 
@@ -174,11 +199,11 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             True if performance data should be fetched (cache is stale or empty)
 
         """
-        if self._performance_last_updated is None:
+        if self._performance_cache.last_updated is None:
             # No cached data, should update
             return True
 
-        time_since_last_update = datetime.now() - self._performance_last_updated
+        time_since_last_update = datetime.now() - self._performance_cache.last_updated
         should_update = time_since_last_update >= PERFORMANCE_UPDATE_INTERVAL
 
         _LOGGER.debug(
@@ -289,6 +314,143 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Default to after-hours if we can't determine market status
             return False
 
+    async def _fetch_balance_data(self, client: SaxoApiClient) -> dict[str, Any]:
+        """Fetch balance data from Saxo API.
+
+        Args:
+            client: API client instance
+
+        Returns:
+            Balance data dictionary with keys: CashBalance, TotalValue, Currency, etc.
+
+        """
+        balance_start_time = datetime.now()
+        async with async_timeout.timeout(API_TIMEOUT_BALANCE):
+            balance_data = await client.get_account_balance()
+
+        balance_duration = (datetime.now() - balance_start_time).total_seconds()
+        _LOGGER.debug("Balance data fetch completed in %.2fs", balance_duration)
+
+        # Remove detailed margin info to reduce log noise
+        if "MarginCollateralNotAvailableDetail" in balance_data:
+            del balance_data["MarginCollateralNotAvailableDetail"]
+
+        return balance_data
+
+    async def _fetch_client_details_cached(
+        self, client: SaxoApiClient
+    ) -> dict[str, Any] | None:
+        """Fetch client details with consistent error handling.
+
+        Args:
+            client: API client instance
+
+        Returns:
+            Client details dictionary or None if unavailable
+
+        """
+        try:
+            async with async_timeout.timeout(API_TIMEOUT_CLIENT_INFO):
+                client_details = await client.get_client_details()
+
+            if client_details:
+                _LOGGER.debug(
+                    "Client details response keys: %s",
+                    list(client_details.keys()),
+                )
+            return client_details
+
+        except Exception as e:
+            _LOGGER.debug(
+                "Could not fetch client details: %s",
+                type(e).__name__,
+            )
+            return None
+
+    async def _fetch_performance_metrics(
+        self, client: SaxoApiClient, client_key: str
+    ) -> PerformanceCache:
+        """Fetch all performance metrics from Saxo API.
+
+        Args:
+            client: API client instance
+            client_key: Client key for API calls
+
+        Returns:
+            PerformanceCache with all performance metrics
+
+        """
+        cache = PerformanceCache()
+
+        # Fetch v3 performance data (AccumulatedProfitLoss)
+        try:
+            async with async_timeout.timeout(API_TIMEOUT_PERFORMANCE):
+                performance_data = await client.get_performance(client_key)
+
+            balance_performance = performance_data.get("BalancePerformance", {})
+            cache.ytd_earnings_percentage = balance_performance.get(
+                "AccumulatedProfitLoss", 0.0
+            )
+
+            _LOGGER.debug(
+                "Retrieved performance data, AccumulatedProfitLoss: %s",
+                cache.ytd_earnings_percentage,
+            )
+
+        except Exception as e:
+            _LOGGER.debug(
+                "Could not fetch performance data: %s",
+                type(e).__name__,
+            )
+
+        # Fetch v4 performance data (all-time)
+        try:
+            async with async_timeout.timeout(API_TIMEOUT_PERFORMANCE):
+                performance_v4_data = await client.get_performance_v4(client_key)
+
+            key_figures = performance_v4_data.get("KeyFigures", {})
+            return_fraction = key_figures.get("ReturnFraction", 0.0)
+            cache.investment_performance_percentage = return_fraction * 100.0
+
+            # Extract latest CashTransfer value
+            balance = performance_v4_data.get("Balance", {})
+            cash_transfer_list = balance.get("CashTransfer", [])
+            if cash_transfer_list:
+                latest_cash_transfer = cash_transfer_list[-1]
+                cache.cash_transfer_balance = latest_cash_transfer.get("Value", 0.0)
+
+            _LOGGER.debug(
+                "Retrieved performance v4 data - ReturnFraction: %s%%, CashTransfer: %s",
+                cache.investment_performance_percentage,
+                cache.cash_transfer_balance,
+            )
+
+        except Exception as e:
+            _LOGGER.debug(
+                "Could not fetch performance v4 data: %s",
+                type(e).__name__,
+            )
+
+        # Fetch additional performance periods
+        cache.ytd_investment_performance_percentage = (
+            await self._fetch_performance_data(
+                client, client_key, "YTD", "get_performance_v4_ytd"
+            )
+        )
+        cache.month_investment_performance_percentage = (
+            await self._fetch_performance_data(
+                client, client_key, "Month", "get_performance_v4_month"
+            )
+        )
+        cache.quarter_investment_performance_percentage = (
+            await self._fetch_performance_data(
+                client, client_key, "Quarter", "get_performance_v4_quarter"
+            )
+        )
+
+        cache.last_updated = datetime.now()
+        return cache
+
     async def _check_and_refresh_token(self) -> None:
         """Check token expiry and refresh if needed."""
         async with self._token_refresh_lock:
@@ -320,6 +482,182 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # Update last token check time
                 self._last_token_check = current_time
 
+    def _get_refresh_token(self) -> str:
+        """Extract and validate refresh token from config entry.
+
+        Returns:
+            Refresh token string
+
+        Raises:
+            ConfigEntryAuthFailed: If no refresh token available
+
+        """
+        token_data = self.config_entry.data.get("token", {})
+        refresh_token = token_data.get("refresh_token")
+
+        if not refresh_token:
+            raise ConfigEntryAuthFailed("No refresh token available")
+
+        return refresh_token
+
+    def _mask_sensitive_data(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Mask sensitive token data for logging.
+
+        Args:
+            data: Dictionary potentially containing sensitive data
+
+        Returns:
+            Dictionary with sensitive values masked
+
+        """
+        masked = {}
+        for key, value in data.items():
+            if key in ["access_token", "refresh_token", "client_secret"]:
+                if value and len(str(value)) > 4:
+                    masked[key] = f"***{value[-4:]}"
+                else:
+                    masked[key] = "***"
+            else:
+                masked[key] = value
+        return masked
+
+    async def _get_oauth_basic_auth(self) -> aiohttp.BasicAuth | None:
+        """Get HTTP Basic Auth for OAuth token refresh.
+
+        Returns:
+            BasicAuth object or None if unavailable
+
+        """
+        try:
+            from homeassistant.helpers.config_entry_oauth2_flow import (
+                async_get_config_entry_implementation,
+            )
+
+            implementation = await async_get_config_entry_implementation(
+                self.hass, self.config_entry
+            )
+            if implementation:
+                _LOGGER.debug(
+                    "Using HTTP Basic Auth for token refresh (Saxo preferred method)"
+                )
+                return aiohttp.BasicAuth(
+                    implementation.client_id, implementation.client_secret
+                )
+            else:
+                _LOGGER.warning("Could not get OAuth implementation for Basic Auth")
+                return None
+
+        except Exception as e:
+            _LOGGER.error("Failed to set up HTTP Basic Auth: %s", type(e).__name__)
+            return None
+
+    def _build_token_refresh_data(self, refresh_token: str) -> dict[str, str]:
+        """Build token refresh request data.
+
+        Args:
+            refresh_token: Refresh token
+
+        Returns:
+            Dictionary with refresh request data
+
+        """
+        refresh_data = {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+        }
+
+        # Get redirect_uri from the original OAuth flow (required by Saxo)
+        redirect_uri = self.config_entry.data.get("redirect_uri")
+        if not redirect_uri:
+            redirect_uri = "https://my.home-assistant.io/redirect/oauth"
+            _LOGGER.info(
+                "No redirect_uri in config entry, using fallback: %s (consider reconfiguring integration)",
+                redirect_uri,
+            )
+
+        refresh_data["redirect_uri"] = redirect_uri
+        return refresh_data
+
+    async def _execute_token_refresh_request(
+        self, refresh_data: dict[str, str], auth: aiohttp.BasicAuth | None
+    ) -> dict[str, Any]:
+        """Execute the HTTP request to refresh OAuth token.
+
+        Args:
+            refresh_data: Request data
+            auth: HTTP Basic Auth
+
+        Returns:
+            New token data from API response
+
+        Raises:
+            ConfigEntryAuthFailed: If token refresh fails
+
+        """
+        from .const import SAXO_AUTH_BASE_URL, OAUTH_TOKEN_ENDPOINT
+
+        token_url = f"{SAXO_AUTH_BASE_URL}{OAUTH_TOKEN_ENDPOINT}"
+        session = async_get_clientsession(self.hass)
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
+        _LOGGER.debug(
+            "Token refresh request: URL=%s, has_basic_auth=%s, data=%s",
+            token_url,
+            auth is not None,
+            self._mask_sensitive_data(refresh_data),
+        )
+
+        async with session.post(
+            token_url, data=refresh_data, headers=headers, auth=auth
+        ) as response:
+            _LOGGER.debug("Token refresh response: status=%d", response.status)
+
+            if response.status in [200, 201]:
+                new_token_data = await response.json()
+
+                # Calculate expiry time
+                expires_in = new_token_data.get("expires_in", 1200)
+                expires_at = (
+                    datetime.now() + timedelta(seconds=expires_in)
+                ).timestamp()
+                new_token_data["expires_at"] = expires_at
+
+                return new_token_data
+            else:
+                error_text = await response.text()
+                _LOGGER.error(
+                    "Token refresh failed: HTTP %d - %s",
+                    response.status,
+                    error_text[:500] if error_text else "No error details",
+                )
+                raise ConfigEntryAuthFailed("Failed to refresh access token")
+
+    def _update_config_entry_with_token(self, new_token_data: dict[str, Any]) -> None:
+        """Update config entry with new token data.
+
+        Args:
+            new_token_data: New token data to store
+
+        """
+        new_data = self.config_entry.data.copy()
+        new_data["token"] = new_token_data
+
+        self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
+
+        # Force API client recreation with new token
+        self._api_client = None
+
+        # Log success
+        token_expires = datetime.fromtimestamp(new_token_data["expires_at"])
+        _LOGGER.info(
+            "Successfully refreshed OAuth token (expires: %s)",
+            token_expires.isoformat(),
+        )
+        _LOGGER.debug(
+            "New token data structure: %s",
+            self._mask_sensitive_data(new_token_data),
+        )
+
     async def _refresh_oauth_token(self) -> dict[str, Any]:
         """Refresh OAuth access token using refresh token.
 
@@ -330,171 +668,28 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ConfigEntryAuthFailed: If token refresh fails
 
         """
-        token_data = self.config_entry.data.get("token", {})
-        refresh_token = token_data.get("refresh_token")
-
-        if not refresh_token:
-            raise ConfigEntryAuthFailed("No refresh token available")
-
-        # Debug token data structure (with sensitive data masked)
-        masked_token_data = {}
-        for key, value in token_data.items():
-            if key in ["access_token", "refresh_token"]:
-                masked_token_data[key] = (
-                    f"***{value[-4:]}" if value and len(str(value)) > 4 else "***"
-                )
-            else:
-                masked_token_data[key] = value
-
-        _LOGGER.debug(
-            "Starting token refresh: token_data_keys=%s", list(masked_token_data.keys())
-        )
-        _LOGGER.debug("Token data structure: %s", masked_token_data)
-
         try:
-            # Use production endpoints
-            from .const import SAXO_AUTH_BASE_URL, OAUTH_TOKEN_ENDPOINT
+            # Extract refresh token
+            refresh_token = self._get_refresh_token()
 
-            # Prepare refresh request
-            token_url = f"{SAXO_AUTH_BASE_URL}{OAUTH_TOKEN_ENDPOINT}"
+            # Get OAuth credentials
+            auth = await self._get_oauth_basic_auth()
 
-            # Use Home Assistant's aiohttp session
-            session = async_get_clientsession(self.hass)
+            # Build refresh request
+            refresh_data = self._build_token_refresh_data(refresh_token)
 
-            # Saxo requires: grant_type, refresh_token, and redirect_uri
-            refresh_data = {
-                "grant_type": "refresh_token",
-                "refresh_token": refresh_token,
-            }
-
-            # Get redirect_uri from the original OAuth flow (required by Saxo)
-            redirect_uri = self.config_entry.data.get("redirect_uri")
-            if not redirect_uri:
-                # Fallback to default Home Assistant OAuth redirect URI
-                redirect_uri = "https://my.home-assistant.io/redirect/oauth"
-                _LOGGER.info(
-                    "No redirect_uri in config entry, using fallback: %s (consider reconfiguring integration)",
-                    redirect_uri,
-                )
-
-            refresh_data["redirect_uri"] = redirect_uri
-            _LOGGER.debug("Added redirect_uri to refresh request: %s", redirect_uri)
-
-            # Get client credentials for HTTP Basic Auth (Saxo's preferred method)
-            auth = None
-            try:
-                from homeassistant.helpers.config_entry_oauth2_flow import (
-                    async_get_config_entry_implementation,
-                )
-
-                # Get the OAuth implementation from the config entry
-                implementation = await async_get_config_entry_implementation(
-                    self.hass, self.config_entry
-                )
-                if implementation:
-                    auth = aiohttp.BasicAuth(
-                        implementation.client_id, implementation.client_secret
-                    )
-                    _LOGGER.debug(
-                        "Using HTTP Basic Auth for token refresh (Saxo preferred method)"
-                    )
-                else:
-                    _LOGGER.warning("Could not get OAuth implementation for Basic Auth")
-            except Exception as e:
-                _LOGGER.error("Failed to set up HTTP Basic Auth: %s", type(e).__name__)
-                _LOGGER.debug("Exception details: %s", str(e))
-
-            _LOGGER.debug("Attempting Saxo-compliant token refresh")
-
-            # Debug logging with masked sensitive data
-            masked_data = refresh_data.copy()
-            if "refresh_token" in masked_data:
-                masked_data["refresh_token"] = (
-                    f"***{masked_data['refresh_token'][-4:]}"
-                    if len(masked_data["refresh_token"]) > 4
-                    else "***"
-                )
-            if "client_secret" in masked_data:
-                masked_data["client_secret"] = "***MASKED***"
-
-            _LOGGER.debug(
-                "Token refresh request: URL=%s, has_basic_auth=%s, headers=%s, data=%s",
-                token_url,
-                auth is not None,
-                {"Content-Type": "application/x-www-form-urlencoded"},
-                masked_data,
+            # Execute refresh request
+            new_token_data = await self._execute_token_refresh_request(
+                refresh_data, auth
             )
 
-            # Token refresh requests should use application/x-www-form-urlencoded
-            headers = {"Content-Type": "application/x-www-form-urlencoded"}
+            # Update config entry
+            self._update_config_entry_with_token(new_token_data)
 
-            async with session.post(
-                token_url, data=refresh_data, headers=headers, auth=auth
-            ) as response:
-                _LOGGER.debug(
-                    "Token refresh response: status=%d, headers=%s",
-                    response.status,
-                    dict(response.headers),
-                )
+            return new_token_data
 
-                if response.status in [200, 201]:  # Accept both 200 OK and 201 Created
-                    new_token_data = await response.json()
-
-                    # Calculate expiry time
-                    expires_in = new_token_data.get("expires_in", 1200)
-                    expires_at = (
-                        datetime.now() + timedelta(seconds=expires_in)
-                    ).timestamp()
-                    new_token_data["expires_at"] = expires_at
-
-                    # Preserve any existing data from original token (like redirect_uri)
-                    # Saxo may provide a new refresh_token, so we use the response data
-                    new_data = self.config_entry.data.copy()
-
-                    # Update with new token data while preserving config data
-                    if "token" in new_data:
-                        # Keep any non-token config data, update token data
-                        new_data["token"] = new_token_data
-                    else:
-                        new_data["token"] = new_token_data
-
-                    self.hass.config_entries.async_update_entry(
-                        self.config_entry, data=new_data
-                    )
-
-                    # Update API client with new token
-                    self._api_client = None  # Force recreation with new token
-
-                    # Store refresh success info with debug details
-                    token_expires = datetime.fromtimestamp(new_token_data["expires_at"])
-                    _LOGGER.info(
-                        "Successfully refreshed OAuth token (expires: %s)",
-                        token_expires.isoformat(),
-                    )
-
-                    # Debug log new token data structure (with sensitive data masked)
-                    masked_new_token_data = {}
-                    for key, value in new_token_data.items():
-                        if key in ["access_token", "refresh_token"]:
-                            masked_new_token_data[key] = (
-                                f"***{value[-4:]}"
-                                if value and len(str(value)) > 4
-                                else "***"
-                            )
-                        else:
-                            masked_new_token_data[key] = value
-                    _LOGGER.debug("New token data structure: %s", masked_new_token_data)
-
-                    return new_token_data
-                else:
-                    error_text = await response.text()
-                    _LOGGER.error(
-                        "Token refresh failed: HTTP %d - %s",
-                        response.status,
-                        error_text[:500] if error_text else "No error details",
-                    )
-                    raise ConfigEntryAuthFailed("Failed to refresh access token")
-
+        except ConfigEntryAuthFailed:
+            raise
         except Exception as e:
             _LOGGER.error("Error refreshing token: %s", type(e).__name__)
             raise ConfigEntryAuthFailed("Token refresh error")
@@ -510,17 +705,14 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             UpdateFailed: For other errors
 
         """
+        fetch_start_time = datetime.now()
+
         try:
             # Check and refresh token if needed
             await self._check_and_refresh_token()
 
             # Get API client
             client = self.api_client
-
-            _LOGGER.debug(
-                "Starting data fetch with client base_url: %s (production)",
-                client.base_url,
-            )
 
             # Validate we're using the expected production URL
             expected_base_url = "https://gateway.saxobank.com/openapi"
@@ -531,63 +723,9 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     client.base_url,
                 )
 
-            _LOGGER.debug(
-                "About to fetch balance from: %s%s",
-                client.base_url,
-                "/port/v1/balances/me",
-            )
-
-            # Fetch balance data only
-            fetch_start_time = datetime.now()
             async with async_timeout.timeout(COORDINATOR_UPDATE_TIMEOUT):
-                # Get balance data (only required endpoint) with specific timeout
-                balance_start_time = datetime.now()
-                async with async_timeout.timeout(API_TIMEOUT_BALANCE):
-                    balance_data = await client.get_account_balance()
-
-                balance_duration = (datetime.now() - balance_start_time).total_seconds()
-                _LOGGER.debug("Balance data fetch completed in %.2fs", balance_duration)
-                _LOGGER.debug(
-                    "Balance data keys: %s",
-                    list(balance_data.keys()) if balance_data else "No balance data",
-                )
-
-                # Check if balance data contains any date fields that might be inception-related
-                if balance_data:
-                    date_fields = [
-                        key
-                        for key in balance_data
-                        if any(
-                            date_word in key.lower()
-                            for date_word in [
-                                "date",
-                                "day",
-                                "inception",
-                                "created",
-                                "start",
-                            ]
-                        )
-                    ]
-                    if date_fields:
-                        _LOGGER.debug(
-                            "Balance data contains potential date fields: %s",
-                            {field: balance_data[field] for field in date_fields},
-                        )
-
-                # Remove detailed margin info to reduce log noise
-                if "MarginCollateralNotAvailableDetail" in balance_data:
-                    del balance_data["MarginCollateralNotAvailableDetail"]
-
-                # Try to fetch client details and performance data
-                ytd_earnings_percentage = 0.0
-                investment_performance_percentage = 0.0
-                ytd_investment_performance_percentage = 0.0
-                month_investment_performance_percentage = 0.0
-                quarter_investment_performance_percentage = 0.0
-                cash_transfer_balance = 0.0
-                client_id = "unknown"
-                account_id = "unknown"
-                client_name = "unknown"
+                # Fetch balance data (always required)
+                balance_data = await self._fetch_balance_data(client)
 
                 # Check if we should update performance data or use cached values
                 should_update_performance = self._should_update_performance_data()
@@ -596,273 +734,76 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     _LOGGER.debug(
                         "Updating performance data (cache expired or missing)"
                     )
-                else:
-                    _LOGGER.debug("Using cached performance data")
-                    # Use cached performance values
-                    ytd_earnings_percentage = self._performance_data_cache.get(
-                        "ytd_earnings_percentage", 0.0
-                    )
-                    investment_performance_percentage = (
-                        self._performance_data_cache.get(
-                            "investment_performance_percentage", 0.0
-                        )
-                    )
-                    ytd_investment_performance_percentage = (
-                        self._performance_data_cache.get(
-                            "ytd_investment_performance_percentage", 0.0
-                        )
-                    )
-                    month_investment_performance_percentage = (
-                        self._performance_data_cache.get(
-                            "month_investment_performance_percentage", 0.0
-                        )
-                    )
-                    quarter_investment_performance_percentage = (
-                        self._performance_data_cache.get(
-                            "quarter_investment_performance_percentage", 0.0
-                        )
-                    )
-                    cash_transfer_balance = self._performance_data_cache.get(
-                        "cash_transfer_balance", 0.0
-                    )
-                    client_id = self._performance_data_cache.get("client_id", "unknown")
-                    account_id = self._performance_data_cache.get(
-                        "account_id", "unknown"
-                    )
-                    client_name = self._performance_data_cache.get(
-                        "client_name", "unknown"
-                    )
 
-                # Get client details for both performance and account data
-                client_details = None
+                    # Fetch client details
+                    client_details = await self._fetch_client_details_cached(client)
 
-                # Only fetch performance data if cache is stale
-                if should_update_performance:
-                    # Get client details (ClientKey, ClientId, etc.) with specific timeout
-                    try:
-                        async with async_timeout.timeout(API_TIMEOUT_CLIENT_INFO):
-                            client_details = await client.get_client_details()
-                        if client_details:
+                    if client_details:
+                        client_key = client_details.get("ClientKey")
+                        self._performance_cache.client_id = client_details.get(
+                            "ClientId", "unknown"
+                        )
+                        self._performance_cache.account_id = client_details.get(
+                            "DefaultAccountId", "unknown"
+                        )
+                        self._performance_cache.client_name = client_details.get(
+                            "Name", "unknown"
+                        )
+
+                        _LOGGER.debug(
+                            "Extracted from client details - ClientId: %s, DefaultAccountId: %s, Name: '%s'",
+                            self._performance_cache.client_id,
+                            self._performance_cache.account_id,
+                            self._performance_cache.client_name,
+                        )
+
+                        if client_key:
                             _LOGGER.debug(
-                                "Client details response keys: %s",
-                                list(client_details.keys())
-                                if client_details
-                                else "No data",
+                                "Found ClientKey, fetching performance metrics"
                             )
-
-                            client_key = client_details.get("ClientKey")
-                            client_id = client_details.get("ClientId", "unknown")
-                            default_account_id = client_details.get(
+                            # Fetch all performance metrics and update cache
+                            self._performance_cache = (
+                                await self._fetch_performance_metrics(
+                                    client, client_key
+                                )
+                            )
+                            # Preserve client info (it was set above)
+                            self._performance_cache.client_id = client_details.get(
+                                "ClientId", "unknown"
+                            )
+                            self._performance_cache.account_id = client_details.get(
                                 "DefaultAccountId", "unknown"
                             )
-                            client_name = client_details.get("Name", "unknown")
-
-                            _LOGGER.debug(
-                                "Extracted from client details - ClientId: %s, DefaultAccountId: %s, Name: '%s'",
-                                client_id,
-                                default_account_id,
-                                client_name,
+                            self._performance_cache.client_name = client_details.get(
+                                "Name", "unknown"
                             )
-
-                            if client_key:
-                                _LOGGER.debug(
-                                    "Found ClientKey from client details, attempting performance fetch"
-                                )
-                                try:
-                                    async with async_timeout.timeout(
-                                        API_TIMEOUT_PERFORMANCE
-                                    ):
-                                        performance_data = await client.get_performance(
-                                            client_key
-                                        )
-
-                                    # Log performance data structure for debugging
-                                    _LOGGER.debug(
-                                        "Performance v3 data keys: %s",
-                                        list(performance_data.keys())
-                                        if performance_data
-                                        else "No data",
-                                    )
-
-                                    # Extract AccumulatedProfitLoss from BalancePerformance
-                                    balance_performance = performance_data.get(
-                                        "BalancePerformance", {}
-                                    )
-                                    accumulated_profit_loss = balance_performance.get(
-                                        "AccumulatedProfitLoss", 0.0
-                                    )
-
-                                    # Check if there's an inception date in the v3 performance data
-                                    if "InceptionDate" in performance_data:
-                                        inception_day = performance_data.get(
-                                            "InceptionDate"
-                                        )
-                                        _LOGGER.debug(
-                                            "Found InceptionDate in performance v3 data: %s",
-                                            inception_day,
-                                        )
-                                    elif "FirstTradingDay" in performance_data:
-                                        inception_day = performance_data.get(
-                                            "FirstTradingDay"
-                                        )
-                                        _LOGGER.debug(
-                                            "Found FirstTradingDay in performance v3 data: %s",
-                                            inception_day,
-                                        )
-
-                                    # Use AccumulatedProfitLoss as YTD earnings percentage
-                                    ytd_earnings_percentage = accumulated_profit_loss
-                                    _LOGGER.debug(
-                                        "Retrieved performance data, AccumulatedProfitLoss: %s",
-                                        accumulated_profit_loss,
-                                    )
-
-                                except Exception as perf_e:
-                                    _LOGGER.debug(
-                                        "Could not fetch performance data: %s",
-                                        type(perf_e).__name__,
-                                    )
-
-                                # Also try to fetch v4 performance data
-                                try:
-                                    async with async_timeout.timeout(
-                                        API_TIMEOUT_PERFORMANCE
-                                    ):
-                                        performance_v4_data = (
-                                            await client.get_performance_v4(client_key)
-                                        )
-
-                                    # Extract ReturnFraction from KeyFigures (multiply by 100 for percentage)
-                                    key_figures = performance_v4_data.get(
-                                        "KeyFigures", {}
-                                    )
-                                    return_fraction = key_figures.get(
-                                        "ReturnFraction", 0.0
-                                    )
-                                    investment_performance_percentage = (
-                                        return_fraction * 100.0
-                                    )
-
-                                    # Extract latest CashTransfer value
-                                    balance = performance_v4_data.get("Balance", {})
-                                    cash_transfer_list = balance.get("CashTransfer", [])
-                                    if cash_transfer_list:
-                                        # Get the latest entry (last in the list)
-                                        latest_cash_transfer = cash_transfer_list[-1]
-                                        cash_transfer_balance = (
-                                            latest_cash_transfer.get("Value", 0.0)
-                                        )
-
-                                    _LOGGER.debug(
-                                        "Retrieved performance v4 data - ReturnFraction: %s%%, CashTransfer: %s",
-                                        investment_performance_percentage,
-                                        cash_transfer_balance,
-                                    )
-
-                                except Exception as perf_v4_e:
-                                    _LOGGER.debug(
-                                        "Could not fetch performance v4 data: %s",
-                                        type(perf_v4_e).__name__,
-                                    )
-
-                                # Fetch additional performance periods using helper method
-                                ytd_investment_performance_percentage = (
-                                    await self._fetch_performance_data(
-                                        client,
-                                        client_key,
-                                        "YTD",
-                                        "get_performance_v4_ytd",
-                                    )
-                                )
-                                month_investment_performance_percentage = (
-                                    await self._fetch_performance_data(
-                                        client,
-                                        client_key,
-                                        "Month",
-                                        "get_performance_v4_month",
-                                    )
-                                )
-                                quarter_investment_performance_percentage = (
-                                    await self._fetch_performance_data(
-                                        client,
-                                        client_key,
-                                        "Quarter",
-                                        "get_performance_v4_quarter",
-                                    )
-                                )
-
-                            else:
-                                _LOGGER.debug(
-                                    "No ClientKey found from client details endpoint, performance data not available"
-                                )
+                            _LOGGER.debug("Updated performance data cache")
                         else:
-                            _LOGGER.debug("No client details available")
-                    except Exception as client_e:
-                        _LOGGER.debug(
-                            "Could not fetch client details: %s",
-                            type(client_e).__name__,
-                        )
-
-                # Get account id and client name from client details or cache
-                if not client_details:
-                    try:
-                        client_details = await client.get_client_details()
-                        if client_details:
                             _LOGGER.debug(
-                                "Fetched client details keys for account info: %s",
-                                list(client_details.keys()),
+                                "No ClientKey found, performance data not available"
                             )
-                    except Exception:
-                        _LOGGER.debug("Could not fetch client details for account info")
-
-                if client_details:
-                    account_id = client_details.get("DefaultAccountId", account_id)
-                    client_name = client_details.get("Name", client_name)
-                    _LOGGER.debug(
-                        "Final extracted values - AccountId: %s, Name: '%s'",
-                        account_id,
-                        client_name,
-                    )
+                    else:
+                        _LOGGER.debug("No client details available")
                 else:
-                    _LOGGER.debug(
-                        "No client details available - using cached/default values: AccountId: %s, Name: '%s'",
-                        account_id,
-                        client_name,
-                    )
+                    _LOGGER.debug("Using cached performance data")
 
-                    # Update performance data cache if we fetched new data
-                    if should_update_performance:
-                        self._performance_data_cache = {
-                            "ytd_earnings_percentage": ytd_earnings_percentage,
-                            "investment_performance_percentage": investment_performance_percentage,
-                            "ytd_investment_performance_percentage": ytd_investment_performance_percentage,
-                            "month_investment_performance_percentage": month_investment_performance_percentage,
-                            "quarter_investment_performance_percentage": quarter_investment_performance_percentage,
-                            "cash_transfer_balance": cash_transfer_balance,
-                            "client_id": client_id,
-                            "account_id": account_id,
-                            "client_name": client_name,
-                        }
-                        self._performance_last_updated = datetime.now()
-                        _LOGGER.debug("Updated performance data cache")
-
-                # Create simple data structure for balance sensors
-                return {
+                # Build response from balance data and cached performance
+                response = {
                     "cash_balance": balance_data.get("CashBalance", 0.0),
                     "currency": balance_data.get("Currency", "USD"),
                     "total_value": balance_data.get("TotalValue", 0.0),
                     "non_margin_positions_value": balance_data.get(
                         "NonMarginPositionsValue", 0.0
                     ),
-                    "ytd_earnings_percentage": ytd_earnings_percentage,
-                    "investment_performance_percentage": investment_performance_percentage,
-                    "ytd_investment_performance_percentage": ytd_investment_performance_percentage,
-                    "month_investment_performance_percentage": month_investment_performance_percentage,
-                    "quarter_investment_performance_percentage": quarter_investment_performance_percentage,
-                    "cash_transfer_balance": cash_transfer_balance,
-                    "client_id": client_id,
-                    "account_id": account_id,
-                    "client_name": client_name,
+                    "ytd_earnings_percentage": self._performance_cache.ytd_earnings_percentage,
+                    "investment_performance_percentage": self._performance_cache.investment_performance_percentage,
+                    "ytd_investment_performance_percentage": self._performance_cache.ytd_investment_performance_percentage,
+                    "month_investment_performance_percentage": self._performance_cache.month_investment_performance_percentage,
+                    "quarter_investment_performance_percentage": self._performance_cache.quarter_investment_performance_percentage,
+                    "cash_transfer_balance": self._performance_cache.cash_transfer_balance,
+                    "client_id": self._performance_cache.client_id,
+                    "account_id": self._performance_cache.account_id,
+                    "client_name": self._performance_cache.client_name,
                     "last_updated": datetime.now().isoformat(),
                 }
 
@@ -871,6 +812,8 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.debug(
                     "Complete portfolio data fetch completed in %.2fs", total_duration
                 )
+
+                return response
 
         except AuthenticationError as e:
             _LOGGER.error(
