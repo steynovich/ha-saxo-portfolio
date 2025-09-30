@@ -63,10 +63,8 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Track if sensors were skipped due to unknown client name
         self._sensors_initialized = False
-        # Initialize from cached data if available to prevent unnecessary reloads
-        self._last_known_client_name = (
-            self.data.get("client_name", "unknown") if self.data else "unknown"
-        )
+        # Initialize as unknown - will be updated after first successful refresh
+        self._last_known_client_name = "unknown"
         # Track if initial setup is complete (platforms loaded)
         self._setup_complete = False
 
