@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.9-beta.3] - 2025-09-30
+
+### Fixed - Integration Reload Loop (Complete Fix) (PRERELEASE)
+- **Reload Loop Prevention (Improved)**: Completely fixed integration reload loop on startup
+  - Added 4th condition to reload check: `self.last_update_success_time is not None`
+  - Prevents reload during initial setup when client name is legitimately fetched for first time
+  - Only triggers reload when client name changes from unknown→known AFTER initial setup
+  - This is the scenario where sensors were skipped and need to be created later
+
+### Root Cause Analysis
+Beta.2's fix was incomplete:
+1. Initial setup: coordinator created, `self.data` is None
+2. First refresh: fetches client_name = "20482598"
+3. Beta.2 still triggered reload because this looked like unknown→known transition
+4. Reload executed even though sensors were about to be created normally
+5. Created load/unload cycle
+
+### Complete Solution
+Reload now requires ALL 4 conditions:
+1. ✅ Previous client name was "unknown"
+2. ✅ Current client name is valid (not "unknown")
+3. ✅ Sensors not initialized (`_sensors_initialized == False`)
+4. ✅ **NOT the first update** (`last_update_success_time is not None`)
+
+Condition #4 ensures reload only happens AFTER initial setup completes, when sensors were genuinely skipped due to unknown client name.
+
+### Changed
+- **Coordinator** (`coordinator.py:1023-1028`):
+  - Added `self.last_update_success_time is not None` to reload condition
+  - Prevents reload during normal initial setup flow
+  - Preserves reload functionality for genuinely skipped sensor scenarios
+
+### Notes
+- This completely fixes the reload loop from beta.1 and beta.2
+- All rate limiting improvements from beta.1 remain unchanged
+- This is a **beta prerelease** for final testing before stable release
+
 ## [2.2.9-beta.2] - 2025-09-30
 
 ### Fixed - Integration Reload Loop (PRERELEASE)

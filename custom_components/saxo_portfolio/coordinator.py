@@ -1011,14 +1011,25 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             # Check if client name has changed from unknown to a valid name
             # This indicates that sensor setup should be attempted again
+            # BUT: Only trigger reload if this is NOT the initial setup (where coordinator.last_update_success would be None)
+            # and sensors haven't been initialized yet
             current_client_name = data.get("client_name", "unknown")
-            if (
+
+            # Only consider reload if:
+            # 1. We had a previous unknown client name
+            # 2. Now have a valid client name
+            # 3. Sensors weren't initialized (means they were skipped)
+            # 4. This is NOT the first successful update (self.last_update_success_time exists)
+            should_reload = (
                 self._last_known_client_name == "unknown"
                 and current_client_name != "unknown"
                 and not self._sensors_initialized
-            ):
+                and self.last_update_success_time is not None
+            )
+
+            if should_reload:
                 _LOGGER.info(
-                    "Client name is now available ('%s') - scheduling config entry reload to initialize sensors",
+                    "Client name is now available ('%s') after being unknown - scheduling config entry reload to initialize sensors",
                     current_client_name,
                 )
                 self._last_known_client_name = current_client_name
