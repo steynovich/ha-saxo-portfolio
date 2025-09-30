@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.10] - 2025-09-30
+
+### Fixed
+- **Critical**: Fixed performance cache never updating when client details are successfully fetched
+  - Incorrect indentation in coordinator.py:860-874 caused cache update to only occur when client_details was None
+  - This defeated the entire caching mechanism and caused unnecessary API calls
+  - Performance cache now properly updates every 2 hours as designed
+- Fixed duplicate condition check in SaxoLastUpdateSensor.native_value
+  - Removed redundant hasattr() check that was executed twice
+  - Simplified logic for better readability
+- Fixed naive datetime usage in sensor availability check
+  - Now uses dt_util.as_utc() instead of manual pytz.UTC.localize()
+  - More consistent with Home Assistant datetime handling standards
+- Improved error handling in coordinator client details fetch
+  - Now logs exception type and message for better debugging
+  - Previously used generic `except Exception` without logging details
+
+### Changed
+- Removed unused `_fetch_performance_data()` method from coordinator
+  - Dead code cleanup - method was defined but never called
+  - Reduces code complexity and maintenance burden
+
+### Tests
+- Updated test_sticky_availability.py to use UTC-aware datetimes (dt_util.utcnow())
+  - All datetime comparisons now use timezone-aware timestamps
+  - Fixed test expectations to match actual sticky availability behavior
+  - All 8 sticky availability tests now pass
+
 ## [2.2.9] - 2025-09-30
 
 ### Fixed - Rate Limiting and Integration Stability

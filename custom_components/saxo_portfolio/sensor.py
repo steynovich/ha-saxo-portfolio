@@ -119,10 +119,8 @@ class SaxoSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
         # Ensure both timestamps are timezone-aware for comparison
         current_time = dt_util.utcnow()
         if last_success.tzinfo is None:
-            # Convert naive datetime to UTC-aware
-            import pytz
-
-            last_success = pytz.UTC.localize(last_success)
+            # Convert naive datetime to UTC-aware using dt_util
+            last_success = dt_util.as_utc(last_success)
         time_since_success = current_time - last_success
 
         # Allow for up to 3 update cycles before marking unavailable
@@ -948,10 +946,6 @@ class SaxoLastUpdateSensor(SaxoDiagnosticSensorBase):
     def native_value(self) -> datetime | None:
         """Return the last update time."""
         # Use our custom property that tracks successful updates
-        if hasattr(self.coordinator, "last_successful_update_time"):
-            return self.coordinator.last_successful_update_time
-
-        # Fallback to DataUpdateCoordinator's built-in property if available
         if (
             hasattr(self.coordinator, "last_successful_update_time")
             and self.coordinator.last_successful_update_time is not None

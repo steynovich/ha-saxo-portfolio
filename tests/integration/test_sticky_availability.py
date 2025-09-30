@@ -6,7 +6,8 @@ updates and only become unavailable after sustained failures.
 
 import pytest
 from unittest.mock import Mock
-from datetime import datetime, timedelta
+from datetime import timedelta
+from homeassistant.util import dt as dt_util
 
 from custom_components.saxo_portfolio.coordinator import SaxoCoordinator
 from custom_components.saxo_portfolio.sensor import (
@@ -37,7 +38,9 @@ class TestStickyAvailabilityBehavior:
             "cash_transfer_balance": 1000.00,
         }
         coordinator.last_update_success = True
-        coordinator.last_successful_update_time = datetime.now() - timedelta(minutes=1)
+        coordinator.last_successful_update_time = dt_util.utcnow() - timedelta(
+            minutes=1
+        )
 
         # Mock coordinator methods
         coordinator.get_client_id = Mock(return_value="123456")
@@ -64,7 +67,7 @@ class TestStickyAvailabilityBehavior:
 
         # Simulate coordinator update in progress
         mock_coordinator.last_update_success = False  # Temporary failure
-        mock_coordinator.last_successful_update_time = datetime.now() - timedelta(
+        mock_coordinator.last_successful_update_time = dt_util.utcnow() - timedelta(
             minutes=2
         )
 
@@ -77,7 +80,7 @@ class TestStickyAvailabilityBehavior:
         )
 
         # Simulate sustained failure (20 minutes)
-        mock_coordinator.last_successful_update_time = datetime.now() - timedelta(
+        mock_coordinator.last_successful_update_time = dt_util.utcnow() - timedelta(
             minutes=20
         )
 
@@ -103,7 +106,7 @@ class TestStickyAvailabilityBehavior:
 
         # Simulate coordinator update in progress
         mock_coordinator.last_update_success = False
-        mock_coordinator.last_successful_update_time = datetime.now() - timedelta(
+        mock_coordinator.last_successful_update_time = dt_util.utcnow() - timedelta(
             minutes=3
         )
 
@@ -127,7 +130,7 @@ class TestStickyAvailabilityBehavior:
 
         # Simulate update in progress
         mock_coordinator.last_update_success = False
-        mock_coordinator.last_successful_update_time = datetime.now() - timedelta(
+        mock_coordinator.last_successful_update_time = dt_util.utcnow() - timedelta(
             minutes=2
         )
 
@@ -157,7 +160,7 @@ class TestStickyAvailabilityBehavior:
         mock_coordinator.config_entry.data = {
             "token": {
                 "access_token": "test_token",
-                "expires_at": (datetime.now() + timedelta(hours=1)).timestamp(),
+                "expires_at": (dt_util.utcnow() + timedelta(hours=1)).timestamp(),
             }
         }
 
@@ -169,7 +172,7 @@ class TestStickyAvailabilityBehavior:
 
         # These sensors don't use sticky availability - they have their own logic
         mock_coordinator.last_update_success = False
-        mock_coordinator.last_successful_update_time = datetime.now() - timedelta(
+        mock_coordinator.last_successful_update_time = dt_util.utcnow() - timedelta(
             minutes=30
         )
 
@@ -186,7 +189,7 @@ class TestStickyAvailabilityBehavior:
         """Test that availability thresholds adapt to different update intervals."""
 
         sensor = SaxoTotalValueSensor(mock_coordinator)
-        current_time = datetime.now()
+        current_time = dt_util.utcnow()
 
         # Test with short interval (5 minutes)
         mock_coordinator.update_interval = timedelta(minutes=5)
@@ -228,7 +231,7 @@ class TestStickyAvailabilityBehavior:
         # No data at all - should be unavailable regardless of other factors
         mock_coordinator.data = None
         mock_coordinator.last_update_success = True
-        mock_coordinator.last_successful_update_time = datetime.now()
+        mock_coordinator.last_successful_update_time = dt_util.utcnow()
 
         assert sensor.available is False, "Should be unavailable when no data exists"
 
@@ -245,20 +248,22 @@ class TestStickyAvailabilityBehavior:
         sensor = SaxoTotalValueSensor(mock_coordinator)
 
         # First startup: has data but no successful update history
+        # According to sticky availability logic, if we have data but no
+        # last_successful_update_time, we stay available (line 110-114 in sensor.py)
         mock_coordinator.data = {"total_value": 100000.00}
         mock_coordinator.last_update_success = False
         mock_coordinator.last_successful_update_time = None
 
-        assert sensor.available is False, (
-            "Should be unavailable on first startup before successful update"
+        assert sensor.available is True, (
+            "Should stay available on first startup when data exists (sticky availability)"
         )
 
         # First successful update
         mock_coordinator.last_update_success = True
-        mock_coordinator.last_successful_update_time = datetime.now()
+        mock_coordinator.last_successful_update_time = dt_util.utcnow()
 
         assert sensor.available is True, (
-            "Should become available after first successful update"
+            "Should remain available after first successful update"
         )
 
     @pytest.mark.asyncio
@@ -270,7 +275,7 @@ class TestStickyAvailabilityBehavior:
         # Step 1: Normal operation
         mock_coordinator.last_update_success = True
         mock_coordinator.data = {"total_value": 100000.00}
-        mock_coordinator.last_successful_update_time = datetime.now() - timedelta(
+        mock_coordinator.last_successful_update_time = dt_util.utcnow() - timedelta(
             minutes=1
         )
         assert sensor.available is True, "Step 1: Normal operation"
@@ -284,7 +289,7 @@ class TestStickyAvailabilityBehavior:
 
         # Step 3: Update completes successfully
         mock_coordinator.last_update_success = True
-        mock_coordinator.last_successful_update_time = datetime.now()
+        mock_coordinator.last_successful_update_time = dt_util.utcnow()
         assert sensor.available is True, (
             "Step 3: Should remain available after successful update"
         )

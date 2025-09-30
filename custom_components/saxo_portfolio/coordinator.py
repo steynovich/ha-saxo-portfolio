@@ -194,44 +194,6 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         return should_update
 
-    async def _fetch_performance_data(
-        self, client: SaxoApiClient, client_key: str, period_name: str, method_name: str
-    ) -> float:
-        """Fetch performance data with consistent error handling.
-
-        Args:
-            client: API client instance
-            client_key: Client key for API calls
-            period_name: Human-readable period name for logging
-            method_name: API client method name to call
-
-        Returns:
-            Performance percentage or 0.0 if unavailable
-
-        """
-        try:
-            method = getattr(client, method_name)
-            performance_data = await method(client_key)
-
-            key_figures = performance_data.get("KeyFigures", {})
-            return_fraction = key_figures.get("ReturnFraction", 0.0)
-            performance_percentage = return_fraction * 100.0
-
-            _LOGGER.debug(
-                "Retrieved %s performance v4 data - ReturnFraction: %s%%",
-                period_name,
-                performance_percentage,
-            )
-            return performance_percentage
-
-        except Exception as e:
-            _LOGGER.debug(
-                "Could not fetch %s performance v4 data: %s",
-                period_name,
-                type(e).__name__,
-            )
-            return 0.0
-
     def _is_market_hours(self) -> bool:
         """Check if current time is during market hours.
 
@@ -839,8 +801,12 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                 "Fetched client details keys for account info: %s",
                                 list(client_details.keys()),
                             )
-                    except Exception:
-                        _LOGGER.debug("Could not fetch client details for account info")
+                    except Exception as e:
+                        _LOGGER.debug(
+                            "Could not fetch client details for account info: %s - %s",
+                            type(e).__name__,
+                            str(e),
+                        )
 
                 if client_details:
                     account_id = client_details.get("DefaultAccountId", account_id)
@@ -857,21 +823,21 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         client_name,
                     )
 
-                    # Update performance data cache if we fetched new data
-                    if should_update_performance:
-                        self._performance_data_cache = {
-                            "ytd_earnings_percentage": ytd_earnings_percentage,
-                            "investment_performance_percentage": investment_performance_percentage,
-                            "ytd_investment_performance_percentage": ytd_investment_performance_percentage,
-                            "month_investment_performance_percentage": month_investment_performance_percentage,
-                            "quarter_investment_performance_percentage": quarter_investment_performance_percentage,
-                            "cash_transfer_balance": cash_transfer_balance,
-                            "client_id": client_id,
-                            "account_id": account_id,
-                            "client_name": client_name,
-                        }
-                        self._performance_last_updated = datetime.now()
-                        _LOGGER.debug("Updated performance data cache")
+                # Update performance data cache if we fetched new data
+                if should_update_performance:
+                    self._performance_data_cache = {
+                        "ytd_earnings_percentage": ytd_earnings_percentage,
+                        "investment_performance_percentage": investment_performance_percentage,
+                        "ytd_investment_performance_percentage": ytd_investment_performance_percentage,
+                        "month_investment_performance_percentage": month_investment_performance_percentage,
+                        "quarter_investment_performance_percentage": quarter_investment_performance_percentage,
+                        "cash_transfer_balance": cash_transfer_balance,
+                        "client_id": client_id,
+                        "account_id": account_id,
+                        "client_name": client_name,
+                    }
+                    self._performance_last_updated = datetime.now()
+                    _LOGGER.debug("Updated performance data cache")
 
                 # Create simple data structure for balance sensors
                 return {

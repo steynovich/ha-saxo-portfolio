@@ -160,23 +160,42 @@ max_failure_time = max(15 * 60, 3 * update_interval_seconds)
 - **Special Sensors** (~30 lines): SaxoAccumulatedProfitLossSensor (inherits from SaxoSensorBase with custom logic)
 
 ### Key Files
-- `sensor.py:201-243`: All sixteen entity classes instantiated in async_setup_entry
-- `sensor.py:29-199`: Shared base class hierarchy (SaxoSensorBase, SaxoBalanceSensorBase, SaxoDiagnosticSensorBase)
-- `sensor.py:84-123`: Enhanced availability logic with sticky availability to prevent UI flashing
-- `sensor.py:340-502`: Enhanced performance sensor base class with time period handling
-- `sensor.py:247-286`: Optimized balance sensor implementations using base classes
-- `sensor.py:634-678`: Optimized diagnostic sensor implementations using base classes
-- `coordinator.py:132-151`: Performance cache validation logic (_should_update_performance_data)
-- `coordinator.py:484-618`: Smart performance data caching with hourly updates
-- `coordinator.py:57`: Last successful update tracking (_last_successful_update)
-- `coordinator.py:866-869`: Last successful update time property accessor
-- `coordinator.py:790-799`: Account ID getter method (get_account_id)
-- `coordinator.py:634`: Account ID data extraction from balance API
+- `sensor.py:256-308`: All sixteen entity classes instantiated in async_setup_entry
+- `sensor.py:30-228`: Shared base class hierarchy (SaxoSensorBase, SaxoBalanceSensorBase, SaxoDiagnosticSensorBase)
+- `sensor.py:86-140`: Enhanced availability logic with sticky availability to prevent UI flashing
+- `sensor.py:415-577`: Enhanced performance sensor base class with time period handling
+- `sensor.py:321-361`: Optimized balance sensor implementations using base classes
+- `sensor.py:687-1071`: Optimized diagnostic sensor implementations using base classes
+- `coordinator.py:175-195`: Performance cache validation logic (_should_update_performance_data)
+- `coordinator.py:468-836`: Smart performance data caching with 2-hour updates
+- `coordinator.py:58`: Last successful update tracking (_last_successful_update)
+- `coordinator.py:1040-1042`: Last successful update time property accessor
+- `coordinator.py:1165-1174`: Account ID getter method (get_account_id)
+- `coordinator.py:808-814`: Account ID data extraction from client details
+- `coordinator.py:826-840`: Performance cache update logic (fixed in v2.2.10)
 - `diagnostics.py`: Comprehensive diagnostic information collection
-- `api/saxo_client.py:464-501`: get_performance_v4() method for all-time performance
-- `api/saxo_client.py:502-540`: get_performance_v4_ytd() method for year-to-date performance
-- `const.py:118`: PERFORMANCE_UPDATE_INTERVAL constant (1 hour)
-- `tests/integration/test_sticky_availability.py`: Comprehensive tests for availability behavior
+- `api/saxo_client.py:476-543`: get_performance_v4_batch() method for batched performance fetching
+- `api/saxo_client.py:545-583`: get_performance_v4() method for all-time performance
+- `api/saxo_client.py:585-625`: get_performance_v4_ytd() method for year-to-date performance
+- `const.py:119`: PERFORMANCE_UPDATE_INTERVAL constant (2 hours as of v2.2.9)
+- `tests/integration/test_sticky_availability.py`: Comprehensive tests for availability behavior (8 tests pass)
+
+## Recent Changes (v2.2.10)
+- **Critical Bug Fixes**: Fixed multiple bugs including performance cache, datetime handling, and error logging
+  - Fixed performance cache never updating when client details are successfully fetched (coordinator.py:826-840)
+    - Incorrect indentation caused cache update to only occur when client_details was None
+    - Performance cache now properly updates every 2 hours as designed
+    - This was defeating the entire caching mechanism and causing unnecessary API calls
+  - Fixed duplicate condition check in SaxoLastUpdateSensor.native_value (sensor.py:947-957)
+    - Removed redundant hasattr() check that was executed twice
+  - Fixed naive datetime usage in sensor availability check (sensor.py:121-123)
+    - Now uses dt_util.as_utc() instead of manual pytz.UTC.localize()
+    - More consistent with Home Assistant datetime handling standards
+  - Improved error handling in coordinator client details fetch (coordinator.py:804-809)
+    - Now logs exception type and message for better debugging
+  - Removed unused _fetch_performance_data() method from coordinator (dead code cleanup)
+  - Updated test_sticky_availability.py to use UTC-aware datetimes
+    - All 8 sticky availability tests now pass
 
 ## Recent Changes (v2.2.8-beta.1) - PRERELEASE
 
