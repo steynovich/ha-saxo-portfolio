@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.9-beta.2] - 2025-09-30
+
+### Fixed - Integration Reload Loop (PRERELEASE)
+- **Reload Loop Prevention**: Fixed integration repeatedly loading and unloading on startup
+  - Initialize `_last_known_client_name` from cached coordinator data if available
+  - Prevents unnecessary config entry reload when client name hasn't actually changed
+  - Coordinator now properly detects when client name genuinely changes vs already-known values
+  - Integration loads once and stays loaded (no more load/unload cycles)
+
+### Changed
+- **Coordinator** (`coordinator.py:67-69`):
+  - `_last_known_client_name` now initialized from `self.data` if available
+  - Only triggers reload when client name **genuinely** changes from unknown to known
+  - Fixes issue introduced in v2.2.3's conditional sensor creation feature
+
+### Notes
+- This fixes the reload loop observed in beta.1
+- All rate limiting improvements from beta.1 remain unchanged
+- This is a **beta prerelease** for testing the reload fix
+
 ## [2.2.9-beta.1] - 2025-09-30
 
 ### Fixed - Rate Limiting Prevention (PRERELEASE)
