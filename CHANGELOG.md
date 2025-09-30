@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.8-beta.2] - 2025-09-30
+
+### Fixed - Timeout Duration Adjustment (PRERELEASE)
+- **Coordinator Timeout**: Increased from 30s to 60s to accommodate sequential API calls
+  - Testing beta.1 showed API calls succeeding but hitting 30s timeout
+  - Balance fetch (0.11s), client details, and performance data all succeed
+  - 60s provides enough time for all sequential API calls to complete
+  - Maintains single-layer timeout structure (no nested contexts)
+
+### Changed
+- **const.py**: `COORDINATOR_UPDATE_TIMEOUT` increased from 30s to 60s
+- No other logic changes from beta.1
+
+### Notes
+- Builds on beta.1's nested timeout fix
+- API calls were working correctly in beta.1, just needed more time
+- This is a **beta prerelease** for testing the adjusted timeout
+
 ## [2.2.8-beta.1] - 2025-09-30
 
 ### Fixed - Critical Startup Timeout Issue (PRERELEASE)
