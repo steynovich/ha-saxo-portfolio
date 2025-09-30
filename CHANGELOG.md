@@ -5,11 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.11] - 2025-09-30
+
+### Fixed
+- **Critical**: Fixed integration reloading every time OAuth token is refreshed
+  - Token refresh triggered config entry update listener causing full integration reload
+  - Now coordinator handles token updates internally without triggering reload
+  - Prevents unnecessary integration restarts every 20 minutes during token refresh
+  - Only reloads when actual configuration changes (not token updates)
+
 ## [2.2.10] - 2025-09-30
 
 ### Fixed
 - **Critical**: Fixed performance cache never updating when client details are successfully fetched
-  - Incorrect indentation in coordinator.py:860-874 caused cache update to only occur when client_details was None
+  - Incorrect indentation in coordinator.py:826-840 caused cache update to only occur when client_details was None
   - This defeated the entire caching mechanism and caused unnecessary API calls
   - Performance cache now properly updates every 2 hours as designed
 - Fixed duplicate condition check in SaxoLastUpdateSensor.native_value

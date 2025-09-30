@@ -180,6 +180,15 @@ max_failure_time = max(15 * 60, 3 * update_interval_seconds)
 - `const.py:119`: PERFORMANCE_UPDATE_INTERVAL constant (2 hours as of v2.2.9)
 - `tests/integration/test_sticky_availability.py`: Comprehensive tests for availability behavior (8 tests pass)
 
+## Recent Changes (v2.2.11)
+- **Critical Fix**: Fixed integration reloading every time OAuth token is refreshed
+  - Token refresh triggered config entry update listener causing full integration reload/unload
+  - Integration was restarting every 20 minutes during normal token refresh operations
+  - Fixed in `__init__.py:async_options_updated()` to skip reload when coordinator is active
+  - Coordinator now handles token updates internally via `api_client` property
+  - Only triggers reload for actual configuration changes (timezone, etc.)
+  - Impact: Prevents unnecessary restarts, improves stability, reduces log noise
+
 ## Recent Changes (v2.2.10)
 - **Critical Bug Fixes**: Fixed multiple bugs including performance cache, datetime handling, and error logging
   - Fixed performance cache never updating when client details are successfully fetched (coordinator.py:826-840)

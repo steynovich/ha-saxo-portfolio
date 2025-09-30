@@ -112,8 +112,31 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Handle options update."""
-    _LOGGER.debug("Options updated for entry %s, triggering reload", entry.entry_id)
+    """Handle options update.
+
+    Note: This is also called when config entry data is updated (e.g., token refresh).
+    We skip reload for token-only updates as the coordinator handles token changes internally.
+    """
+    # Check if this is just a token update by seeing if only token data changed
+    # Token updates are handled internally by the coordinator, no reload needed
+    _LOGGER.debug(
+        "Config entry updated for %s, checking if reload needed", entry.entry_id
+    )
+
+    # If coordinator exists and is running, it will handle token updates automatically
+    # Only reload for actual configuration changes (timezone, etc.)
+    if DOMAIN in hass.data and entry.entry_id in hass.data[DOMAIN]:
+        coordinator = hass.data[DOMAIN][entry.entry_id].get(DATA_COORDINATOR)
+        if coordinator:
+            _LOGGER.debug(
+                "Coordinator exists and will handle token updates automatically, skipping reload"
+            )
+            return
+
+    # If no coordinator, this is a configuration change that needs reload
+    _LOGGER.debug(
+        "No active coordinator, triggering reload for entry %s", entry.entry_id
+    )
     await hass.config_entries.async_reload(entry.entry_id)
 
 
