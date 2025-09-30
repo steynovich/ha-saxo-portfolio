@@ -45,6 +45,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Set up platforms
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+        # Mark setup as complete to enable reload logic for skipped sensors
+        coordinator.mark_setup_complete()
+
         # Add update listener for options changes
         entry.async_on_unload(entry.add_update_listener(async_options_updated))
 

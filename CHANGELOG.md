@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.9-beta.4] - 2025-09-30
+
+### Fixed - Integration Reload Loop (FINAL FIX) (PRERELEASE)
+- **Reload Loop Prevention (Correct Fix)**: Finally fixed the reload loop with proper timing logic
+  - Added `_setup_complete` flag to track when platform setup finishes
+  - Reload check now uses `self._setup_complete` instead of `self.last_update_success_time`
+  - Only triggers reload AFTER initial setup completes, not DURING it
+
+### Root Cause (Beta.3 was wrong)
+The timing was misunderstood:
+1. `async_setup_entry` calls `coordinator.async_refresh()` (first update)
+2. **During this refresh**, `_async_update_data()` runs the reload check
+3. At this point: `last_update_success_time` gets set by coordinator base class
+4. Sensors haven't been initialized yet (`_sensors_initialized == False`)
+5. Beta.3's condition `last_update_success_time is not None` was True!
+6. Reload triggered immediately during initial setup
+
+### Correct Solution
+- New `_setup_complete` flag starts as False
+- Reload requires: `_setup_complete == True` (instead of checking last_update_success_time)
+- `mark_setup_complete()` called AFTER platform setup finishes
+- Reload logic only activates after initial setup completes
+
+### Changed
+- **Coordinator** (`coordinator.py`):
+  - Line 71: Added `_setup_complete` flag (starts False)
+  - Line 1038: Changed condition from `last_update_success_time is not None` to `self._setup_complete`
+  - Line 1233-1241: Added `mark_setup_complete()` method
+- **Init** (`__init__.py:49`):
+  - Call `coordinator.mark_setup_complete()` after platform setup
+
+### Notes
+- This is the CORRECT fix based on proper understanding of async_refresh timing
+- All rate limiting improvements from beta.1 remain unchanged
+- This is a **beta prerelease** for final verification before stable release
+
 ## [2.2.9-beta.3] - 2025-09-30
 
 ### Fixed - Integration Reload Loop (Complete Fix) (PRERELEASE)

@@ -67,6 +67,8 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_known_client_name = (
             self.data.get("client_name", "unknown") if self.data else "unknown"
         )
+        # Track if initial setup is complete (platforms loaded)
+        self._setup_complete = False
 
         # Track startup phase for better error messaging
         self._is_startup_phase = True
@@ -1015,16 +1017,25 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # and sensors haven't been initialized yet
             current_client_name = data.get("client_name", "unknown")
 
+            # Debug logging to understand reload trigger
+            _LOGGER.debug(
+                "Reload check - last_known: '%s', current: '%s', sensors_init: %s, last_success_time: %s",
+                self._last_known_client_name,
+                current_client_name,
+                self._sensors_initialized,
+                self.last_update_success_time,
+            )
+
             # Only consider reload if:
             # 1. We had a previous unknown client name
             # 2. Now have a valid client name
             # 3. Sensors weren't initialized (means they were skipped)
-            # 4. This is NOT the first successful update (self.last_update_success_time exists)
+            # 4. Initial setup is complete (platforms already loaded)
             should_reload = (
                 self._last_known_client_name == "unknown"
                 and current_client_name != "unknown"
                 and not self._sensors_initialized
-                and self.last_update_success_time is not None
+                and self._setup_complete
             )
 
             if should_reload:
@@ -1217,6 +1228,16 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._sensors_initialized = True
         _LOGGER.debug(
             "Marked sensors as initialized for entry %s", self.config_entry.entry_id
+        )
+
+    def mark_setup_complete(self) -> None:
+        """Mark that initial setup is complete (platforms loaded).
+
+        This allows the reload logic to work correctly for genuinely skipped sensors.
+        """
+        self._setup_complete = True
+        _LOGGER.debug(
+            "Marked setup as complete for entry %s", self.config_entry.entry_id
         )
 
     @property
