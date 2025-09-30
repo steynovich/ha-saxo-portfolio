@@ -79,6 +79,10 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Get configured timezone
         self._timezone = config_entry.data.get(CONF_TIMEZONE, DEFAULT_TIMEZONE)
 
+        # Cache market hours check to avoid repeated calculations
+        self._market_hours_cache: bool | None = None
+        self._market_hours_cache_time: datetime | None = None
+
         # Determine initial update interval
         if self._timezone == "any":
             update_interval = DEFAULT_UPDATE_INTERVAL_ANY
@@ -197,6 +201,8 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _is_market_hours(self) -> bool:
         """Check if current time is during market hours.
 
+        Uses caching to avoid repeated calculations within the same second.
+
         Returns:
             True if market is currently open
 
@@ -204,6 +210,15 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # If timezone is "any", market hours don't apply
         if self._timezone == "any":
             return False
+
+        # Check cache - if we checked within the last second, return cached result
+        now = datetime.now()
+        if (
+            self._market_hours_cache is not None
+            and self._market_hours_cache_time is not None
+            and (now - self._market_hours_cache_time).total_seconds() < 1.0
+        ):
+            return self._market_hours_cache
 
         try:
             # Get current time and convert to configured timezone
@@ -227,26 +242,30 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             # Check if it's a weekday
             if now_local.weekday() not in market_config["weekdays"]:
-                return False
+                is_open = False
+            else:
+                # Get market hours
+                open_hour, open_minute = market_config["open"]
+                close_hour, close_minute = market_config["close"]
 
-            # Get market hours
-            open_hour, open_minute = market_config["open"]
-            close_hour, close_minute = market_config["close"]
+                market_open = time(open_hour, open_minute)
+                market_close = time(close_hour, close_minute)
 
-            market_open = time(open_hour, open_minute)
-            market_close = time(close_hour, close_minute)
+                current_time = now_local.time()
 
-            current_time = now_local.time()
-
-            is_open = market_open <= current_time <= market_close
+                is_open = market_open <= current_time <= market_close
 
             _LOGGER.debug(
                 "Market hours check for %s: %s, weekday: %s, is_open: %s",
                 self._timezone,
-                current_time.strftime("%H:%M:%S"),
+                now_local.time().strftime("%H:%M:%S"),
                 now_local.weekday(),
                 is_open,
             )
+
+            # Cache the result
+            self._market_hours_cache = is_open
+            self._market_hours_cache_time = now
 
             return is_open
 

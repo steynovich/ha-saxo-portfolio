@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.12] - 2025-09-30
+
+### Fixed
+- Fixed repeated market hours debug logging
+  - Multiple sensors were calling `_is_market_hours()` simultaneously during state updates
+  - Added 1-second cache to `_is_market_hours()` to avoid redundant calculations
+  - Reduces log noise from 3+ identical messages to 1 per second
+  - Improves performance by caching timezone calculations
+
 ## [2.2.11] - 2025-09-30
 
 ### Fixed
