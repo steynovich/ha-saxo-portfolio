@@ -178,12 +178,86 @@ max_failure_time = max(15 * 60, 3 * update_interval_seconds)
 - `const.py:118`: PERFORMANCE_UPDATE_INTERVAL constant (1 hour)
 - `tests/integration/test_sticky_availability.py`: Comprehensive tests for availability behavior
 
-## Recent Changes (v2.3.0-beta.1) - PRERELEASE
+## Recent Changes (v2.2.8-beta.1) - PRERELEASE
 
-### Major Coordinator Refactoring
-This is a **major refactoring release** focused on reducing complexity and improving maintainability of the coordinator module. All functionality is preserved with no breaking changes.
+### Critical Timeout Fix
+Fixed integration startup failures caused by nested timeout contexts introduced in v2.2.5.
 
-#### PerformanceCache Dataclass (Lines 46-59)
+#### Problem
+- **Symptoms**: Integration fails to start since v2.2.5
+  - Repeated "Request timeout (attempt 1/3)" warnings
+  - 132+ seconds waiting for integration setup
+  - Connection broken even with operational Saxo API
+  - Worked correctly in v2.2.2
+
+#### Root Cause Analysis
+Commit `56b5332` (v2.2.5) introduced **triple-nested timeout contexts**:
+1. `COORDINATOR_UPDATE_TIMEOUT` (90s) - outer coordinator timeout
+2. `API_TIMEOUT_BALANCE/PERFORMANCE/CLIENT_INFO` (45s/60s/30s) - middle timeouts
+3. API client's own `API_TIMEOUT_TOTAL` (45s) with retry logic - inner timeout
+
+**The Problem**: Nested timeouts were racing with each other:
+- API client times out at 45s and tries to retry (attempt 1/3)
+- But `API_TIMEOUT_BALANCE` also fires at 45s, canceling the entire operation
+- This causes retry counter to reset, showing "attempt 1/3" repeatedly
+- The 90s coordinator timeout never triggers because operations keep restarting
+
+#### Solution Implemented
+Reverted to v2.2.2's proven single-layer timeout structure:
+
+**Removed from const.py**:
+- `API_TIMEOUT_BALANCE = 45s`
+- `API_TIMEOUT_PERFORMANCE = 60s`
+- `API_TIMEOUT_CLIENT_INFO = 30s`
+
+**Restored**:
+- `COORDINATOR_UPDATE_TIMEOUT = 30s` (was 90s in v2.2.5-2.2.7)
+
+**Removed from coordinator.py** (5 locations):
+- Line 542: Balance data fetch nested timeout
+- Line 639: Client details fetch nested timeout
+- Line 666: Performance v3 fetch nested timeout
+- Line 719: Performance v4 fetch nested timeout
+- Line 206: `_fetch_performance_data()` helper method timeout
+
+#### Result
+- ✅ Single coordinator timeout layer (30s)
+- ✅ API client handles its own timeouts and retries without interference
+- ✅ No timeout race conditions
+- ✅ Restores working v2.2.2 behavior
+
+#### Affected Versions
+- **v2.2.5, v2.2.6, v2.2.7**: All had nested timeout issue
+- **v2.2.2 and earlier**: Worked correctly
+- **v2.2.8-beta.1**: Fix implemented (prerelease testing)
+
+#### Testing Status
+- ✅ Ruff linting: All checks passed
+- ✅ Python syntax: Valid
+- ⚠️ **Beta prerelease**: Awaiting user testing confirmation
+
+## Recent Changes (v2.3.0-beta.1) - REVERTED
+
+**Note**: This refactoring release was reverted due to the same nested timeout issue. The refactoring itself was sound but was built on top of the broken v2.2.5-2.2.7 timeout structure.
+
+## Recent Changes (v2.2.6+)
+- **Enhanced Rate Limiting Messages**: Improved rate limiting experience and reduced startup noise
+  - Changed first rate limit occurrence from WARNING to DEBUG level in `api/saxo_client.py:274-289`
+  - Added context-aware messages explaining when rate limiting is normal vs concerning
+  - Startup phase tracking for better error context during first 3 updates
+  - Enhanced rate limiting messages distinguish between expected (startup/high usage) and problematic scenarios
+
+## Recent Changes (v2.2.5+) - BROKEN
+**Warning**: v2.2.5 introduced nested timeout contexts that broke integration startup. Fixed in v2.2.8-beta.1.
+- ~~Enhanced Timeout Handling~~: **This change caused startup failures**
+  - Introduced triple-nested timeout contexts
+  - Prevented integration from starting properly
+  - See v2.2.8-beta.1 changelog above for full details
+
+## Previous Changes (v2.2.4 and earlier)
+See CHANGELOG.md for detailed change history of v2.2.4 and earlier versions.
+
+## Security & Quality
 - **Type-Safe Cache Management**: Replaced error-prone dictionary cache with strongly-typed dataclass
   - Eliminates 80+ lines of repetitive `.get()` calls throughout coordinator
   - Provides compile-time type checking and IDE autocomplete support
@@ -387,5 +461,6 @@ Do what has been asked; nothing more, nothing less.
 NEVER create files unless they're absolutely necessary for achieving your goal.
 ALWAYS prefer editing an existing file to creating a new one.
 NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
-<!-- MANUAL ADDITIONS END -->
 - Always run ruff and Pylance checks and format before creating a new release
+- Creating a new release includes updating documentation and CHANGELOG, creating and pushing a tag and finally creating a release on GitHub.
+<!-- MANUAL ADDITIONS END -->

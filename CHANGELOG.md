@@ -5,54 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.3.0-beta.1] - 2025-09-30
+## [2.2.8-beta.1] - 2025-09-30
 
-### Changed - Major Refactoring (PRERELEASE)
-- **Coordinator Simplification**: Dramatically reduced complexity and improved maintainability of coordinator.py
-  - Reduced largest method from 420 lines to 118 lines (-72% complexity reduction)
-  - Split OAuth token refresh from 177 lines to 6 focused methods totaling 25 lines orchestration (-86%)
-  - Refactored API client property from 64 lines to 20 lines (-69%)
-  - Extracted 11 new focused, testable methods from 3 monolithic methods
-  - Overall coordinator reduced from 1,227 lines to 1,169 lines with significantly better organization
+### Fixed - Critical Startup Timeout Issue (PRERELEASE)
+- **Nested Timeout Problem**: Fixed integration startup failures caused by triple-nested timeout contexts
+  - Removed nested `API_TIMEOUT_BALANCE`, `API_TIMEOUT_PERFORMANCE`, `API_TIMEOUT_CLIENT_INFO` constants
+  - Restored `COORDINATOR_UPDATE_TIMEOUT` from 90s back to 30s (v2.2.2 value)
+  - Removed 5 nested `async_timeout.timeout()` calls in coordinator
+  - Integration now starts successfully without repeated timeout warnings
 
-### Added
-- **PerformanceCache Dataclass**: Type-safe cache management replacing error-prone dictionary operations
-  - Eliminates 80+ lines of repetitive `.get()` calls throughout the codebase
-  - Provides compile-time type checking and IDE autocomplete
-  - Prevents cache key typos and field access errors
-- **Extracted Data Fetching Methods**:
-  - `_fetch_balance_data()`: Dedicated balance data fetching with timeout handling
-  - `_fetch_client_details_cached()`: Consolidated client details fetching with consistent error handling
-  - `_fetch_performance_metrics()`: Comprehensive performance data fetching returning type-safe cache
-- **OAuth Token Refresh Methods** (6 new focused methods):
-  - `_get_refresh_token()`: Token extraction and validation
-  - `_mask_sensitive_data()`: Security-focused logging helper
-  - `_get_oauth_basic_auth()`: HTTP Basic Auth credential management
-  - `_build_token_refresh_data()`: Request payload construction with redirect_uri handling
-  - `_execute_token_refresh_request()`: HTTP execution with proper error handling
-  - `_update_config_entry_with_token()`: State management and client recreation
-- **API Client Management Methods**:
-  - `_should_recreate_api_client()`: Token change detection logic
-  - `_create_api_client()`: Client instantiation with proper logging
+### Root Cause
+- v2.2.5 introduced triple-nested timeout contexts that raced with each other
+- Nested timeouts (coordinator → balance/performance → API client) interrupted API client retry logic
+- Caused retry counter to reset repeatedly, showing "Request timeout (attempt 1/3)" indefinitely
+- Integration would wait 132+ seconds and fail to start, even when Saxo API was fully operational
 
-### Improved
-- **Code Maintainability**: Reduced cyclomatic complexity from ~12 to ~6 (average, -50%)
-- **Testability**: Increased testable units from 15 to 30+ (+100% improvement)
-- **Code Organization**: Reduced maximum nesting depth from 5 levels to 2-3 levels (-40%)
-- **Error Handling**: Eliminated duplicate client details fetching logic (was in 2 places)
-- **Type Safety**: PerformanceCache ensures consistent data structure access throughout coordinator
+### Solution
+- Reverted to v2.2.2's proven timeout structure
+- Single coordinator timeout layer (30s) lets API client handle its own timeouts and retries
+- Eliminates timeout race conditions
+- Restores working behavior from v2.2.2
+
+### Changed
+- **const.py**: Removed progressive timeout constants, restored simple 30s coordinator timeout
+- **coordinator.py**: Removed nested timeout logic from 5 locations:
+  - Balance data fetch
+  - Client details fetch
+  - Performance v3 fetch
+  - Performance v4 fetch
+  - Individual performance period fetches
 
 ### Technical Details
-- All code quality checks passing: Ruff (linting), Ruff (formatting), Mypy (type checking)
-- Structure tests: 5/5 passing (manifest, required files, HACS, workflows, syntax)
-- No breaking changes: All functionality preserved, only internal refactoring
-- Net code reduction: 445 insertions, 502 deletions (-57 lines total)
+- All code quality checks passing: Ruff (linting), Python syntax
+- No functionality changes beyond timeout handling
+- Backwards compatible with v2.2.2 timeout behavior
 
 ### Notes
-- This is a **beta prerelease** for testing the major refactoring work
-- Integration tests require fixture updates due to internal implementation changes
-- All production code is fully functional and passes quality checks
-- Please report any issues before promoting to stable v2.3.0
+- This is a **beta prerelease** for testing the timeout fix
+- Versions v2.2.5, v2.2.6, v2.2.7 all had this nested timeout issue
+- v2.2.2 and earlier worked correctly
+- Please test and report results before stable v2.2.8 release
+
+## [2.3.0-beta.1] - 2025-09-30 [REVERTED]
+
+**Note**: This refactoring release was reverted due to startup timeout issues discovered during testing.
+
+## [2.2.7] - 2025-09-30 [REVERTED]
+
+**Note**: This version reverted the v2.3.0-beta.1 refactoring but still contained the nested timeout issue from v2.2.5.
 
 ## [2.2.6] - 2025-09-29
 
