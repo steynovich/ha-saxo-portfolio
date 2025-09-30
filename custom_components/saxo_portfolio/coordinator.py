@@ -716,8 +716,8 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                                 # Also try to fetch v4 performance data
                                 try:
-                                    performance_v4_data = await client.get_performance_v4(
-                                        client_key
+                                    performance_v4_data = (
+                                        await client.get_performance_v4(client_key)
                                     )
 
                                     # Extract ReturnFraction from KeyFigures (multiply by 100 for percentage)

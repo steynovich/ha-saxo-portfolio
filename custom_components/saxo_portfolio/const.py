@@ -153,7 +153,9 @@ API_TIMEOUT_READ: Final = 30  # seconds
 API_TIMEOUT_TOTAL: Final = 45  # seconds
 
 # Coordinator configuration
-COORDINATOR_UPDATE_TIMEOUT: Final = 60  # seconds - enough for multiple sequential API calls
+COORDINATOR_UPDATE_TIMEOUT: Final = (
+    60  # seconds - enough for multiple sequential API calls
+)
 
 # Security patterns for sensitive data masking
 SENSITIVE_URL_PATTERNS: Final = [
