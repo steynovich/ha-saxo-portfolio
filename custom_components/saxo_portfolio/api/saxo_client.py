@@ -473,6 +473,75 @@ class SaxoApiClient:
             _LOGGER.error("Error fetching performance data: %s", type(e).__name__)
             raise APIError("Failed to fetch performance data")
 
+    async def get_performance_v4_batch(
+        self, client_key: str
+    ) -> dict[str, dict[str, Any]]:
+        """Get all performance timeseries data from Saxo v4 performance API.
+
+        Fetches AllTime, Year, Month, and Quarter performance data with delays
+        between calls to prevent rate limiting.
+
+        Args:
+            client_key: Client key for the request
+
+        Returns:
+            Dictionary with keys: 'alltime', 'ytd', 'month', 'quarter'
+            Each containing performance timeseries data
+
+        Raises:
+            AuthenticationError: For authentication failures
+            APIError: For other API errors
+
+        """
+        periods = [
+            ("AllTime", "alltime"),
+            ("Year", "ytd"),
+            ("Month", "month"),
+            ("Quarter", "quarter"),
+        ]
+
+        results: dict[str, dict[str, Any]] = {}
+
+        for i, (standard_period, key) in enumerate(periods):
+            try:
+                params = {
+                    "ClientKey": client_key,
+                    "StandardPeriod": standard_period,
+                    "FieldGroups": "Balance_CashTransfer,KeyFigures",
+                }
+
+                response = await self._make_request(API_PERFORMANCE_V4_ENDPOINT, params)
+
+                # Validate response structure
+                if not isinstance(response, dict):
+                    raise APIError(
+                        f"Invalid performance v4 {standard_period} response format"
+                    )
+
+                _LOGGER.debug(
+                    "Performance v4 %s API response structure: %s",
+                    standard_period,
+                    list(response.keys()) if response else "empty",
+                )
+
+                results[key] = response
+
+                # Add delay between calls (except after last one) to prevent rate limiting
+                if i < len(periods) - 1:
+                    await asyncio.sleep(0.5)
+
+            except (AuthenticationError, RateLimitError):
+                raise
+            except Exception as e:
+                _LOGGER.error(
+                    "Error fetching performance v4 %s data: %s",
+                    standard_period,
+                    type(e).__name__,
+                )
+                raise APIError(f"Failed to fetch performance v4 {standard_period} data")
+
+        return results
+
     async def get_performance_v4(self, client_key: str) -> dict[str, Any]:
         """Get performance timeseries data from Saxo v4 performance API.
 

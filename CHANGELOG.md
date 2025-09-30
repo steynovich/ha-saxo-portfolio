@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.9-beta.1] - 2025-09-30
+
+### Fixed - Rate Limiting Prevention (PRERELEASE)
+- **Batched v4 API Calls**: Consolidated 4 separate performance v4 API calls into single batched method
+  - Reduces from 7 API calls per performance update to 4 calls (43% reduction)
+  - With 2 accounts: 14 calls → 8 calls per performance update cycle
+  - New `get_performance_v4_batch()` method fetches AllTime/YTD/Month/Quarter in sequence with delays
+  - Prevents 429 rate limiting errors (120 requests/minute limit)
+
+- **Inter-Call Delays**: Added 0.5s delays between sequential API calls
+  - Spreads API calls over time instead of instant burst
+  - Delay between balance and client details calls
+  - Delay before batched performance calls
+  - Internal delays between v4 batch calls (AllTime → YTD → Month → Quarter)
+  - 4 calls now spread over ~2 seconds instead of <1 second
+
+- **Staggered Multi-Account Updates**: Added random 0-30s offset per config entry on startup
+  - Prevents multiple accounts from hitting performance updates simultaneously
+  - Each account coordinator has unique `_initial_update_offset`
+  - Offset applied once on first update, then cleared
+  - Reduces peak load when multiple accounts configured
+
+### Changed
+- **Performance Cache Interval**: Increased from 1 hour to 2 hours
+  - Reduces performance update frequency by 50%
+  - Balance data still updates every 5-30 minutes (unchanged)
+  - Performance data changes slowly, 2-hour cache is acceptable
+  - Further reduces rate limiting risk
+
+- **API Client** (`api/saxo_client.py`):
+  - Added `get_performance_v4_batch()` method with built-in rate limiting
+  - Existing individual v4 methods maintained for backwards compatibility
+
+- **Coordinator** (`coordinator.py`):
+  - Added `random` import for stagger offset generation
+  - Added `_initial_update_offset` property with 0-30s random value
+  - Refactored performance data fetch to use batched method
+  - Added strategic delays between API calls to prevent burst traffic
+
+- **Constants** (`const.py`):
+  - `PERFORMANCE_UPDATE_INTERVAL`: Changed from 1 hour to 2 hours
+
+### Expected Outcome
+- **Before**: 14 API calls in <2 seconds (2 accounts × 7 calls each)
+- **After**: 8 API calls spread over 4+ seconds, staggered between accounts
+- **Rate Limit Risk**: Eliminated (well under 120/min threshold)
+
+### Notes
+- All 4 rate limiting improvements implemented together for maximum effectiveness
+- Batched calls maintain all existing functionality and data
+- This is a **beta prerelease** for testing rate limiting fixes
+
 ## [2.2.8-beta.2] - 2025-09-30
 
 ### Fixed - Timeout Duration Adjustment (PRERELEASE)

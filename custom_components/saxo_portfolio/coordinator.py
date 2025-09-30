@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 from datetime import datetime, timedelta, time
 import zoneinfo
 from typing import Any
@@ -67,6 +68,10 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Track startup phase for better error messaging
         self._is_startup_phase = True
         self._successful_updates_count = 0
+
+        # Add random offset for multiple accounts to prevent simultaneous updates
+        # This spreads updates across 0-30 seconds to reduce rate limiting risk
+        self._initial_update_offset = random.uniform(0, 30)
 
         # Get configured timezone
         self._timezone = config_entry.data.get(CONF_TIMEZONE, DEFAULT_TIMEZONE)
@@ -507,6 +512,16 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         """
         try:
+            # Apply staggered update offset on first update to prevent multiple accounts
+            # from hitting the API simultaneously
+            if self._initial_update_offset > 0:
+                _LOGGER.debug(
+                    "Applying initial update offset of %.1fs to stagger multiple accounts",
+                    self._initial_update_offset,
+                )
+                await asyncio.sleep(self._initial_update_offset)
+                self._initial_update_offset = 0  # Only apply once
+
             # Check and refresh token if needed
             await self._check_and_refresh_token()
 
@@ -633,6 +648,9 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                 # Only fetch performance data if cache is stale
                 if should_update_performance:
+                    # Add delay between balance and client details calls to prevent burst
+                    await asyncio.sleep(0.5)
+
                     # Get client details (ClientKey, ClientId, etc.)
                     try:
                         client_details = await client.get_client_details()
@@ -714,13 +732,21 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                         type(perf_e).__name__,
                                     )
 
-                                # Also try to fetch v4 performance data
+                                # Fetch all v4 performance data in a single batched call with rate limiting
                                 try:
-                                    performance_v4_data = (
-                                        await client.get_performance_v4(client_key)
+                                    # Add small delay before performance calls to prevent burst
+                                    await asyncio.sleep(0.5)
+
+                                    performance_v4_batch = (
+                                        await client.get_performance_v4_batch(
+                                            client_key
+                                        )
                                     )
 
-                                    # Extract ReturnFraction from KeyFigures (multiply by 100 for percentage)
+                                    # Extract AllTime performance data
+                                    performance_v4_data = performance_v4_batch.get(
+                                        "alltime", {}
+                                    )
                                     key_figures = performance_v4_data.get(
                                         "KeyFigures", {}
                                     )
@@ -735,49 +761,59 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                     balance = performance_v4_data.get("Balance", {})
                                     cash_transfer_list = balance.get("CashTransfer", [])
                                     if cash_transfer_list:
-                                        # Get the latest entry (last in the list)
                                         latest_cash_transfer = cash_transfer_list[-1]
                                         cash_transfer_balance = (
                                             latest_cash_transfer.get("Value", 0.0)
                                         )
 
+                                    # Extract YTD performance data
+                                    ytd_data = performance_v4_batch.get("ytd", {})
+                                    ytd_key_figures = ytd_data.get("KeyFigures", {})
+                                    ytd_return_fraction = ytd_key_figures.get(
+                                        "ReturnFraction", 0.0
+                                    )
+                                    ytd_investment_performance_percentage = (
+                                        ytd_return_fraction * 100.0
+                                    )
+
+                                    # Extract Month performance data
+                                    month_data = performance_v4_batch.get("month", {})
+                                    month_key_figures = month_data.get("KeyFigures", {})
+                                    month_return_fraction = month_key_figures.get(
+                                        "ReturnFraction", 0.0
+                                    )
+                                    month_investment_performance_percentage = (
+                                        month_return_fraction * 100.0
+                                    )
+
+                                    # Extract Quarter performance data
+                                    quarter_data = performance_v4_batch.get(
+                                        "quarter", {}
+                                    )
+                                    quarter_key_figures = quarter_data.get(
+                                        "KeyFigures", {}
+                                    )
+                                    quarter_return_fraction = quarter_key_figures.get(
+                                        "ReturnFraction", 0.0
+                                    )
+                                    quarter_investment_performance_percentage = (
+                                        quarter_return_fraction * 100.0
+                                    )
+
                                     _LOGGER.debug(
-                                        "Retrieved performance v4 data - ReturnFraction: %s%%, CashTransfer: %s",
+                                        "Retrieved batched performance v4 data - AllTime: %s%%, YTD: %s%%, Month: %s%%, Quarter: %s%%, CashTransfer: %s",
                                         investment_performance_percentage,
+                                        ytd_investment_performance_percentage,
+                                        month_investment_performance_percentage,
+                                        quarter_investment_performance_percentage,
                                         cash_transfer_balance,
                                     )
 
                                 except Exception as perf_v4_e:
                                     _LOGGER.debug(
-                                        "Could not fetch performance v4 data: %s",
+                                        "Could not fetch batched performance v4 data: %s",
                                         type(perf_v4_e).__name__,
                                     )
-
-                                # Fetch additional performance periods using helper method
-                                ytd_investment_performance_percentage = (
-                                    await self._fetch_performance_data(
-                                        client,
-                                        client_key,
-                                        "YTD",
-                                        "get_performance_v4_ytd",
-                                    )
-                                )
-                                month_investment_performance_percentage = (
-                                    await self._fetch_performance_data(
-                                        client,
-                                        client_key,
-                                        "Month",
-                                        "get_performance_v4_month",
-                                    )
-                                )
-                                quarter_investment_performance_percentage = (
-                                    await self._fetch_performance_data(
-                                        client,
-                                        client_key,
-                                        "Quarter",
-                                        "get_performance_v4_quarter",
-                                    )
-                                )
 
                             else:
                                 _LOGGER.debug(

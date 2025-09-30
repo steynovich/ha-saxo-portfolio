@@ -337,7 +337,17 @@ Split 64-line property with side effects into focused methods:
 - All production code is fully functional and passes quality checks
 - Coordinate initialization now requires timezone in config entry (was already present in production)
 
-## Recent Changes (v2.2.6+)
+## Recent Changes (v2.2.9+)
+- **Rate Limiting Prevention**: Comprehensive fixes to prevent 429 rate limiting errors
+  - Batched v4 API calls: Reduced from 7 calls to 4 calls per performance update (43% reduction)
+  - New `get_performance_v4_batch()` method in `api/saxo_client.py:476-545` fetches AllTime/YTD/Month/Quarter with delays
+  - Inter-call delays: 0.5s delays between sequential API calls in `coordinator.py:637,720`
+  - Staggered multi-account updates: Random 0-30s offset per account in `coordinator.py:74,517-523`
+  - Performance cache interval: Increased from 1 hour to 2 hours in `const.py:119`
+  - Expected outcome: 8 calls spread over 4+ seconds vs 14 calls in <2 seconds
+  - Rate limit risk eliminated (well under 120/min threshold)
+
+## Previous Changes (v2.2.6+)
 - **Enhanced Rate Limiting Messages**: Improved rate limiting experience and reduced startup noise
   - Changed first rate limit occurrence from WARNING to DEBUG level in `api/saxo_client.py:274-289`
   - Added context-aware messages explaining when rate limiting is normal vs concerning

@@ -115,7 +115,8 @@ MARKET_HOURS: Final = {
 DEFAULT_UPDATE_INTERVAL_ANY: Final = timedelta(minutes=15)
 
 # Performance data update interval (less frequent since performance changes slowly)
-PERFORMANCE_UPDATE_INTERVAL: Final = timedelta(hours=1)
+# Increased to 2 hours to reduce API calls and prevent rate limiting
+PERFORMANCE_UPDATE_INTERVAL: Final = timedelta(hours=2)
 
 
 # Configuration flow
