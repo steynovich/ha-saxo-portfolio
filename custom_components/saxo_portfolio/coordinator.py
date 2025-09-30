@@ -23,9 +23,6 @@ from homeassistant.util import dt as dt_util
 
 from .api.saxo_client import SaxoApiClient, AuthenticationError, APIError
 from .const import (
-    API_TIMEOUT_BALANCE,
-    API_TIMEOUT_CLIENT_INFO,
-    API_TIMEOUT_PERFORMANCE,
     CONF_TIMEZONE,
     COORDINATOR_UPDATE_TIMEOUT,
     DEFAULT_TIMEZONE,
@@ -206,8 +203,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         try:
             method = getattr(client, method_name)
-            async with async_timeout.timeout(API_TIMEOUT_PERFORMANCE):
-                performance_data = await method(client_key)
+            performance_data = await method(client_key)
 
             key_figures = performance_data.get("KeyFigures", {})
             return_fraction = key_figures.get("ReturnFraction", 0.0)
@@ -540,10 +536,9 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Fetch balance data only
             fetch_start_time = datetime.now()
             async with async_timeout.timeout(COORDINATOR_UPDATE_TIMEOUT):
-                # Get balance data (only required endpoint) with specific timeout
+                # Get balance data (only required endpoint)
                 balance_start_time = datetime.now()
-                async with async_timeout.timeout(API_TIMEOUT_BALANCE):
-                    balance_data = await client.get_account_balance()
+                balance_data = await client.get_account_balance()
 
                 balance_duration = (datetime.now() - balance_start_time).total_seconds()
                 _LOGGER.debug("Balance data fetch completed in %.2fs", balance_duration)
@@ -638,10 +633,9 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                 # Only fetch performance data if cache is stale
                 if should_update_performance:
-                    # Get client details (ClientKey, ClientId, etc.) with specific timeout
+                    # Get client details (ClientKey, ClientId, etc.)
                     try:
-                        async with async_timeout.timeout(API_TIMEOUT_CLIENT_INFO):
-                            client_details = await client.get_client_details()
+                        client_details = await client.get_client_details()
                         if client_details:
                             _LOGGER.debug(
                                 "Client details response keys: %s",
@@ -669,12 +663,9 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                     "Found ClientKey from client details, attempting performance fetch"
                                 )
                                 try:
-                                    async with async_timeout.timeout(
-                                        API_TIMEOUT_PERFORMANCE
-                                    ):
-                                        performance_data = await client.get_performance(
-                                            client_key
-                                        )
+                                    performance_data = await client.get_performance(
+                                        client_key
+                                    )
 
                                     # Log performance data structure for debugging
                                     _LOGGER.debug(
@@ -725,12 +716,9 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                                 # Also try to fetch v4 performance data
                                 try:
-                                    async with async_timeout.timeout(
-                                        API_TIMEOUT_PERFORMANCE
-                                    ):
-                                        performance_v4_data = (
-                                            await client.get_performance_v4(client_key)
-                                        )
+                                    performance_v4_data = await client.get_performance_v4(
+                                        client_key
+                                    )
 
                                     # Extract ReturnFraction from KeyFigures (multiply by 100 for percentage)
                                     key_figures = performance_v4_data.get(

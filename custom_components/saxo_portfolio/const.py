@@ -152,13 +152,8 @@ API_TIMEOUT_CONNECT: Final = 10  # seconds
 API_TIMEOUT_READ: Final = 30  # seconds
 API_TIMEOUT_TOTAL: Final = 45  # seconds
 
-# Progressive timeouts for different endpoint types
-API_TIMEOUT_BALANCE: Final = 45  # seconds - critical balance data
-API_TIMEOUT_PERFORMANCE: Final = 60  # seconds - optional performance data
-API_TIMEOUT_CLIENT_INFO: Final = 30  # seconds - client details
-
 # Coordinator configuration
-COORDINATOR_UPDATE_TIMEOUT: Final = 90  # seconds - increased for multiple API calls
+COORDINATOR_UPDATE_TIMEOUT: Final = 30  # seconds
 
 # Security patterns for sensitive data masking
 SENSITIVE_URL_PATTERNS: Final = [
