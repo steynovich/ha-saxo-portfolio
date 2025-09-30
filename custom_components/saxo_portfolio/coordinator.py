@@ -447,8 +447,14 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         self.config_entry, data=new_data
                     )
 
-                    # Update API client with new token
-                    self._api_client = None  # Force recreation with new token
+                    # Close old API client before forcing recreation with new token
+                    if self._api_client is not None:
+                        old_client = self._api_client
+                        self._api_client = None
+                        # Close old client in background to avoid blocking
+                        self.hass.async_create_task(self._close_old_client(old_client))
+                    else:
+                        self._api_client = None  # Force recreation with new token
 
                     # Store refresh success info with debug details
                     token_expires = datetime.fromtimestamp(new_token_data["expires_at"])
