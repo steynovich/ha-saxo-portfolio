@@ -56,7 +56,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     except Exception as e:
         _LOGGER.error(
-            "Failed to set up Saxo Portfolio integration: %s", type(e).__name__
+            "Failed to set up Saxo Portfolio integration: %s - %s",
+            type(e).__name__,
+            str(e),
+            exc_info=True,
         )
         # Clean up any partial setup
         if entry.entry_id in hass.data.get(DOMAIN, {}):
