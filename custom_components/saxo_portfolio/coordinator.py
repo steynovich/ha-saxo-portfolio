@@ -1019,11 +1019,11 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             # Debug logging to understand reload trigger
             _LOGGER.debug(
-                "Reload check - last_known: '%s', current: '%s', sensors_init: %s, last_success_time: %s",
+                "Reload check - last_known: '%s', current: '%s', sensors_init: %s, setup_complete: %s",
                 self._last_known_client_name,
                 current_client_name,
                 self._sensors_initialized,
-                self.last_update_success_time,
+                self._setup_complete,
             )
 
             # Only consider reload if:
