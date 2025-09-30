@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.9] - 2025-09-30
+
+### Fixed - Rate Limiting and Integration Stability
+- **Comprehensive Rate Limiting Prevention**: Eliminated 429 rate limiting errors
+  - Batched v4 API calls: Reduced from 7 calls to 4 calls per performance update (43% reduction)
+  - New `get_performance_v4_batch()` method fetches AllTime/YTD/Month/Quarter with built-in 0.5s delays
+  - Added inter-call delays between balance and client details calls
+  - Staggered multi-account updates with random 0-30s offset to prevent simultaneous API requests
+  - Impact: 14 calls in <2s → 8 calls over 4+ seconds (with 2 accounts)
+
+- **Integration Reload Loop Fix**: Fixed integration repeatedly loading/unloading on startup
+  - Added `_setup_complete` flag to properly track initial setup completion
+  - Reload check now only triggers after platform setup finishes, not during initial refresh
+  - Prevents unnecessary reload when client name is fetched during normal startup
+  - Preserves reload functionality for genuinely skipped sensors (unknown client data)
+
+- **AttributeError Fix**: Fixed crash during coordinator initialization
+  - Removed premature access to `self.data` before parent class initialization
+  - Simplified `_last_known_client_name` initialization to always start as "unknown"
+
+### Changed
+- **Performance Cache Interval**: Increased from 1 hour to 2 hours
+  - Reduces performance update frequency by 50%
+  - Balance data still updates every 5-30 minutes based on market hours
+  - Performance data changes slowly, 2-hour cache is acceptable
+
+- **API Client** (`api/saxo_client.py`):
+  - Added `get_performance_v4_batch()` method for batched performance data fetching
+  - Existing individual v4 methods maintained for backwards compatibility
+
+- **Coordinator** (`coordinator.py`):
+  - Added `random` import for stagger offset generation
+  - Added `_setup_complete` flag and `mark_setup_complete()` method
+  - Added `_initial_update_offset` property with 0-30s random value
+  - Refactored performance data fetch to use batched method
+  - Added strategic delays between API calls to prevent burst traffic
+  - Enhanced reload logic with setup completion tracking
+
+- **Init** (`__init__.py`):
+  - Call `coordinator.mark_setup_complete()` after platform setup
+  - Enhanced error logging with full traceback for debugging
+
+- **Constants** (`const.py`):
+  - `PERFORMANCE_UPDATE_INTERVAL`: Changed from 1 hour to 2 hours
+
+### Performance Impact
+- **Before**: 14 API calls in <2 seconds (2 accounts × 7 calls each)
+- **After**: 8 API calls spread over 4+ seconds, staggered between accounts
+- **Rate Limit Risk**: Eliminated (well under 120/min threshold)
+
+### Notes
+- All changes are backwards compatible
+- No breaking changes to sensor entities or data structure
+- Integration now handles multiple accounts gracefully without rate limiting
+- Startup is clean with no reload loops or crashes
+
 ## [2.2.9-beta.4] - 2025-09-30
 
 ### Fixed - Integration Reload Loop (FINAL FIX) (PRERELEASE)

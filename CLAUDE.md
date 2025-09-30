@@ -337,15 +337,27 @@ Split 64-line property with side effects into focused methods:
 - All production code is fully functional and passes quality checks
 - Coordinate initialization now requires timezone in config entry (was already present in production)
 
-## Recent Changes (v2.2.9+)
+## Recent Changes (v2.2.9)
 - **Rate Limiting Prevention**: Comprehensive fixes to prevent 429 rate limiting errors
   - Batched v4 API calls: Reduced from 7 calls to 4 calls per performance update (43% reduction)
   - New `get_performance_v4_batch()` method in `api/saxo_client.py:476-545` fetches AllTime/YTD/Month/Quarter with delays
-  - Inter-call delays: 0.5s delays between sequential API calls in `coordinator.py:637,720`
-  - Staggered multi-account updates: Random 0-30s offset per account in `coordinator.py:74,517-523`
+  - Inter-call delays: 0.5s delays between sequential API calls in `coordinator.py:637,722`
+  - Staggered multi-account updates: Random 0-30s offset per account in `coordinator.py:74,522-528`
   - Performance cache interval: Increased from 1 hour to 2 hours in `const.py:119`
   - Expected outcome: 8 calls spread over 4+ seconds vs 14 calls in <2 seconds
   - Rate limit risk eliminated (well under 120/min threshold)
+
+- **Integration Reload Loop Fix**: Fixed integration repeatedly loading/unloading on startup
+  - Added `_setup_complete` flag in `coordinator.py:69` to track initial setup completion
+  - Reload check in `coordinator.py:1034-1039` only triggers after platform setup finishes
+  - `mark_setup_complete()` method added in `coordinator.py:1233-1241`
+  - Called from `__init__.py:49` after platform setup completes
+  - Prevents unnecessary reload during normal startup flow
+  - Preserves reload functionality for genuinely skipped sensors
+
+- **AttributeError Fix**: Fixed crash during coordinator initialization
+  - Removed premature access to `self.data` before parent class initialization
+  - `_last_known_client_name` in `coordinator.py:67` always starts as "unknown"
 
 ## Previous Changes (v2.2.6+)
 - **Enhanced Rate Limiting Messages**: Improved rate limiting experience and reduced startup noise
