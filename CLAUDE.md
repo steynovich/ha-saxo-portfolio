@@ -49,15 +49,15 @@ python -m py_compile custom_components/saxo_portfolio/sensor.py
 
 ### Core Features
 - **Sixteen Entities**: Complete portfolio monitoring with balance, performance, transfer tracking, and diagnostics
-  - `SaxoCashBalanceSensor` from `/port/v1/balances/me`
-  - `SaxoTotalValueSensor` from `/port/v1/balances/me`
-  - `SaxoNonMarginPositionsValueSensor` from `/port/v1/balances/me`
-  - `SaxoAccumulatedProfitLossSensor` from `/hist/v3/perf/`
+  - `SaxoCashBalanceSensor` from `/port/v1/balances/me` (with long-term statistics)
+  - `SaxoTotalValueSensor` from `/port/v1/balances/me` (with long-term statistics)
+  - `SaxoNonMarginPositionsValueSensor` from `/port/v1/balances/me` (with long-term statistics)
+  - `SaxoAccumulatedProfitLossSensor` from `/hist/v3/perf/` (with long-term statistics)
   - `SaxoInvestmentPerformanceSensor` from `/hist/v4/performance/timeseries` (all-time)
   - `SaxoYTDInvestmentPerformanceSensor` from `/hist/v4/performance/timeseries` (year-to-date)
   - `SaxoMonthInvestmentPerformanceSensor` from `/hist/v4/performance/timeseries` (month-to-date)
   - `SaxoQuarterInvestmentPerformanceSensor` from `/hist/v4/performance/timeseries` (quarter-to-date)
-  - `SaxoCashTransferBalanceSensor` from `/hist/v4/performance/timeseries`
+  - `SaxoCashTransferBalanceSensor` from `/hist/v4/performance/timeseries` (with long-term statistics)
   - `SaxoClientIDSensor` - Client ID diagnostic information
   - `SaxoAccountIDSensor` - Account ID from `/port/v1/accounts/{AccountKey}` (hourly)
   - `SaxoNameSensor` - Client name from `/port/v1/clients/me` with `mdi:account-box` icon
@@ -70,6 +70,7 @@ python -m py_compile custom_components/saxo_portfolio/sensor.py
 - **Market Hours**: Dynamic update intervals (5 min market hours, 30 min after hours)
 - **Performance Caching**: Smart caching system that updates performance data hourly while maintaining real-time balance updates
 - **Rate Limiting**: Intelligent API throttling with exponential backoff
+- **Long-term Statistics**: Balance sensors support Home Assistant long-term statistics for historical tracking and trend analysis
 - **Comprehensive Diagnostics**: Built-in diagnostic support and real-time monitoring sensors
 - **Optimized Architecture**: Shared base classes reduce code duplication by 31% while maintaining all functionality
 
@@ -99,6 +100,18 @@ python -m py_compile custom_components/saxo_portfolio/sensor.py
 - Production endpoints only (no environment selection)
 - Automatic token refresh with proper security handling
 - Entity names automatically generated from Saxo Client ID
+
+### Long-term Statistics Support
+- **Historical Tracking**: Balance sensors store long-term statistics in Home Assistant's database
+- **State Class Configuration**:
+  - Balance sensors (Cash Balance, Total Value, Non-Margin Positions, Cash Transfer): `state_class = "measurement"`
+  - Accumulated Profit/Loss: `state_class = "total"` (cumulative value)
+- **Features Enabled**:
+  - Extended history beyond standard 10-day retention
+  - Statistics cards with min, max, mean values
+  - Trend analysis over weeks, months, and years
+  - Energy dashboard integration capability
+- **Implementation**: `SaxoBalanceSensorBase` sets `_attr_state_class = "measurement"` at [sensor.py:180](custom_components/saxo_portfolio/sensor.py#L180)
 
 ### Conditional Sensor Creation
 - **Unknown Client Name Protection**: Sensors are only created when client data is successfully retrieved from the Saxo API

@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.14] - 2025-10-13
+
+### Added
+- **Long-term Statistics Support**: Balance sensors now support Home Assistant long-term statistics
+  - Added `state_class = "measurement"` to `SaxoBalanceSensorBase` (sensor.py:180)
+  - Enables historical tracking for Cash Balance, Total Value, Non-Margin Positions, and Cash Transfer Balance sensors
+  - Provides extended history beyond standard 10-day retention
+  - Enables statistics cards with min, max, mean values and trend analysis
+  - Accumulated Profit/Loss sensor already had `state_class = "total"` for cumulative tracking
+
+### Technical Details
+- Modified `SaxoBalanceSensorBase.__init__()` to set `self._attr_state_class = "measurement"`
+- All balance sensors inheriting from this base class automatically gain long-term statistics support
+- No breaking changes - existing functionality remains unchanged
+
 ## [2.2.13] - 2025-09-30
 
 ### Fixed

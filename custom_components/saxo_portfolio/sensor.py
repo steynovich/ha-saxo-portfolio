@@ -177,6 +177,7 @@ class SaxoBalanceSensorBase(SaxoSensorBase):
             unit_of_measurement=coordinator.get_currency(),
         )
         self._coordinator_method = coordinator_method
+        self._attr_state_class = "measurement"
 
     @property
     def native_value(self) -> StateType:
