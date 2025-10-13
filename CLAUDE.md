@@ -70,7 +70,7 @@ python -m py_compile custom_components/saxo_portfolio/sensor.py
 - **Market Hours**: Dynamic update intervals (5 min market hours, 30 min after hours)
 - **Performance Caching**: Smart caching system that updates performance data hourly while maintaining real-time balance updates
 - **Rate Limiting**: Intelligent API throttling with exponential backoff
-- **Long-term Statistics**: Balance sensors support Home Assistant long-term statistics for historical tracking and trend analysis
+- **Long-term Statistics**: All balance sensors support Home Assistant long-term statistics for historical tracking and trend analysis
 - **Comprehensive Diagnostics**: Built-in diagnostic support and real-time monitoring sensors
 - **Optimized Architecture**: Shared base classes reduce code duplication by 31% while maintaining all functionality
 
@@ -102,16 +102,17 @@ python -m py_compile custom_components/saxo_portfolio/sensor.py
 - Entity names automatically generated from Saxo Client ID
 
 ### Long-term Statistics Support
-- **Historical Tracking**: Balance sensors store long-term statistics in Home Assistant's database
+- **Full Support**: All balance sensors support long-term statistics in Home Assistant
 - **State Class Configuration**:
-  - Balance sensors (Cash Balance, Total Value, Non-Margin Positions, Cash Transfer): `state_class = "measurement"`
-  - Accumulated Profit/Loss: `state_class = "total"` (cumulative value)
+  - All balance sensors use `state_class = "total"` for long-term statistics support
+  - Cash Balance, Total Value, Non-Margin Positions, Cash Transfer Balance: `state_class = "total"`
+  - Accumulated Profit/Loss: `state_class = "total"`
 - **Features Enabled**:
   - Extended history beyond standard 10-day retention
   - Statistics cards with min, max, mean values
   - Trend analysis over weeks, months, and years
   - Energy dashboard integration capability
-- **Implementation**: `SaxoBalanceSensorBase` sets `_attr_state_class = "measurement"` at [sensor.py:180](custom_components/saxo_portfolio/sensor.py#L180)
+- **Implementation**: `SaxoBalanceSensorBase` sets `_attr_state_class = "total"` at [sensor.py:180](custom_components/saxo_portfolio/sensor.py#L180)
 
 ### Conditional Sensor Creation
 - **Unknown Client Name Protection**: Sensors are only created when client data is successfully retrieved from the Saxo API

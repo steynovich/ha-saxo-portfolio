@@ -5,20 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.2.14] - 2025-10-13
+## [2.2.15] - 2025-10-13
 
 ### Added
-- **Long-term Statistics Support**: Balance sensors now support Home Assistant long-term statistics
-  - Added `state_class = "measurement"` to `SaxoBalanceSensorBase` (sensor.py:180)
+- **Long-term Statistics Support**: All balance sensors now support Home Assistant long-term statistics
+  - Changed from `state_class = "measurement"` (v2.2.14) to `state_class = "total"` (compatible with monetary device class)
   - Enables historical tracking for Cash Balance, Total Value, Non-Margin Positions, and Cash Transfer Balance sensors
   - Provides extended history beyond standard 10-day retention
   - Enables statistics cards with min, max, mean values and trend analysis
-  - Accumulated Profit/Loss sensor already had `state_class = "total"` for cumulative tracking
+  - All balance sensors now have same long-term statistics support as Accumulated Profit/Loss sensor
+
+### Fixed
+- Fixed Home Assistant validation errors from v2.2.14
+  - Changed `state_class` from "measurement" to "total" for balance sensors (sensor.py:180)
+  - Home Assistant's `monetary` device class only supports `state_class = "total"`, not "measurement"
+  - Fixes warnings: "Entity is using state class 'measurement' which is impossible considering device class ('monetary')"
 
 ### Technical Details
-- Modified `SaxoBalanceSensorBase.__init__()` to set `self._attr_state_class = "measurement"`
-- All balance sensors inheriting from this base class automatically gain long-term statistics support
+- Modified `SaxoBalanceSensorBase.__init__()` to set `self._attr_state_class = "total"`
+- All balance sensors inheriting from this base class now support long-term statistics
+- Compatible with Home Assistant's monetary device class requirements
 - No breaking changes - existing functionality remains unchanged
+
+## [2.2.14] - 2025-10-13 [YANKED]
+
+### Note
+This release was yanked due to Home Assistant validation errors. See v2.2.15 for the fix.
+
+### Added (Reverted in v2.2.15)
+- Attempted to add long-term statistics support to balance sensors
+  - Added `state_class = "measurement"` to `SaxoBalanceSensorBase`
+  - This configuration is incompatible with `device_class = "monetary"` in Home Assistant
 
 ## [2.2.13] - 2025-09-30
 
