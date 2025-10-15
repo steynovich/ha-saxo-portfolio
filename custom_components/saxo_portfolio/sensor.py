@@ -345,7 +345,7 @@ class SaxoTotalValueSensor(SaxoBalanceSensorBase):
             "mdi:wallet",
             "get_total_value",
         )
-
+        self._attr_state_class = "total"
 
 class SaxoNonMarginPositionsValueSensor(SaxoBalanceSensorBase):
     """Representation of a Saxo Portfolio Non-Margin Positions Value sensor."""
