@@ -296,6 +296,38 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     TOKEN_REFRESH_BUFFER,
                 )
 
+                # Check if refresh token is still valid
+                # Saxo refresh tokens have limited lifetime (e.g., 1 hour)
+                refresh_token_expires_in = token_data.get("refresh_token_expires_in")
+                if refresh_token_expires_in:
+                    # Calculate when the refresh token expires
+                    # It expires based on when the access token was issued, not the current time
+                    token_issued_at = expiry_time - timedelta(
+                        seconds=token_data.get("expires_in", 1200)
+                    )
+                    refresh_token_expires_at = token_issued_at + timedelta(
+                        seconds=refresh_token_expires_in
+                    )
+
+                    _LOGGER.info(
+                        "Refresh token expires at %s (lifetime: %d seconds)",
+                        refresh_token_expires_at.isoformat(),
+                        refresh_token_expires_in,
+                    )
+
+                    if current_time >= refresh_token_expires_at:
+                        _LOGGER.error(
+                            "Refresh token has expired (expired at %s, current time %s). Cannot refresh - reauth required.",
+                            refresh_token_expires_at.isoformat(),
+                            current_time.isoformat(),
+                        )
+                        _LOGGER.error(
+                            "Please re-authenticate: Go to Settings > Devices & Services > Saxo Portfolio > Delete and re-add the integration"
+                        )
+                        raise ConfigEntryAuthFailed(
+                            "Refresh token expired - please re-authenticate"
+                        )
+
                 # Validate token still has minimum validity
                 if current_time >= (expiry_time - TOKEN_MIN_VALIDITY):
                     _LOGGER.debug("Token expires very soon, immediate refresh needed")

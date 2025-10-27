@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.18] - 2025-10-27
+
+### Fixed
+- **Critical**: Fixed integration not detecting expired refresh tokens
+  - Saxo refresh tokens have a limited lifetime (typically 1 hour)
+  - Integration now checks if refresh token is expired before attempting refresh
+  - Triggers automatic reauth flow when refresh token has expired
+  - Prevents 401 errors from trying to use expired refresh tokens
+  - Provides clear error messages explaining the issue
+
+### Changed
+- Enhanced `_check_and_refresh_token()` to validate refresh token expiry (coordinator.py:299-329)
+  - Calculates refresh token expiration time based on `refresh_token_expires_in`
+  - Logs refresh token expiration information for debugging
+  - Raises ConfigEntryAuthFailed with helpful message when refresh token expired
+  - Home Assistant will automatically prompt for reauth when this occurs
+
+### Technical Details
+- Refresh token expiry calculation: `token_issued_at + refresh_token_expires_in`
+- Prevents wasted API calls with expired credentials
+- Clearer user experience with automatic reauth prompts
+- INFO-level logging shows refresh token expiration time
+
 ## [2.2.17] - 2025-10-27
 
 ### Changed
