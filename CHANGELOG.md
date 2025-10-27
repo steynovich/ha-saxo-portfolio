@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.16] - 2025-10-27
+
+### Fixed
+- **Critical**: Fixed OAuth token refresh 401 Unauthorized errors
+  - Token refresh was using hardcoded redirect_uri instead of the actual redirect_uri from initial authorization
+  - OAuth 2.0 requires redirect_uri in refresh requests to match the one used during initial authorization
+  - Now properly retrieves redirect_uri from OAuth implementation object (coordinator.py:355-407)
+  - Falls back to stored redirect_uri in config entry if implementation is unavailable
+  - Integration will now successfully refresh tokens and maintain authentication
+
+### Changed
+- Enhanced config flow to properly store redirect_uri during initial setup (config_flow.py:128-157)
+  - Retrieves redirect_uri from OAuth implementation instead of using hardcoded value
+  - Includes proper error handling and fallback mechanisms
+  - Improves reliability of token refresh operations
+
+### Technical Details
+- Modified `_refresh_oauth_token()` in coordinator.py to use `implementation.redirect_uri`
+- Enhanced logging to show which redirect_uri is being used for token refresh
+- Only uses hardcoded fallback as last resort with warning message
+- Ensures OAuth 2.0 compliance for token refresh operations
+
 ## [2.2.15] - 2025-10-13
 
 ### Added

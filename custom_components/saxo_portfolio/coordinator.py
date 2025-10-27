@@ -352,21 +352,9 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "refresh_token": refresh_token,
             }
 
-            # Get redirect_uri from the original OAuth flow (required by Saxo)
-            redirect_uri = self.config_entry.data.get("redirect_uri")
-            if not redirect_uri:
-                # Fallback to default Home Assistant OAuth redirect URI
-                redirect_uri = "https://my.home-assistant.io/redirect/oauth"
-                _LOGGER.info(
-                    "No redirect_uri in config entry, using fallback: %s (consider reconfiguring integration)",
-                    redirect_uri,
-                )
-
-            refresh_data["redirect_uri"] = redirect_uri
-            _LOGGER.debug("Added redirect_uri to refresh request: %s", redirect_uri)
-
-            # Get client credentials for HTTP Basic Auth (Saxo's preferred method)
+            # Get client credentials and redirect_uri from OAuth implementation
             auth = None
+            redirect_uri = None
             try:
                 from homeassistant.helpers.config_entry_oauth2_flow import (
                     async_get_config_entry_implementation,
@@ -383,11 +371,44 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     _LOGGER.debug(
                         "Using HTTP Basic Auth for token refresh (Saxo preferred method)"
                     )
+
+                    # Get the correct redirect_uri from the OAuth implementation
+                    # This ensures we use the same redirect_uri that was used during initial authorization
+                    if hasattr(implementation, "redirect_uri"):
+                        redirect_uri = implementation.redirect_uri
+                        _LOGGER.debug(
+                            "Using redirect_uri from OAuth implementation: %s",
+                            redirect_uri,
+                        )
+                    else:
+                        _LOGGER.debug(
+                            "OAuth implementation has no redirect_uri property"
+                        )
                 else:
                     _LOGGER.warning("Could not get OAuth implementation for Basic Auth")
             except Exception as e:
-                _LOGGER.error("Failed to set up HTTP Basic Auth: %s", type(e).__name__)
+                _LOGGER.error(
+                    "Failed to get OAuth implementation: %s", type(e).__name__
+                )
                 _LOGGER.debug("Exception details: %s", str(e))
+
+            # Fallback to stored redirect_uri if we couldn't get it from implementation
+            if not redirect_uri:
+                redirect_uri = self.config_entry.data.get("redirect_uri")
+                if redirect_uri:
+                    _LOGGER.debug(
+                        "Using redirect_uri from config entry: %s", redirect_uri
+                    )
+                else:
+                    # Last resort: use default Home Assistant OAuth redirect URI
+                    redirect_uri = "https://my.home-assistant.io/redirect/oauth"
+                    _LOGGER.warning(
+                        "No redirect_uri found, using fallback: %s (this may cause token refresh to fail)",
+                        redirect_uri,
+                    )
+
+            refresh_data["redirect_uri"] = redirect_uri
+            _LOGGER.debug("Token refresh will use redirect_uri: %s", redirect_uri)
 
             _LOGGER.debug("Attempting Saxo-compliant token refresh")
 

@@ -125,8 +125,36 @@ class SaxoPortfolioFlowHandler(
             data = {**self._oauth_data}
             data[CONF_TIMEZONE] = user_input[CONF_TIMEZONE]
 
-            # Add redirect_uri for token refresh (required by Saxo)
-            data["redirect_uri"] = "https://my.home-assistant.io/redirect/oauth"
+            # Store redirect_uri from OAuth implementation for token refresh
+            # This is retrieved dynamically by Home Assistant based on the configuration
+            try:
+                from homeassistant.helpers.config_entry_oauth2_flow import (
+                    async_get_implementations,
+                )
+
+                implementations = await async_get_implementations(self.hass, DOMAIN)
+                if implementations:
+                    # Get the first (and typically only) implementation
+                    implementation = next(iter(implementations.values()))
+                    if hasattr(implementation, "redirect_uri"):
+                        data["redirect_uri"] = implementation.redirect_uri
+                        _LOGGER.debug(
+                            "Stored redirect_uri from OAuth implementation: %s",
+                            implementation.redirect_uri,
+                        )
+                    else:
+                        _LOGGER.debug(
+                            "OAuth implementation has no redirect_uri property, will retrieve dynamically during refresh"
+                        )
+                else:
+                    _LOGGER.warning(
+                        "No OAuth implementations found during setup, redirect_uri will be retrieved dynamically during refresh"
+                    )
+            except Exception as e:
+                _LOGGER.warning(
+                    "Could not retrieve redirect_uri during setup: %s, will retrieve dynamically during refresh",
+                    type(e).__name__,
+                )
 
             # Debug OAuth data structure (without sensitive info)
             debug_data = {k: v for k, v in data.items() if k != "token"}
