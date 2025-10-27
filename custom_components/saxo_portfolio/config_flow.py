@@ -36,6 +36,7 @@ class SaxoPortfolioFlowHandler(
         super().__init__()
         self._user_input: dict[str, Any] = {}
         self._oauth_data: dict[str, Any] = {}
+        self._reauth_entry: config_entries.ConfigEntry | None = None
 
     @property
     def logger(self) -> logging.Logger:
@@ -110,7 +111,33 @@ class SaxoPortfolioFlowHandler(
 
     async def async_oauth_create_entry(self, data: dict[str, Any]) -> FlowResult:
         """Create an entry for the flow."""
-        # Store OAuth data and proceed to timezone configuration
+        # Check if this is a reauth flow
+        if self._reauth_entry:
+            # Update existing entry with new token
+            _LOGGER.info(
+                "Reauth successful, updating config entry: %s",
+                self._reauth_entry.title,
+            )
+
+            # Preserve existing configuration (timezone, etc.) and update only the token
+            new_data = {**self._reauth_entry.data}
+            new_data["token"] = data["token"]
+
+            # Preserve redirect_uri if available in new OAuth data
+            if "redirect_uri" in data:
+                new_data["redirect_uri"] = data["redirect_uri"]
+
+            self.hass.config_entries.async_update_entry(
+                self._reauth_entry,
+                data=new_data,
+            )
+
+            # Reload the integration to use the new token
+            await self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
+
+            return self.async_abort(reason="reauth_successful")
+
+        # Not a reauth flow - store OAuth data and proceed to timezone configuration
         self._oauth_data = data
         return await self.async_step_timezone()
 
@@ -199,7 +226,19 @@ class SaxoPortfolioFlowHandler(
 
     async def async_step_reauth(self, entry_data: dict[str, Any]) -> FlowResult:
         """Handle reauthorization request."""
-        return await self.async_step_user()
+        # Get the config entry that triggered reauth
+        entry_id = self.context.get("entry_id")
+        if entry_id:
+            self._reauth_entry = self.hass.config_entries.async_get_entry(entry_id)
+            _LOGGER.info(
+                "Starting reauth flow for config entry: %s",
+                self._reauth_entry.title if self._reauth_entry else "unknown",
+            )
+        else:
+            _LOGGER.warning("Reauth triggered but no entry_id in context")
+
+        # Start the OAuth flow again
+        return await self.async_step_pick_implementation()
 
     @staticmethod
     @config_entries.callback

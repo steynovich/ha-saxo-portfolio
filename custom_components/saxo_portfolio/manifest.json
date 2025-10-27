@@ -9,5 +9,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/steynovich/ha-saxo-portfolio/issues",
   "requirements": ["saxo-openapi>=0.6.0"],
-  "version": "2.2.18"
+  "version": "2.3.0"
 }

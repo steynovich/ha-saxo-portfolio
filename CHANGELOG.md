@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2025-10-27
+
+### Added
+- **GUI-Based Reauthentication**: Seamless reauthentication flow when OAuth tokens expire
+  - Users can now reauthenticate directly from the Home Assistant UI
+  - Home Assistant automatically displays a "Reauthenticate" button when tokens expire or become invalid
+  - No need to delete and re-add the integration when tokens expire
+  - All configuration settings (timezone, entity customizations, etc.) are preserved
+  - All entity history and statistics are maintained
+  - Only OAuth tokens are updated during reauthentication
+
+### Changed
+- Enhanced `async_step_reauth()` in config_flow.py to properly initiate OAuth flow for reauthentication
+- Updated `async_oauth_create_entry()` in config_flow.py to detect reauth flows and update existing config entry
+- Added `_reauth_entry` tracking to flow handler to preserve config entry during reauth
+- Added user-facing success message for completed reauthentication
+
+### Technical Details
+- Reauth flow triggered automatically when coordinator raises `ConfigEntryAuthFailed`
+- Config entry is updated in place rather than creating a new entry
+- Integration reloads after successful reauth to apply new tokens
+- Preserves all existing data including timezone configuration and redirect_uri
+- Follows Home Assistant OAuth2 reauth best practices
+
+### User Impact
+- **Significantly improved user experience**: No more deleting and re-adding the integration
+- **No data loss**: All historical data and statistics are preserved
+- **Automatic detection**: System detects expired tokens and prompts for reauth
+- **One-click solution**: Simple button click starts the reauth process
+
 ## [2.2.18] - 2025-10-27
 
 ### Fixed
