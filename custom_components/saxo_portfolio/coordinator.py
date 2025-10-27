@@ -346,15 +346,10 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Use Home Assistant's aiohttp session
             session = async_get_clientsession(self.hass)
 
-            # Saxo requires: grant_type, refresh_token, and redirect_uri
-            refresh_data = {
-                "grant_type": "refresh_token",
-                "refresh_token": refresh_token,
-            }
-
             # Get client credentials and redirect_uri from OAuth implementation
             auth = None
             redirect_uri = None
+            client_id = None
             try:
                 from homeassistant.helpers.config_entry_oauth2_flow import (
                     async_get_config_entry_implementation,
@@ -365,52 +360,73 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.hass, self.config_entry
                 )
                 if implementation:
+                    client_id = implementation.client_id
                     auth = aiohttp.BasicAuth(
                         implementation.client_id, implementation.client_secret
                     )
-                    _LOGGER.debug(
-                        "Using HTTP Basic Auth for token refresh (Saxo preferred method)"
+                    _LOGGER.info(
+                        "Using HTTP Basic Auth for token refresh with client_id: %s",
+                        client_id[:8] + "..." if len(client_id) > 8 else client_id,
                     )
 
                     # Get the correct redirect_uri from the OAuth implementation
                     # This ensures we use the same redirect_uri that was used during initial authorization
                     if hasattr(implementation, "redirect_uri"):
                         redirect_uri = implementation.redirect_uri
-                        _LOGGER.debug(
+                        _LOGGER.info(
                             "Using redirect_uri from OAuth implementation: %s",
                             redirect_uri,
                         )
                     else:
-                        _LOGGER.debug(
+                        _LOGGER.warning(
                             "OAuth implementation has no redirect_uri property"
                         )
                 else:
-                    _LOGGER.warning("Could not get OAuth implementation for Basic Auth")
+                    _LOGGER.error("Could not get OAuth implementation for Basic Auth")
             except Exception as e:
                 _LOGGER.error(
-                    "Failed to get OAuth implementation: %s", type(e).__name__
+                    "Failed to get OAuth implementation: %s: %s",
+                    type(e).__name__,
+                    str(e),
                 )
-                _LOGGER.debug("Exception details: %s", str(e))
 
             # Fallback to stored redirect_uri if we couldn't get it from implementation
             if not redirect_uri:
                 redirect_uri = self.config_entry.data.get("redirect_uri")
                 if redirect_uri:
-                    _LOGGER.debug(
+                    _LOGGER.info(
                         "Using redirect_uri from config entry: %s", redirect_uri
                     )
                 else:
-                    # Last resort: use default Home Assistant OAuth redirect URI
-                    redirect_uri = "https://my.home-assistant.io/redirect/oauth"
-                    _LOGGER.warning(
-                        "No redirect_uri found, using fallback: %s (this may cause token refresh to fail)",
-                        redirect_uri,
+                    _LOGGER.error(
+                        "No redirect_uri found in OAuth implementation or config entry. This will likely cause token refresh to fail."
+                    )
+                    _LOGGER.error(
+                        "Please reconfigure the integration or check your Saxo application redirect_uri configuration."
                     )
 
-            refresh_data["redirect_uri"] = redirect_uri
-            _LOGGER.debug("Token refresh will use redirect_uri: %s", redirect_uri)
+            # Build refresh request data
+            # According to Saxo documentation, we need: grant_type, refresh_token, redirect_uri
+            refresh_data = {
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+            }
 
-            _LOGGER.debug("Attempting Saxo-compliant token refresh")
+            # Only add redirect_uri if we have one
+            if redirect_uri:
+                refresh_data["redirect_uri"] = redirect_uri
+                _LOGGER.info("Token refresh will use redirect_uri: %s", redirect_uri)
+            else:
+                _LOGGER.warning("Token refresh without redirect_uri (may fail)")
+
+            # Log client_id being used (for debugging auth issues)
+            if client_id:
+                _LOGGER.info(
+                    "Token refresh using client_id: %s",
+                    client_id[:8] + "..." if len(client_id) > 8 else client_id,
+                )
+            else:
+                _LOGGER.error("No client_id available for token refresh")
 
             # Debug logging with masked sensitive data
             masked_data = refresh_data.copy()
@@ -505,6 +521,23 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         response.status,
                         error_text[:500] if error_text else "No error details",
                     )
+
+                    # Provide helpful guidance for 401 errors
+                    if response.status == 401:
+                        _LOGGER.error(
+                            "401 Unauthorized error during token refresh. Possible causes:"
+                        )
+                        _LOGGER.error(
+                            "1. redirect_uri mismatch: The redirect_uri used (%s) may not match what's configured in your Saxo application",
+                            redirect_uri if redirect_uri else "NONE",
+                        )
+                        _LOGGER.error(
+                            "2. Invalid client credentials: Check that your Saxo App Key and App Secret are correct in Application Credentials"
+                        )
+                        _LOGGER.error(
+                            "3. Try reconfiguring the integration: Go to Settings > Devices & Services > Saxo Portfolio > Configure"
+                        )
+
                     raise ConfigEntryAuthFailed("Failed to refresh access token")
 
         except Exception as e:

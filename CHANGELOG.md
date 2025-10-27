@@ -5,10 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.17] - 2025-10-27
+
+### Changed
+- **Enhanced Diagnostics**: Added comprehensive logging for OAuth token refresh debugging
+  - INFO-level logging now shows client_id and redirect_uri being used for token refresh
+  - Logs source of redirect_uri (OAuth implementation vs config entry vs none)
+  - Added helpful error messages for 401 errors with troubleshooting steps
+  - Logs masked client_id (first 8 characters) to help identify configuration issues
+  - Provides clear guidance on potential causes: redirect_uri mismatch, invalid credentials, reconfiguration needed
+
+### Technical Details
+- Enhanced `_refresh_oauth_token()` method with comprehensive diagnostic logging
+- All key OAuth refresh parameters now logged at INFO level (no debug logging needed)
+- 401 errors now include specific troubleshooting suggestions
+- Helps diagnose redirect_uri mismatches and credential issues
+
 ## [2.2.16] - 2025-10-27
 
 ### Fixed
-- **Critical**: Fixed OAuth token refresh 401 Unauthorized errors
+- **Critical**: Fixed OAuth token refresh 401 Unauthorized errors (partial fix)
   - Token refresh was using hardcoded redirect_uri instead of the actual redirect_uri from initial authorization
   - OAuth 2.0 requires redirect_uri in refresh requests to match the one used during initial authorization
   - Now properly retrieves redirect_uri from OAuth implementation object (coordinator.py:355-407)
