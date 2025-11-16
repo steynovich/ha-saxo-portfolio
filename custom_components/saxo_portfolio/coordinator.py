@@ -301,10 +301,20 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 refresh_token_expires_in = token_data.get("refresh_token_expires_in")
                 if refresh_token_expires_in:
                     # Calculate when the refresh token expires
-                    # It expires based on when the access token was issued, not the current time
-                    token_issued_at = expiry_time - timedelta(
-                        seconds=token_data.get("expires_in", 1200)
-                    )
+                    # Use stored token_issued_at timestamp if available, otherwise calculate from expiry
+                    token_issued_at_timestamp = token_data.get("token_issued_at")
+
+                    if token_issued_at_timestamp:
+                        # Use the stored timestamp (most accurate)
+                        token_issued_at = datetime.fromtimestamp(
+                            token_issued_at_timestamp
+                        )
+                    else:
+                        # Fallback: calculate from access token expiry (legacy behavior)
+                        token_issued_at = expiry_time - timedelta(
+                            seconds=token_data.get("expires_in", 1200)
+                        )
+
                     refresh_token_expires_at = token_issued_at + timedelta(
                         seconds=refresh_token_expires_in
                     )
@@ -494,12 +504,12 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if response.status in [200, 201]:  # Accept both 200 OK and 201 Created
                     new_token_data = await response.json()
 
-                    # Calculate expiry time
+                    # Calculate expiry time and store when token was issued
+                    current_timestamp = datetime.now().timestamp()
                     expires_in = new_token_data.get("expires_in", 1200)
-                    expires_at = (
-                        datetime.now() + timedelta(seconds=expires_in)
-                    ).timestamp()
+                    expires_at = current_timestamp + expires_in
                     new_token_data["expires_at"] = expires_at
+                    new_token_data["token_issued_at"] = current_timestamp
 
                     # Preserve any existing data from original token (like redirect_uri)
                     # Saxo may provide a new refresh_token, so we use the response data

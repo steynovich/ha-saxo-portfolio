@@ -111,6 +111,13 @@ class SaxoPortfolioFlowHandler(
 
     async def async_oauth_create_entry(self, data: dict[str, Any]) -> FlowResult:
         """Create an entry for the flow."""
+        # Add token_issued_at timestamp if not present
+        # This helps accurately track refresh token expiry
+        from datetime import datetime
+
+        if "token" in data and "token_issued_at" not in data["token"]:
+            data["token"]["token_issued_at"] = datetime.now().timestamp()
+
         # Check if this is a reauth flow
         if self._reauth_entry:
             # Update existing entry with new token

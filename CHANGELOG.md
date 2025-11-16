@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.2] - 2025-11-16
+
+### Fixed
+- **Critical**: Fixed refresh token expiry calculation after Home Assistant shutdown
+  - Integration now stores `token_issued_at` timestamp during initial OAuth and token refresh
+  - Refresh token expiry is now calculated using actual issuance time instead of inferred time
+  - Prevents incorrect expiry calculations after the first token refresh
+  - Fixes issue where HA shutdown for hours could cause premature or missed refresh token expiry detection
+  - Includes backward compatibility fallback for existing installations without stored timestamp
+
+### Changed
+- Enhanced token refresh logic to store accurate token issuance timestamp (coordinator.py:498-510)
+- Updated refresh token expiry validation to use stored timestamp (coordinator.py:303-316)
+- Added `token_issued_at` timestamp storage during initial OAuth flow (config_flow.py:114-119)
+
+### Technical Details
+- **Root Cause**: After token refresh, the integration calculated `token_issued_at = expires_at - expires_in`, but this used the NEW access token expiry with the OLD refresh token lifetime, causing incorrect calculations
+- **Solution**: Store actual `token_issued_at` timestamp whenever tokens are obtained or refreshed
+- **Impact**: Prevents unnecessary reauthentication requests and ensures refresh tokens work correctly after long HA downtime
+- **Compatibility**: Existing installations automatically benefit after next token refresh
+
 ## [2.3.1] - 2025-11-16
 
 ### Changed
