@@ -244,8 +244,26 @@ class SaxoPortfolioFlowHandler(
         else:
             _LOGGER.warning("Reauth triggered but no entry_id in context")
 
-        # Start the OAuth flow again
-        return await self.async_step_pick_implementation()
+        # Show confirmation form to user first
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Confirm reauth dialog."""
+        if user_input is not None:
+            # User clicked Submit/Continue - start OAuth flow
+            return await self.async_step_pick_implementation()
+
+        # Show the confirmation form
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            description_placeholders={
+                "title": self._reauth_entry.title
+                if self._reauth_entry
+                else "Saxo Portfolio"
+            },
+        )
 
     @staticmethod
     @config_entries.callback

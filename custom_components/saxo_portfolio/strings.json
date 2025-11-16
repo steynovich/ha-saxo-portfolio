@@ -18,6 +18,10 @@
         "data": {
           "timezone": "Market Timezone"
         }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate Saxo Portfolio",
+        "description": "Your Saxo Bank authentication has expired. Please sign in again to continue using the integration.\n\nAll your settings, entity history, and automations will be preserved."
       }
     },
     "error": {

@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.4] - 2025-11-16
+
+### Fixed
+- **Critical**: Fixed missing reauthentication UI in Home Assistant
+  - Added `reauth_confirm` step to strings.json for proper UI display
+  - Added `async_step_reauth_confirm()` to show confirmation dialog before OAuth flow
+  - Users now see a clear "Reauthenticate Saxo Portfolio" dialog when tokens expire
+  - Dialog explains that settings and history will be preserved during reauth
+
+### Changed
+- Enhanced `async_step_reauth()` to show confirmation form first (config_flow.py:247-248)
+- Added `async_step_reauth_confirm()` method to handle user confirmation (config_flow.py:250-264)
+- Updated strings.json with reauth_confirm step configuration (lines 22-25)
+
+### User Experience Improvements
+- **Before**: ConfigEntryAuthFailed raised but no UI appeared → users confused
+- **After**: Clear dialog appears with "Submit" button → starts OAuth flow → seamless reauth
+- Dialog message: "Your Saxo Bank authentication has expired. Please sign in again to continue using the integration. All your settings, entity history, and automations will be preserved."
+
+### Technical Details
+- **Root Cause**: Missing reauth_confirm step in UI configuration prevented Home Assistant from displaying the reauthentication prompt
+- **Solution**: Added proper reauth confirmation flow following Home Assistant OAuth2 best practices
+- **Flow**: ConfigEntryAuthFailed → async_step_reauth → async_step_reauth_confirm (show form) → user clicks Submit → async_step_pick_implementation → OAuth flow
+
+### How to Trigger (After Upgrade)
+1. Wait for tokens to expire OR restart HA after this upgrade
+2. Look in Settings → Devices & Services
+3. You should now see one of:
+   - Yellow banner: "Authentication required for Saxo Portfolio"
+   - Integration card with warning badge
+   - Notification icon (🔔) with auth failure message
+4. Click "Configure" or "Reauthenticate"
+5. You'll see the new confirmation dialog
+6. Click "Submit" to start OAuth flow
+
 ## [2.3.3] - 2025-11-16
 
 ### Fixed
