@@ -321,11 +321,11 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             refresh_token_expires_at.isoformat(),
                             current_time.isoformat(),
                         )
-                        _LOGGER.error(
-                            "Please re-authenticate: Go to Settings > Devices & Services > Saxo Portfolio > Delete and re-add the integration"
+                        _LOGGER.info(
+                            "Please re-authenticate: Go to Settings > Devices & Services > Saxo Portfolio and click the 'Reauthenticate' button"
                         )
                         raise ConfigEntryAuthFailed(
-                            "Refresh token expired - please re-authenticate"
+                            "Refresh token expired - please click the reauthentication button in Settings > Devices & Services"
                         )
 
                 # Validate token still has minimum validity

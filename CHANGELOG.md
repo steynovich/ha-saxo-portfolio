@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2025-11-16
+
+### Changed
+- **Improved User Messaging**: Updated error messages to guide users to the reauthentication button
+  - Changed "Delete and re-add the integration" message to "click the Reauthenticate button"
+  - Reduced log level from ERROR to INFO for user guidance message
+  - Makes it clearer that users don't need to delete the integration when tokens expire
+  - Improves user experience by directing to the correct GUI-based reauth flow
+
+### Fixed
+- Updated expired token error message to properly guide users to the reauthentication button in Settings > Devices & Services
+- Prevents user confusion about needing to delete and re-add the integration
+
 ## [2.3.0] - 2025-10-27
 
 ### Added
