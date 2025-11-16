@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.3] - 2025-11-16
+
+### Fixed
+- **Critical**: Fixed refresh token expiration by implementing proactive refresh token rotation
+  - Integration now checks refresh token expiry INDEPENDENTLY of access token expiry
+  - Proactively refreshes access token when refresh token has less than 5 minutes remaining
+  - Ensures we get a new refresh token before the old one expires (if Saxo supports refresh token rotation)
+  - Prevents "Refresh token has expired" errors when HA is running continuously
+  - Solves the core issue: access token expires in 20min, refresh token expires in 5min → now we refresh at 5min mark
+
+### Changed
+- Added `REFRESH_TOKEN_BUFFER` constant (5 minutes) in const.py:150-152
+- Enhanced `_check_and_refresh_token()` to check refresh token expiry first (coordinator.py:278-371)
+- Implemented two-step token validation:
+  - **STEP 1**: Check if refresh token will expire soon (proactive) - Lines 299-352
+  - **STEP 2**: Check if access token needs refresh (normal) - Lines 354-371
+- Added detailed logging for refresh token expiry monitoring
+
+### Technical Details
+- **Root Cause**: Old logic only checked refresh token when access token needed refresh, missing cases where refresh token expires before access token
+- **Example Scenario**:
+  - Access token expires in 20 minutes
+  - Refresh token expires in 5 minutes
+  - Old behavior: Wait 20 minutes → refresh token already expired ❌
+  - New behavior: Check at 5 minutes → proactive refresh → get new refresh token ✅
+- **Refresh Token Rotation**: If Saxo Bank provides a new refresh_token in the token refresh response, we now ensure we refresh often enough to keep getting new ones
+- **Compatibility**: Works alongside v2.3.2's accurate timestamp tracking
+
+### Important Notes
+- **This does NOT eliminate the need for reauthentication** - When HA is shut down longer than refresh token lifetime, manual reauth is still required (by design)
+- **This DOES prevent refresh token expiry** during normal HA operation by refreshing proactively
+- **Requires Saxo support**: If Saxo Bank does NOT provide new refresh tokens during token refresh, manual reauth will eventually be needed
+
 ## [2.3.2] - 2025-11-16
 
 ### Fixed

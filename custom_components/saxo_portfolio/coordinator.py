@@ -33,6 +33,7 @@ from .const import (
     DOMAIN,
     MARKET_HOURS,
     PERFORMANCE_UPDATE_INTERVAL,
+    REFRESH_TOKEN_BUFFER,
     TOKEN_MIN_VALIDITY,
     TOKEN_REFRESH_BUFFER,
 )
@@ -275,7 +276,15 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return False
 
     async def _check_and_refresh_token(self) -> None:
-        """Check token expiry and refresh if needed."""
+        """Check token expiry and refresh if needed.
+
+        This method checks both refresh token and access token expiry:
+        1. First checks if refresh token will expire soon (proactive refresh)
+        2. Then checks if access token needs refresh
+
+        This ensures we refresh the access token before the refresh token expires,
+        allowing us to get a new refresh token (if Saxo supports refresh token rotation).
+        """
         async with self._token_refresh_lock:
             token_data = self.config_entry.data.get("token", {})
             expires_at = token_data.get("expires_at")
@@ -284,67 +293,81 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.warning("No token expiry information available")
                 return
 
-            # Check if token needs refresh
-            expiry_time = datetime.fromtimestamp(expires_at)
-            refresh_time = expiry_time - TOKEN_REFRESH_BUFFER
             current_time = datetime.now()
+            expiry_time = datetime.fromtimestamp(expires_at)
+
+            # STEP 1: Check if refresh token will expire soon (CRITICAL)
+            # We need to check this FIRST, independently of access token expiry
+            refresh_token_expires_in = token_data.get("refresh_token_expires_in")
+            if refresh_token_expires_in:
+                # Calculate when the refresh token expires
+                # Use stored token_issued_at timestamp if available, otherwise calculate from expiry
+                token_issued_at_timestamp = token_data.get("token_issued_at")
+
+                if token_issued_at_timestamp:
+                    # Use the stored timestamp (most accurate)
+                    token_issued_at = datetime.fromtimestamp(token_issued_at_timestamp)
+                else:
+                    # Fallback: calculate from access token expiry (legacy behavior)
+                    token_issued_at = expiry_time - timedelta(
+                        seconds=token_data.get("expires_in", 1200)
+                    )
+
+                refresh_token_expires_at = token_issued_at + timedelta(
+                    seconds=refresh_token_expires_in
+                )
+                refresh_token_refresh_time = (
+                    refresh_token_expires_at - REFRESH_TOKEN_BUFFER
+                )
+
+                _LOGGER.debug(
+                    "Refresh token expires at %s (will refresh at %s, lifetime: %d seconds)",
+                    refresh_token_expires_at.isoformat(),
+                    refresh_token_refresh_time.isoformat(),
+                    refresh_token_expires_in,
+                )
+
+                # Check if refresh token has ALREADY expired
+                if current_time >= refresh_token_expires_at:
+                    _LOGGER.error(
+                        "Refresh token has expired (expired at %s, current time %s). Cannot refresh - reauth required.",
+                        refresh_token_expires_at.isoformat(),
+                        current_time.isoformat(),
+                    )
+                    _LOGGER.info(
+                        "Please re-authenticate: Go to Settings > Devices & Services > Saxo Portfolio and click the 'Reauthenticate' button"
+                    )
+                    raise ConfigEntryAuthFailed(
+                        "Refresh token expired - please click the reauthentication button in Settings > Devices & Services"
+                    )
+
+                # Check if refresh token WILL expire soon (proactive refresh)
+                if current_time >= refresh_token_refresh_time:
+                    _LOGGER.warning(
+                        "Refresh token will expire soon (%s remaining). Proactively refreshing to get new refresh token.",
+                        refresh_token_expires_at - current_time,
+                    )
+                    await self._refresh_oauth_token()
+                    self._last_token_check = current_time
+                    return  # Done - we refreshed proactively
+
+            # STEP 2: Check if access token needs refresh (normal flow)
+            refresh_time = expiry_time - TOKEN_REFRESH_BUFFER
 
             if current_time >= refresh_time:
                 _LOGGER.debug(
-                    "Token needs refresh (expires at %s, refresh buffer %s)",
+                    "Access token needs refresh (expires at %s, refresh buffer %s)",
                     expiry_time.isoformat(),
                     TOKEN_REFRESH_BUFFER,
                 )
 
-                # Check if refresh token is still valid
-                # Saxo refresh tokens have limited lifetime (e.g., 1 hour)
-                refresh_token_expires_in = token_data.get("refresh_token_expires_in")
-                if refresh_token_expires_in:
-                    # Calculate when the refresh token expires
-                    # Use stored token_issued_at timestamp if available, otherwise calculate from expiry
-                    token_issued_at_timestamp = token_data.get("token_issued_at")
-
-                    if token_issued_at_timestamp:
-                        # Use the stored timestamp (most accurate)
-                        token_issued_at = datetime.fromtimestamp(
-                            token_issued_at_timestamp
-                        )
-                    else:
-                        # Fallback: calculate from access token expiry (legacy behavior)
-                        token_issued_at = expiry_time - timedelta(
-                            seconds=token_data.get("expires_in", 1200)
-                        )
-
-                    refresh_token_expires_at = token_issued_at + timedelta(
-                        seconds=refresh_token_expires_in
-                    )
-
-                    _LOGGER.info(
-                        "Refresh token expires at %s (lifetime: %d seconds)",
-                        refresh_token_expires_at.isoformat(),
-                        refresh_token_expires_in,
-                    )
-
-                    if current_time >= refresh_token_expires_at:
-                        _LOGGER.error(
-                            "Refresh token has expired (expired at %s, current time %s). Cannot refresh - reauth required.",
-                            refresh_token_expires_at.isoformat(),
-                            current_time.isoformat(),
-                        )
-                        _LOGGER.info(
-                            "Please re-authenticate: Go to Settings > Devices & Services > Saxo Portfolio and click the 'Reauthenticate' button"
-                        )
-                        raise ConfigEntryAuthFailed(
-                            "Refresh token expired - please click the reauthentication button in Settings > Devices & Services"
-                        )
-
                 # Validate token still has minimum validity
                 if current_time >= (expiry_time - TOKEN_MIN_VALIDITY):
-                    _LOGGER.debug("Token expires very soon, immediate refresh needed")
+                    _LOGGER.debug(
+                        "Access token expires very soon, immediate refresh needed"
+                    )
 
                 await self._refresh_oauth_token()
-
-                # Update last token check time
                 self._last_token_check = current_time
 
     async def _refresh_oauth_token(self) -> dict[str, Any]:
