@@ -1055,6 +1055,14 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.error("API error fetching portfolio data: %s", type(e).__name__)
             raise UpdateFailed("API error") from e
 
+        except ConfigEntryAuthFailed:
+            # Re-raise authentication failures to trigger reauth flow in Home Assistant
+            # This must be caught before the generic Exception handler
+            _LOGGER.info(
+                "Authentication failed - Home Assistant will display reauthentication prompt"
+            )
+            raise
+
         except Exception as e:
             _LOGGER.exception("Unexpected error fetching portfolio data")
             raise UpdateFailed("Unexpected error") from e

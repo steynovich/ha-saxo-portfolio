@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.5] - 2025-11-17
+
+### Fixed
+- **Critical**: Fixed reauthentication button not appearing when tokens expire
+  - Added explicit `ConfigEntryAuthFailed` exception handler in coordinator.py:1058-1064
+  - Previously, `ConfigEntryAuthFailed` was caught by generic `except Exception` handler and converted to `UpdateFailed`
+  - `UpdateFailed` only makes sensors unavailable without triggering reauth flow
+  - Now `ConfigEntryAuthFailed` properly propagates to Home Assistant core to trigger reauth UI
+
+### Changed
+- Added dedicated exception handler for `ConfigEntryAuthFailed` before generic `Exception` handler
+- Handler re-raises the exception to allow Home Assistant to display reauthentication prompt
+- Added informative log message when authentication failure triggers reauth flow
+
+### Technical Details
+- **Root Cause**: Exception handling order in `_fetch_portfolio_data()` method
+  - Token refresh failures raise `ConfigEntryAuthFailed` at line 635
+  - Generic `except Exception` handler at line 1066 caught it and converted to `UpdateFailed`
+  - This prevented Home Assistant from detecting auth failure and showing reauth button
+- **Solution**: Added specific handler at line 1058 that re-raises `ConfigEntryAuthFailed` unchanged
+- **Flow**: Token expires → `_check_and_refresh_token()` raises `ConfigEntryAuthFailed` → new handler re-raises → Home Assistant shows reauth button
+
+### User Experience Improvements
+- **Before**: Tokens expire → sensors unavailable → no UI prompt → users confused
+- **After**: Tokens expire → sensors unavailable → reauthentication button appears in UI → users can easily reauth
+
+### How to Verify
+1. After upgrading to 2.3.5, wait for tokens to expire (or force expiry)
+2. Check Settings → Devices & Services → Saxo Portfolio
+3. You should now see the reauthentication prompt/button appear
+4. Click "Configure" or "Reauthenticate" to restore access
+
 ## [2.3.4] - 2025-11-16
 
 ### Fixed
