@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.6] - 2025-12-30
+
+### Added
+- **Multi-Account Identification**: Config entry titles now include the Client ID for clear account identification
+  - Titles automatically update from "Saxo Portfolio" to "Saxo Portfolio (CLIENT_ID)" after first successful data fetch
+  - Makes it easy to identify which account each integration represents in Settings → Devices & Services
+
+### Changed
+- **Improved Reauthentication Dialog**: Updated reauth UI to display the account identifier
+  - Dialog title now shows "Reauthenticate Saxo Portfolio (CLIENT_ID)"
+  - Description clearly states which account needs reauthentication
+  - Essential for users with multiple Saxo accounts configured
+
+### Technical Details
+- Added `_update_config_entry_title_if_needed()` method in coordinator.py:1359-1387
+- Method updates config entry title only when:
+  - Client ID is successfully fetched (not "unknown")
+  - Title is still generic ("Saxo Portfolio") or doesn't contain Client ID
+- Updated strings.json reauth_confirm step to use `{title}` placeholder
+
 ## [2.3.5] - 2025-11-17
 
 ### Fixed
