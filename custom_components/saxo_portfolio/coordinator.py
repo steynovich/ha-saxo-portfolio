@@ -983,6 +983,10 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self._performance_last_updated = datetime.now()
                     _LOGGER.debug("Updated performance data cache")
 
+                    # Update config entry title with client ID for better identification
+                    # This helps users identify which account needs reauthentication
+                    self._update_config_entry_title_if_needed(client_id)
+
                 # Create simple data structure for balance sensors
                 return {
                     "cash_balance": balance_data.get("CashBalance", 0.0),
@@ -1355,6 +1359,36 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.debug(
             "Marked setup as complete for entry %s", self.config_entry.entry_id
         )
+
+    def _update_config_entry_title_if_needed(self, client_id: str) -> None:
+        """Update config entry title to include Client ID for identification.
+
+        When multiple integrations are configured, this makes it clear which
+        account each integration represents, especially during reauthentication.
+
+        Args:
+            client_id: The Saxo Client ID to include in the title
+
+        """
+        if client_id == "unknown":
+            return
+
+        current_title = self.config_entry.title
+        expected_title = f"Saxo Portfolio ({client_id})"
+
+        # Only update if title is still generic (doesn't already include client ID)
+        if current_title == "Saxo Portfolio" or (
+            "(" not in current_title and client_id not in current_title
+        ):
+            _LOGGER.info(
+                "Updating config entry title from '%s' to '%s' for better identification",
+                current_title,
+                expected_title,
+            )
+            self.hass.config_entries.async_update_entry(
+                self.config_entry,
+                title=expected_title,
+            )
 
     @property
     def is_startup_phase(self) -> bool:

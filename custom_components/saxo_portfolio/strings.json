@@ -20,8 +20,8 @@
         }
       },
       "reauth_confirm": {
-        "title": "Reauthenticate Saxo Portfolio",
-        "description": "Your Saxo Bank authentication has expired. Please sign in again to continue using the integration.\n\nAll your settings, entity history, and automations will be preserved."
+        "title": "Reauthenticate {title}",
+        "description": "The authentication for **{title}** has expired. Please sign in again to continue using the integration.\n\nAll your settings, entity history, and automations will be preserved."
       }
     },
     "error": {
