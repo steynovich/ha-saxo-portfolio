@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.9] - 2025-12-30
+
+### Fixed
+- **Reconfigure Dialog**: Fixed empty popup when clicking Reconfigure button
+  - Simplified reconfigure flow to use single step with proper HA method `_get_reconfigure_entry()`
+  - Changed step ID from `reconfigure_confirm` to `reconfigure` to match HA conventions
+  - Dialog now properly displays title and description
+
+### Added
+- **Multi-language Support**: Added translations for 11 languages
+  - English (en)
+  - German (de)
+  - French (fr)
+  - Spanish (es)
+  - Dutch (nl)
+  - Italian (it)
+  - Portuguese (pt)
+  - Danish (da)
+  - Swedish (sv)
+  - Norwegian Bokmål (nb)
+  - Finnish (fi)
+
 ## [2.3.8] - 2025-12-30
 
 ### Fixed

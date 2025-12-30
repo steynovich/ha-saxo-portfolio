@@ -23,7 +23,7 @@
         "title": "Reautenticar {title}",
         "description": "La autenticación para **{title}** ha expirado. Por favor, inicie sesión nuevamente para continuar usando la integración.\n\nTodas sus configuraciones, historial de entidades y automatizaciones se conservarán."
       },
-      "reconfigure_confirm": {
+      "reconfigure": {
         "title": "Reautenticar {title}",
         "description": "Haga clic en **Enviar** para iniciar sesión nuevamente con su cuenta de Saxo Bank para **{title}**.\n\nEsto actualizará sus tokens OAuth. Todas sus configuraciones, historial de entidades y automatizaciones se conservarán."
       }

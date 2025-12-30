@@ -23,7 +23,7 @@
         "title": "Réauthentifier {title}",
         "description": "L'authentification pour **{title}** a expiré. Veuillez vous reconnecter pour continuer à utiliser l'intégration.\n\nTous vos paramètres, l'historique des entités et les automatisations seront préservés."
       },
-      "reconfigure_confirm": {
+      "reconfigure": {
         "title": "Réauthentifier {title}",
         "description": "Cliquez sur **Soumettre** pour vous reconnecter avec votre compte Saxo Bank pour **{title}**.\n\nCela actualisera vos jetons OAuth. Tous vos paramètres, l'historique des entités et les automatisations seront préservés."
       }

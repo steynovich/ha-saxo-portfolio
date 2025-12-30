@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Saxo Portfolio asennus",
+        "description": "Asenna Saxo Portfolio -integraatio seurataksesi sijoitussalkkuasi Home Assistantissa.",
+        "data": {
+          "environment": "Ympäristö"
+        }
+      },
+      "auth": {
+        "title": "Valtuuta Saxo Bankin kanssa",
+        "description": "Napsauta alla olevaa linkkiä antaaksesi Home Assistantille pääsyn Saxo Bank -salkkutietoihisi."
+      },
+      "timezone": {
+        "title": "Määritä markkinoiden aikavyöhyke",
+        "description": "Valitse ensisijaisen kaupankäyntimarkkinasi aikavyöhyke. Tämä määrittää, milloin integraatio tarkistaa päivitykset useammin markkinoiden aukioloaikoina.",
+        "data": {
+          "timezone": "Markkinoiden aikavyöhyke"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Todenna uudelleen {title}",
+        "description": "**{title}** -todennus on vanhentunut. Kirjaudu sisään uudelleen jatkaaksesi integraation käyttöä.\n\nKaikki asetuksesi, entiteettihistoria ja automaatiot säilytetään."
+      },
+      "reconfigure": {
+        "title": "Todenna uudelleen {title}",
+        "description": "Napsauta **Lähetä** kirjautuaksesi uudelleen Saxo Bank -tililläsi kohteelle **{title}**.\n\nTämä päivittää OAuth-tunnuksesi. Kaikki asetuksesi, entiteettihistoria ja automaatiot säilytetään."
+      }
+    },
+    "error": {
+      "auth_error": "Valtuutus epäonnistui. Yritä uudelleen.",
+      "invalid_auth": "Virheelliset todennustiedot.",
+      "cannot_connect": "Yhteyden muodostaminen Saxo Bankiin epäonnistui. Tarkista internet-yhteytesi.",
+      "unknown": "Odottamaton virhe tapahtui. Yritä uudelleen."
+    },
+    "abort": {
+      "missing_credentials": "**Sovelluksen tunnistetiedot vaaditaan**\n\nEnnen Saxo Portfolion määrittämistä sinun on määritettävä sovelluksen tunnistetiedot.\n\n**Vaiheet:**\n1. Siirry [Saxo Developer Portal](https://www.developer.saxo/openapi/appmanagement)\n2. Luo tuotantosovellus uudelleenohjaus-URI:lla: `https://my.home-assistant.io/redirect/oauth`\n3. Siirry [Sovelluksen tunnistetiedot]({setup_url}) Home Assistantissa\n4. Lisää tunnistetiedot domainille {domain} App Key ja Secret -tiedoillasi\n5. Palaa tänne viimeistelläksesi asennuksen\n\n**Tuotannon OAuth-päätepisteet:**\n• Valtuuta: {authorize_url}\n• Token: {token_url}",
+      "reauth_successful": "Uudelleentodennus Saxo Bankin kanssa onnistui. Integraatiosi toimii nyt uusilla tunnistetiedoilla."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Saxo Portfolio asetukset",
+        "description": "Määritä miten integraatio päivittää salkkutiedot.",
+        "data": {
+          "timezone": "Markkinoiden aikavyöhyke"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "total_value": {
+        "name": "Salkun kokonaisarvo"
+      },
+      "cash_balance": {
+        "name": "Salkun käteissaldo"
+      },
+      "non_margin_positions_value": {
+        "name": "Salkun ei-marginaalipositioiden arvo"
+      },
+      "accumulated_profit_loss": {
+        "name": "Salkun kertynyt voitto/tappio"
+      }
+    }
+  },
+  "issues": {
+    "deprecated_yaml": {
+      "title": "YAML-määritys on vanhentunut",
+      "description": "Saxo Portfolion määrittäminen YAML:lla on vanhentunut. Poista YAML-määritys configuration.yaml-tiedostostasi ja määritä integraatio käyttöliittymän kautta."
+    }
+  },
+  "services": {
+    "refresh_data": {
+      "name": "Päivitä salkkutiedot",
+      "description": "Päivitä salkkutiedot manuaalisesti Saxo Bank API:sta."
+    }
+  }
+}

@@ -23,7 +23,7 @@
         "title": "{title} erneut authentifizieren",
         "description": "Die Authentifizierung für **{title}** ist abgelaufen. Bitte melden Sie sich erneut an, um die Integration weiter zu nutzen.\n\nAlle Ihre Einstellungen, der Entitätsverlauf und Automatisierungen bleiben erhalten."
       },
-      "reconfigure_confirm": {
+      "reconfigure": {
         "title": "{title} erneut authentifizieren",
         "description": "Klicken Sie auf **Absenden**, um sich erneut mit Ihrem Saxo Bank Konto für **{title}** anzumelden.\n\nDies aktualisiert Ihre OAuth-Tokens. Alle Ihre Einstellungen, der Entitätsverlauf und Automatisierungen bleiben erhalten."
       }

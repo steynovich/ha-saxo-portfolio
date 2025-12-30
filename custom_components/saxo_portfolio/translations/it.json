@@ -23,7 +23,7 @@
         "title": "Riautentica {title}",
         "description": "L'autenticazione per **{title}** è scaduta. Effettua nuovamente l'accesso per continuare a utilizzare l'integrazione.\n\nTutte le tue impostazioni, la cronologia delle entità e le automazioni saranno preservate."
       },
-      "reconfigure_confirm": {
+      "reconfigure": {
         "title": "Riautentica {title}",
         "description": "Clicca su **Invia** per accedere nuovamente con il tuo account Saxo Bank per **{title}**.\n\nQuesto aggiornerà i tuoi token OAuth. Tutte le tue impostazioni, la cronologia delle entità e le automazioni saranno preservate."
       }

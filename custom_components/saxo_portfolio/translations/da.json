@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Saxo Portfolio opsætning",
+        "description": "Opsæt din Saxo Portfolio integration for at overvåge din investeringsportefølje i Home Assistant.",
+        "data": {
+          "environment": "Miljø"
+        }
+      },
+      "auth": {
+        "title": "Godkend med Saxo Bank",
+        "description": "Klik på linket nedenfor for at give Home Assistant adgang til dine Saxo Bank porteføljedata."
+      },
+      "timezone": {
+        "title": "Konfigurer markedstidszone",
+        "description": "Vælg tidszonen for dit primære handelsmarked. Dette bestemmer, hvornår integrationen tjekker for opdateringer hyppigere i markedstiden.",
+        "data": {
+          "timezone": "Markedstidszone"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Genautentificer {title}",
+        "description": "Autentificeringen for **{title}** er udløbet. Log venligst ind igen for at fortsætte med at bruge integrationen.\n\nAlle dine indstillinger, entitetshistorik og automatiseringer vil blive bevaret."
+      },
+      "reconfigure": {
+        "title": "Genautentificer {title}",
+        "description": "Klik på **Send** for at logge ind igen med din Saxo Bank konto for **{title}**.\n\nDette vil opdatere dine OAuth-tokens. Alle dine indstillinger, entitetshistorik og automatiseringer vil blive bevaret."
+      }
+    },
+    "error": {
+      "auth_error": "Godkendelse mislykkedes. Prøv venligst igen.",
+      "invalid_auth": "Ugyldige autentificeringsoplysninger.",
+      "cannot_connect": "Kunne ikke oprette forbindelse til Saxo Bank. Tjek venligst din internetforbindelse.",
+      "unknown": "Der opstod en uventet fejl. Prøv venligst igen."
+    },
+    "abort": {
+      "missing_credentials": "**Applikationslegitimationsoplysninger påkrævet**\n\nFør du opsætter Saxo Portfolio, skal du konfigurere applikationslegitimationsoplysninger.\n\n**Trin:**\n1. Gå til [Saxo Developer Portal](https://www.developer.saxo/openapi/appmanagement)\n2. Opret en produktionsapplikation med omdirigerings-URI: `https://my.home-assistant.io/redirect/oauth`\n3. Gå til [Applikationslegitimationsoplysninger]({setup_url}) i Home Assistant\n4. Tilføj legitimationsoplysninger for {domain} med din App Key og Secret\n5. Vend tilbage hertil for at fuldføre opsætningen\n\n**Produktions OAuth-endpoints:**\n• Godkend: {authorize_url}\n• Token: {token_url}",
+      "reauth_successful": "Genautentificering med Saxo Bank lykkedes. Din integration vil nu fungere med de nye legitimationsoplysninger."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Saxo Portfolio indstillinger",
+        "description": "Konfigurer hvordan integrationen opdaterer porteføljedata.",
+        "data": {
+          "timezone": "Markedstidszone"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "total_value": {
+        "name": "Portefølje totalværdi"
+      },
+      "cash_balance": {
+        "name": "Portefølje kontantbeholdning"
+      },
+      "non_margin_positions_value": {
+        "name": "Portefølje ikke-margin positionsværdi"
+      },
+      "accumulated_profit_loss": {
+        "name": "Portefølje akkumuleret gevinst/tab"
+      }
+    }
+  },
+  "issues": {
+    "deprecated_yaml": {
+      "title": "YAML-konfiguration er forældet",
+      "description": "Konfiguration af Saxo Portfolio via YAML er forældet. Fjern venligst YAML-konfigurationen fra din configuration.yaml fil og opsæt integrationen via brugergrænsefladen."
+    }
+  },
+  "services": {
+    "refresh_data": {
+      "name": "Opdater porteføljedata",
+      "description": "Opdater porteføljedata manuelt fra Saxo Bank API."
+    }
+  }
+}

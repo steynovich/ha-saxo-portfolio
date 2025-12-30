@@ -23,7 +23,7 @@
         "title": "{title} opnieuw authenticeren",
         "description": "De authenticatie voor **{title}** is verlopen. Meld u opnieuw aan om de integratie te blijven gebruiken.\n\nAl uw instellingen, entiteitsgeschiedenis en automatiseringen blijven behouden."
       },
-      "reconfigure_confirm": {
+      "reconfigure": {
         "title": "{title} opnieuw authenticeren",
         "description": "Klik op **Verzenden** om opnieuw aan te melden met uw Saxo Bank account voor **{title}**.\n\nDit vernieuwt uw OAuth-tokens. Al uw instellingen, entiteitsgeschiedenis en automatiseringen blijven behouden."
       }
