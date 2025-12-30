@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configuración de Saxo Portfolio",
+        "description": "Configure su integración Saxo Portfolio para monitorear su cartera de inversiones en Home Assistant.",
+        "data": {
+          "environment": "Entorno"
+        }
+      },
+      "auth": {
+        "title": "Autorizar con Saxo Bank",
+        "description": "Haga clic en el enlace a continuación para autorizar a Home Assistant a acceder a los datos de su cartera de Saxo Bank."
+      },
+      "timezone": {
+        "title": "Configurar zona horaria del mercado",
+        "description": "Seleccione la zona horaria de su mercado de trading principal. Esto determina cuándo la integración busca actualizaciones con más frecuencia durante las horas de mercado.",
+        "data": {
+          "timezone": "Zona horaria del mercado"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reautenticar {title}",
+        "description": "La autenticación para **{title}** ha expirado. Por favor, inicie sesión nuevamente para continuar usando la integración.\n\nTodas sus configuraciones, historial de entidades y automatizaciones se conservarán."
+      },
+      "reconfigure_confirm": {
+        "title": "Reautenticar {title}",
+        "description": "Haga clic en **Enviar** para iniciar sesión nuevamente con su cuenta de Saxo Bank para **{title}**.\n\nEsto actualizará sus tokens OAuth. Todas sus configuraciones, historial de entidades y automatizaciones se conservarán."
+      }
+    },
+    "error": {
+      "auth_error": "La autorización falló. Por favor, inténtelo de nuevo.",
+      "invalid_auth": "Credenciales de autenticación inválidas.",
+      "cannot_connect": "No se pudo conectar con Saxo Bank. Por favor, verifique su conexión a internet.",
+      "unknown": "Ocurrió un error inesperado. Por favor, inténtelo de nuevo."
+    },
+    "abort": {
+      "missing_credentials": "**Se requieren credenciales de aplicación**\n\nAntes de configurar Saxo Portfolio, debe configurar las credenciales de aplicación.\n\n**Pasos:**\n1. Vaya al [Portal de desarrolladores de Saxo](https://www.developer.saxo/openapi/appmanagement)\n2. Cree una aplicación de producción con URI de redirección: `https://my.home-assistant.io/redirect/oauth`\n3. Vaya a [Credenciales de aplicación]({setup_url}) en Home Assistant\n4. Agregue credenciales para {domain} con su clave de aplicación y secreto\n5. Regrese aquí para completar la configuración\n\n**Endpoints OAuth de producción:**\n• Autorizar: {authorize_url}\n• Token: {token_url}",
+      "reauth_successful": "Reautenticación exitosa con Saxo Bank. Su integración ahora funcionará con las nuevas credenciales."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opciones de Saxo Portfolio",
+        "description": "Configure cómo la integración actualiza los datos de la cartera.",
+        "data": {
+          "timezone": "Zona horaria del mercado"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "total_value": {
+        "name": "Valor total de la cartera"
+      },
+      "cash_balance": {
+        "name": "Saldo en efectivo de la cartera"
+      },
+      "non_margin_positions_value": {
+        "name": "Valor de posiciones sin margen"
+      },
+      "accumulated_profit_loss": {
+        "name": "Ganancia/Pérdida acumulada de la cartera"
+      }
+    }
+  },
+  "issues": {
+    "deprecated_yaml": {
+      "title": "La configuración YAML está obsoleta",
+      "description": "Configurar Saxo Portfolio usando YAML está obsoleto. Por favor, elimine la configuración YAML de su archivo configuration.yaml y configure la integración usando la interfaz de usuario."
+    }
+  },
+  "services": {
+    "refresh_data": {
+      "name": "Actualizar datos de la cartera",
+      "description": "Actualizar manualmente los datos de la cartera desde la API de Saxo Bank."
+    }
+  }
+}
