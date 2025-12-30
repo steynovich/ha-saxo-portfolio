@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.7] - 2025-12-30
+
+### Added
+- **Manual Reauthentication Button**: Users can now proactively reauthenticate via the "Reconfigure" menu option
+  - Go to Settings → Devices & Services → Saxo Portfolio → three-dot menu → Reconfigure
+  - Useful for refreshing tokens before they expire
+  - Resolves authentication issues without removing the integration
+  - All settings, entity history, and automations are preserved
+
+### Technical Details
+- Added `async_step_reconfigure()` and `async_step_reconfigure_confirm()` in config_flow.py:268-302
+- Added `reconfigure_confirm` step strings in strings.json
+
 ## [2.3.6] - 2025-12-30
 
 ### Added
