@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Saxo Portfolio Setup",
+        "description": "Set up your Saxo Portfolio integration to monitor your investment portfolio in Home Assistant.",
+        "data": {
+          "environment": "Environment"
+        }
+      },
+      "auth": {
+        "title": "Authorize with Saxo Bank",
+        "description": "Click the link below to authorize Home Assistant to access your Saxo Bank portfolio data."
+      },
+      "timezone": {
+        "title": "Configure Market Hours Timezone",
+        "description": "Select your primary trading market timezone. This determines when the integration checks for updates more frequently during market hours.",
+        "data": {
+          "timezone": "Market Timezone"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate {title}",
+        "description": "The authentication for **{title}** has expired. Please sign in again to continue using the integration.\n\nAll your settings, entity history, and automations will be preserved."
+      },
+      "reconfigure_confirm": {
+        "title": "Reauthenticate {title}",
+        "description": "Click **Submit** to sign in again with your Saxo Bank account for **{title}**.\n\nThis will refresh your OAuth tokens. All your settings, entity history, and automations will be preserved."
+      }
+    },
+    "error": {
+      "auth_error": "Authorization failed. Please try again.",
+      "invalid_auth": "Invalid authentication credentials.",
+      "cannot_connect": "Failed to connect to Saxo Bank. Please check your internet connection.",
+      "unknown": "Unexpected error occurred. Please try again."
+    },
+    "abort": {
+      "missing_credentials": "**Application Credentials Required**\n\nBefore setting up Saxo Portfolio, you need to configure Application Credentials.\n\n**Steps:**\n1. Go to [Saxo Developer Portal](https://www.developer.saxo/openapi/appmanagement) \n2. Create a production application with redirect URI: `https://my.home-assistant.io/redirect/oauth`\n3. Go to [Application Credentials]({setup_url}) in Home Assistant\n4. Add credentials for {domain} with your App Key and Secret\n5. Return here to complete setup\n\n**Production OAuth Endpoints:**\n• Authorize: {authorize_url}\n• Token: {token_url}",
+      "reauth_successful": "Successfully reauthenticated with Saxo Bank. Your integration will now continue working with the new credentials."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Saxo Portfolio Options",
+        "description": "Configure how the integration updates portfolio data.",
+        "data": {
+          "timezone": "Market Timezone"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "total_value": {
+        "name": "Portfolio Total Value"
+      },
+      "cash_balance": {
+        "name": "Portfolio Cash Balance"
+      },
+      "non_margin_positions_value": {
+        "name": "Portfolio Non-Margin Positions Value"
+      },
+      "accumulated_profit_loss": {
+        "name": "Portfolio Accumulated Profit/Loss"
+      }
+    }
+  },
+  "issues": {
+    "deprecated_yaml": {
+      "title": "YAML configuration is deprecated",
+      "description": "Configuring Saxo Portfolio using YAML is deprecated. Please remove the YAML configuration from your configuration.yaml file and set up the integration using the UI."
+    }
+  },
+  "services": {
+    "refresh_data": {
+      "name": "Refresh Portfolio Data",
+      "description": "Manually refresh portfolio data from Saxo Bank API."
+    }
+  }
+}
