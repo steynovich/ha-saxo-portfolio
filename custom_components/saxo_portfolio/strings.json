@@ -22,6 +22,10 @@
       "reauth_confirm": {
         "title": "Reauthenticate {title}",
         "description": "The authentication for **{title}** has expired. Please sign in again to continue using the integration.\n\nAll your settings, entity history, and automations will be preserved."
+      },
+      "reconfigure_confirm": {
+        "title": "Reauthenticate {title}",
+        "description": "Click **Submit** to sign in again with your Saxo Bank account for **{title}**.\n\nThis will refresh your OAuth tokens. All your settings, entity history, and automations will be preserved."
       }
     },
     "error": {

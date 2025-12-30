@@ -265,6 +265,42 @@ class SaxoPortfolioFlowHandler(
             },
         )
 
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle reconfiguration request (manual reauthentication)."""
+        # Get the config entry being reconfigured
+        entry_id = self.context.get("entry_id")
+        if entry_id:
+            self._reauth_entry = self.hass.config_entries.async_get_entry(entry_id)
+            _LOGGER.info(
+                "Starting reconfigure flow for config entry: %s",
+                self._reauth_entry.title if self._reauth_entry else "unknown",
+            )
+        else:
+            _LOGGER.warning("Reconfigure triggered but no entry_id in context")
+
+        # Show confirmation form to user
+        return await self.async_step_reconfigure_confirm()
+
+    async def async_step_reconfigure_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Confirm reconfigure dialog."""
+        if user_input is not None:
+            # User clicked Submit/Continue - start OAuth flow
+            return await self.async_step_pick_implementation()
+
+        # Show the confirmation form
+        return self.async_show_form(
+            step_id="reconfigure_confirm",
+            description_placeholders={
+                "title": self._reauth_entry.title
+                if self._reauth_entry
+                else "Saxo Portfolio"
+            },
+        )
+
     @staticmethod
     @config_entries.callback
     def async_get_options_flow(
