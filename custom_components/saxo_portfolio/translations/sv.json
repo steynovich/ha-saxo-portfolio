@@ -51,6 +51,11 @@
     }
   },
   "entity": {
+    "button": {
+      "refresh": {
+        "name": "Uppdatera portföljdata"
+      }
+    },
     "sensor": {
       "total_value": {
         "name": "Portfölj totalvärde"

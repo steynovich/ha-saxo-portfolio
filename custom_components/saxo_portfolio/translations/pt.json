@@ -51,6 +51,11 @@
     }
   },
   "entity": {
+    "button": {
+      "refresh": {
+        "name": "Atualizar dados do portfólio"
+      }
+    },
     "sensor": {
       "total_value": {
         "name": "Valor total do portfólio"

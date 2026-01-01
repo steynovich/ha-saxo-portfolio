@@ -51,6 +51,11 @@
     }
   },
   "entity": {
+    "button": {
+      "refresh": {
+        "name": "Portfoliodaten aktualisieren"
+      }
+    },
     "sensor": {
       "total_value": {
         "name": "Portfolio Gesamtwert"

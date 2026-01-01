@@ -51,6 +51,11 @@
     }
   },
   "entity": {
+    "button": {
+      "refresh": {
+        "name": "Portefeuillegegevens vernieuwen"
+      }
+    },
     "sensor": {
       "total_value": {
         "name": "Portefeuille totale waarde"

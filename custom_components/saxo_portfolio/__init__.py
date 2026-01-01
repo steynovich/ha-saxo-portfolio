@@ -5,10 +5,17 @@ from __future__ import annotations
 import logging
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from .const import DATA_COORDINATOR, DATA_UNSUB, DOMAIN, PLATFORMS, CONF_ENTITY_PREFIX
+from .const import (
+    CONF_ENTITY_PREFIX,
+    DATA_COORDINATOR,
+    DATA_UNSUB,
+    DOMAIN,
+    PLATFORMS,
+    SERVICE_REFRESH_DATA,
+)
 from .coordinator import SaxoCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -50,6 +57,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         # Add update listener for options changes
         entry.async_on_unload(entry.add_update_listener(async_options_updated))
+
+        # Register services (only once for the domain)
+        if not hass.services.has_service(DOMAIN, SERVICE_REFRESH_DATA):
+
+            async def handle_refresh_data(call: ServiceCall) -> None:
+                """Handle the refresh_data service call."""
+                _LOGGER.debug("Service call: %s", SERVICE_REFRESH_DATA)
+                # Refresh all registered coordinators
+                for entry_id, entry_data in hass.data.get(DOMAIN, {}).items():
+                    coord = entry_data.get(DATA_COORDINATOR)
+                    if coord:
+                        _LOGGER.debug("Refreshing coordinator for entry %s", entry_id)
+                        await coord.async_refresh()
+
+            hass.services.async_register(
+                DOMAIN,
+                SERVICE_REFRESH_DATA,
+                handle_refresh_data,
+            )
+            _LOGGER.debug("Registered service: %s.%s", DOMAIN, SERVICE_REFRESH_DATA)
 
         _LOGGER.info("Successfully set up Saxo Portfolio integration")
         return True
@@ -105,6 +132,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Remove domain data if no more entries
         if not hass.data[DOMAIN]:
             hass.data.pop(DOMAIN, None)
+            # Remove services when last entry is unloaded
+            if hass.services.has_service(DOMAIN, SERVICE_REFRESH_DATA):
+                hass.services.async_remove(DOMAIN, SERVICE_REFRESH_DATA)
+                _LOGGER.debug("Removed service: %s.%s", DOMAIN, SERVICE_REFRESH_DATA)
 
         _LOGGER.info("Successfully unloaded Saxo Portfolio integration")
 

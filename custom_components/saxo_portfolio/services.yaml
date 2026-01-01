@@ -1,0 +1,3 @@
+refresh_data:
+  name: Refresh Portfolio Data
+  description: Manually refresh portfolio data from Saxo Bank API. This bypasses the normal update schedule and fetches fresh data immediately.

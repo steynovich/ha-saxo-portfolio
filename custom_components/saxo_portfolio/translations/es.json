@@ -51,6 +51,11 @@
     }
   },
   "entity": {
+    "button": {
+      "refresh": {
+        "name": "Actualizar datos de la cartera"
+      }
+    },
     "sensor": {
       "total_value": {
         "name": "Valor total de la cartera"

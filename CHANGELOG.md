@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-01-01
+
+### Added
+- **Manual Refresh Button**: Added a refresh button entity to each device
+  - Entity ID: `button.saxo_{client_id}_refresh`
+  - Appears on device page under configuration entities
+  - Press to trigger immediate data refresh from Saxo Bank API
+  - Can be added to dashboards or used in automations
+  - Translations available in all 11 supported languages
+
+- **Refresh Data Service**: Added `saxo_portfolio.refresh_data` service
+  - Call from Developer Tools → Services or automations
+  - Refreshes all registered Saxo Portfolio accounts
+  - Bypasses normal update schedule for immediate data fetch
+
+### Technical Details
+- New `button.py` platform with `SaxoRefreshButton` entity
+- Service registered once per domain in `__init__.py`
+- Service automatically removed when last integration entry is unloaded
+- Button uses `ButtonDeviceClass.UPDATE` and `EntityCategory.CONFIG`
+
 ## [2.3.9] - 2025-12-30
 
 ### Fixed

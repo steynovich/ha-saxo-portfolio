@@ -51,6 +51,11 @@
     }
   },
   "entity": {
+    "button": {
+      "refresh": {
+        "name": "Actualiser les données du portefeuille"
+      }
+    },
     "sensor": {
       "total_value": {
         "name": "Valeur totale du portefeuille"

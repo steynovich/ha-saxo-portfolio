@@ -51,6 +51,11 @@
     }
   },
   "entity": {
+    "button": {
+      "refresh": {
+        "name": "Refresh Portfolio Data"
+      }
+    },
     "sensor": {
       "total_value": {
         "name": "Portfolio Total Value"

@@ -51,6 +51,11 @@
     }
   },
   "entity": {
+    "button": {
+      "refresh": {
+        "name": "Päivitä salkkutiedot"
+      }
+    },
     "sensor": {
       "total_value": {
         "name": "Salkun kokonaisarvo"

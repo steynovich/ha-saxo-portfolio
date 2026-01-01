@@ -137,10 +137,13 @@ ERROR_NETWORK_ERROR: Final = "Network error occurred while fetching data."
 
 
 # Home Assistant specific
-PLATFORMS: Final = ["sensor"]
+PLATFORMS: Final = ["button", "sensor"]
 # Data storage keys
 DATA_COORDINATOR: Final = "coordinator"
 DATA_UNSUB: Final = "unsub"
+
+# Services
+SERVICE_REFRESH_DATA: Final = "refresh_data"
 
 # Token management
 TOKEN_REFRESH_BUFFER: Final = timedelta(
