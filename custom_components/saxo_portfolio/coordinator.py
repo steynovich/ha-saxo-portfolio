@@ -621,9 +621,14 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         """
         try:
-            # Apply staggered update offset on first update to prevent multiple accounts
-            # from hitting the API simultaneously
-            if self._initial_update_offset > 0:
+            # Apply staggered update offset on scheduled updates to prevent multiple accounts
+            # from hitting the API simultaneously. Skip during initial setup (called from
+            # async_setup_entry) to avoid exceeding Home Assistant's setup timeout.
+            # Initial setup is detected by _last_successful_update being None.
+            if (
+                self._initial_update_offset > 0
+                and self._last_successful_update is not None
+            ):
                 _LOGGER.debug(
                     "Applying initial update offset of %.1fs to stagger multiple accounts",
                     self._initial_update_offset,

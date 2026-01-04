@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.1] - 2026-01-04
+
+### Fixed
+- **Critical**: Fixed integration setup timeout causing "Setup cancelled" errors
+  - Staggered update offset was being applied during initial setup, adding 0-30 seconds of delay
+  - Combined with slow/unresponsive Saxo performance API, this exceeded Home Assistant's 60-second setup timeout
+  - Fix: Skip the staggered offset during initial setup (when `_last_successful_update` is None)
+  - Offset now only applies on subsequent scheduled updates where it prevents rate limiting
+
+### Root Cause Analysis
+- **Symptom**: Integration showed "Error" and failed to setup after reauthentication or restart
+- **Timeline in logs**:
+  1. 16.5s staggered offset delay applied during setup
+  2. Balance/client details fetch (~0.6s) - successful
+  3. Performance API timeout (~30s+) - slow/unresponsive
+  4. Total time >60s → Home Assistant cancelled setup
+- **Solution**: Check `_last_successful_update is not None` before applying staggered offset
+  - During initial setup: `_last_successful_update` is None → skip offset → data fetch starts immediately
+  - On subsequent updates: `_last_successful_update` is set → apply offset to prevent rate limiting
+
+### Technical Details
+- Modified condition in `coordinator.py:628` from `if self._initial_update_offset > 0` to include `and self._last_successful_update is not None`
+- The staggered offset design prevents multiple accounts from hitting the API simultaneously
+- During initial setup, accounts are set up one at a time anyway, so the offset provided no benefit
+- This fix eliminates the unnecessary delay during setup while preserving rate limiting protection for regular updates
+
 ## [2.4.0] - 2026-01-01
 
 ### Added

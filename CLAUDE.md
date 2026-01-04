@@ -1,6 +1,6 @@
 # ha-saxo Development Guidelines
 
-Auto-generated from current implementation. Last updated: 2026-01-01
+Auto-generated from current implementation. Last updated: 2026-01-04
 
 ## Active Technologies
 - Home Assistant Custom Integration
@@ -236,6 +236,15 @@ max_failure_time = max(15 * 60, 3 * update_interval_seconds)
   - Service registered once per domain (not per config entry)
   - Service removed when last config entry is unloaded
   - Defined in `services.yaml` and `strings.json`
+
+## Recent Changes (v2.4.1)
+- **Critical Fix**: Fixed integration setup timeout causing "Setup cancelled" errors
+  - Staggered update offset was being applied during initial setup, adding 0-30 seconds of delay
+  - Combined with slow/unresponsive Saxo performance API, this exceeded Home Assistant's 60s setup timeout
+  - Fix: Skip the staggered offset during initial setup (when `_last_successful_update` is None)
+  - Modified condition in `coordinator.py:628` to check `self._last_successful_update is not None`
+  - Offset now only applies on subsequent scheduled updates where it prevents rate limiting
+  - Impact: Integration now starts immediately without unnecessary delay during setup
 
 ## Recent Changes (v2.4.0)
 - **Manual Refresh Button**: Added `SaxoRefreshButton` entity to each device for on-demand data refresh
