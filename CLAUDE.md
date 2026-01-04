@@ -237,6 +237,16 @@ max_failure_time = max(15 * 60, 3 * update_interval_seconds)
   - Service removed when last config entry is unloaded
   - Defined in `services.yaml` and `strings.json`
 
+## Recent Changes (v2.5.0)
+- **Graceful Degradation**: Performance API failures no longer block balance data
+  - Balance sensors work independently even when performance API is slow/unresponsive
+  - New `_fetch_performance_data_safely()` method in `coordinator.py` with dedicated 30s timeout
+  - Performance data failures return cached/default values instead of failing entire update
+  - Added `PERFORMANCE_FETCH_TIMEOUT = 30` constant in `const.py:169`
+  - Two-phase data fetching: balance (required) then performance (optional with graceful fallback)
+  - Cache kept indefinitely until API recovers - no expiry on cached values
+  - Impact: Integration remains functional during Saxo performance API outages
+
 ## Recent Changes (v2.4.1)
 - **Critical Fix**: Fixed integration setup timeout causing "Setup cancelled" errors
   - Staggered update offset was being applied during initial setup, adding 0-30 seconds of delay

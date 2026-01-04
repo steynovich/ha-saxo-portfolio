@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-01-04
+
+### Added
+- **Graceful Degradation for Data Fetching**: Performance API failures no longer block balance data
+  - Balance sensors now work even when the performance API is slow or unresponsive
+  - New `_fetch_performance_data_safely()` method with dedicated 30-second timeout
+  - Performance data failures return cached/default values instead of failing the entire update
+  - Cached performance values are kept indefinitely until API recovers
+
+### Changed
+- **Separate Timeout Handling**: Performance data now has its own timeout context
+  - Balance fetch (required): Uses coordinator timeout, must succeed
+  - Performance fetch (optional): Uses separate 30s timeout, fails gracefully
+  - Added `PERFORMANCE_FETCH_TIMEOUT = 30` constant in `const.py`
+
+### Technical Details
+- Refactored `_fetch_portfolio_data()` to implement two-phase data fetching:
+  1. **Phase 1**: Fetch balance data (required) - if this fails, update fails
+  2. **Phase 2**: Fetch performance data (optional) - wrapped in try/except with 30s timeout
+- New method `_fetch_performance_data_safely()` handles all performance and client detail fetching
+  - Returns cached values on timeout or any exception
+  - Logs warning on timeout to inform users without failing the update
+  - Cache is never expired - shows last known values until API recovers
+- This architecture ensures the integration remains functional even when Saxo's performance API is slow
+
+### Why This Matters
+- Previously: If performance API took >30s, entire 60s coordinator timeout was exceeded, ALL sensors became unavailable
+- Now: Balance sensors (cash, total value, positions) work independently of performance API health
+- Users see their balance data immediately while performance data may show cached values during API issues
+
 ## [2.4.1] - 2026-01-04
 
 ### Fixed
