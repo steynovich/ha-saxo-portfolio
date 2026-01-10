@@ -5,15 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.5.0] - 2026-01-10
+## [2.5.1] - 2026-01-10
 
 ### Added
-- **Graceful Degradation for Data Fetching**: Performance API failures no longer block balance data
-  - Balance sensors now work even when the performance API is slow or unresponsive
-  - New `_fetch_performance_data_safely()` method with dedicated 30-second timeout
-  - Performance data failures return cached/default values instead of failing the entire update
-  - Cached performance values are kept indefinitely until API recovers
-
 - **Token Refresh Retry Logic**: Improved resilience for OAuth token refresh
   - Automatic retry with exponential backoff for transient failures (5xx, network errors, timeouts)
   - Up to 3 retry attempts before failing
@@ -23,17 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Shows clear remaining time for both access and refresh tokens
   - Warns when refresh token is about to expire (< 5 minutes)
   - Logs token status before and after refresh attempts
+  - Uses timezone-aware datetime (dt_util) for accurate calculations
 
 - **HTML Error Message Extraction**: New `_extract_error_from_html()` method
   - Parses HTML error pages into readable messages
   - Extracts title or h1 content from Saxo error pages
   - Cleaner error logs instead of raw HTML dumps
-
-### Changed
-- **Separate Timeout Handling**: Performance data now has its own timeout context
-  - Balance fetch (required): Uses coordinator timeout, must succeed
-  - Performance fetch (optional): Uses separate 30s timeout, fails gracefully
-  - Added `PERFORMANCE_FETCH_TIMEOUT = 30` constant in `const.py`
 
 ### Fixed
 - **Missing DIAGNOSTICS_REDACTED Constant**: Added missing constant to const.py
@@ -43,12 +32,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added all diagnostic sensor types to the list
 
 ### Technical Details
+- New helper methods in coordinator.py: `_extract_error_from_html()`, `_log_refresh_token_status()`
+- Token refresh now distinguishes between permanent (401/403) and transient (5xx) failures
+- Uses `MAX_RETRIES` and `RETRY_BACKOFF_FACTOR` constants from const.py
+
+## [2.5.0] - 2026-01-04
+
+### Added
+- **Graceful Degradation for Data Fetching**: Performance API failures no longer block balance data
+  - Balance sensors now work even when the performance API is slow or unresponsive
+  - New `_fetch_performance_data_safely()` method with dedicated 30-second timeout
+  - Performance data failures return cached/default values instead of failing the entire update
+  - Cached performance values are kept indefinitely until API recovers
+
+### Changed
+- **Separate Timeout Handling**: Performance data now has its own timeout context
+  - Balance fetch (required): Uses coordinator timeout, must succeed
+  - Performance fetch (optional): Uses separate 30s timeout, fails gracefully
+  - Added `PERFORMANCE_FETCH_TIMEOUT = 30` constant in `const.py`
+
+### Technical Details
 - Refactored `_fetch_portfolio_data()` to implement two-phase data fetching:
   1. **Phase 1**: Fetch balance data (required) - if this fails, update fails
   2. **Phase 2**: Fetch performance data (optional) - wrapped in try/except with 30s timeout
 - New method `_fetch_performance_data_safely()` handles all performance and client detail fetching
-- New helper methods: `_extract_error_from_html()`, `_log_refresh_token_status()`
-- Token refresh now distinguishes between permanent (401/403) and transient (5xx) failures
 
 ### Why This Matters
 - Previously: If performance API took >30s, entire 60s coordinator timeout was exceeded, ALL sensors became unavailable
