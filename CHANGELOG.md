@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.1] - 2026-01-10
+
+### Added
+- **Token Refresh Retry Logic**: Improved resilience for OAuth token refresh
+  - Automatic retry with exponential backoff for transient failures (5xx, network errors, timeouts)
+  - Up to 3 retry attempts before failing
+  - Permanent auth failures (401/403) fail immediately without retry
+
+- **Enhanced Token Status Logging**: New `_log_refresh_token_status()` method
+  - Shows clear remaining time for both access and refresh tokens
+  - Warns when refresh token is about to expire (< 5 minutes)
+  - Logs token status before and after refresh attempts
+
+- **HTML Error Message Extraction**: New `_extract_error_from_html()` method
+  - Parses HTML error pages into readable messages
+  - Extracts title or h1 content from Saxo error pages
+  - Cleaner error logs instead of raw HTML dumps
+
+### Fixed
+- **Missing DIAGNOSTICS_REDACTED Constant**: Added missing constant to const.py
+  - Was causing ImportError when logging URLs with query parameters
+
+- **Unreachable Code**: Fixed dead code after return statement in `_fetch_portfolio_data()`
+  - Moved logging statement before return to ensure it executes
+
+- **Diagnostics Sensor Count**: Updated from 6 to 16 sensors
+  - Added all diagnostic sensor types to the list
+
+### Technical Details
+- New helper methods in coordinator.py: `_extract_error_from_html()`, `_log_refresh_token_status()`
+- Token refresh now distinguishes between permanent (401/403) and transient (5xx) failures
+- Uses existing `MAX_RETRIES` and `RETRY_BACKOFF_FACTOR` constants from const.py
+
 ## [2.4.0] - 2026-01-01
 
 ### Added
