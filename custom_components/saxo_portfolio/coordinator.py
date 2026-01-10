@@ -219,13 +219,13 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             return
 
-        current_time = datetime.now()
-        expiry_time = datetime.fromtimestamp(expires_at)
+        current_time = dt_util.now()
+        expiry_time = dt_util.utc_from_timestamp(expires_at)
         access_token_remaining = expiry_time - current_time
 
         if refresh_token_expires_in:
             if token_issued_at_timestamp:
-                token_issued_at = datetime.fromtimestamp(token_issued_at_timestamp)
+                token_issued_at = dt_util.utc_from_timestamp(token_issued_at_timestamp)
             else:
                 token_issued_at = expiry_time - timedelta(
                     seconds=token_data.get("expires_in", 1200)
