@@ -176,3 +176,6 @@ SENSITIVE_URL_PATTERNS: Final = [
     r"(app_key=)[^&\s]*",  # app key parameters
     r"(app_secret=)[^&\s]*",  # app secret parameters
 ]
+
+# Diagnostics redaction placeholder
+DIAGNOSTICS_REDACTED: Final = "**REDACTED**"

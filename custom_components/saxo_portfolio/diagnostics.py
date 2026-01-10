@@ -183,14 +183,24 @@ async def async_get_config_entry_diagnostics(
     # Integration information
     integration_info = {
         "version": version,
-        "sensors_configured": 6,
+        "sensors_configured": 16,
         "sensor_types": [
             "cash_balance",
             "total_value",
             "non_margin_positions_value",
             "accumulated_profit_loss",
             "investment_performance",
+            "ytd_investment_performance",
+            "month_investment_performance",
+            "quarter_investment_performance",
             "cash_transfer_balance",
+            "client_id",
+            "account_id",
+            "name",
+            "token_expiry",
+            "market_status",
+            "last_update",
+            "timezone",
         ],
     }
 

@@ -246,6 +246,22 @@ max_failure_time = max(15 * 60, 3 * update_interval_seconds)
   - Two-phase data fetching: balance (required) then performance (optional with graceful fallback)
   - Cache kept indefinitely until API recovers - no expiry on cached values
   - Impact: Integration remains functional during Saxo performance API outages
+- **Token Refresh Retry Logic**: Improved resilience for OAuth token refresh failures
+  - Automatic retry with exponential backoff for transient failures (5xx, network errors, timeouts)
+  - Up to 3 retry attempts with 1s, 2s, 4s backoff delays
+  - Permanent auth failures (401/403) fail immediately without retry
+  - Uses `MAX_RETRIES` and `RETRY_BACKOFF_FACTOR` constants from const.py
+- **Enhanced Token Status Logging**: New `_log_refresh_token_status()` method in coordinator.py:208-250
+  - Shows clear remaining time: "Token status - Access token: 0:18:32 remaining, Refresh token: 0:42:15 remaining"
+  - Warns when refresh token is about to expire (< 5 minutes)
+  - Called before and after token refresh attempts
+- **HTML Error Message Extraction**: New `_extract_error_from_html()` method in coordinator.py:182-206
+  - Parses HTML error pages into readable messages (extracts title/h1)
+  - Before: `<!DOCTYPE html...` (500+ chars of HTML)
+  - After: `401 - Unauthorized: Access is denied due to invalid credentials.`
+- **Bug Fixes**:
+  - Added missing `DIAGNOSTICS_REDACTED` constant to const.py:177 (was causing ImportError)
+  - Updated diagnostics sensor count from 6 to 16 with complete sensor list
 
 ## Recent Changes (v2.4.1)
 - **Critical Fix**: Fixed integration setup timeout causing "Setup cancelled" errors
