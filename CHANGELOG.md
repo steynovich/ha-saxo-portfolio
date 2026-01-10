@@ -5,9 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.4.1] - 2026-01-10
+## [2.5.0] - 2026-01-10
 
 ### Added
+- **Graceful Degradation for Data Fetching**: Performance API failures no longer block balance data
+  - Balance sensors now work even when the performance API is slow or unresponsive
+  - New `_fetch_performance_data_safely()` method with dedicated 30-second timeout
+  - Performance data failures return cached/default values instead of failing the entire update
+  - Cached performance values are kept indefinitely until API recovers
+
 - **Token Refresh Retry Logic**: Improved resilience for OAuth token refresh
   - Automatic retry with exponential backoff for transient failures (5xx, network errors, timeouts)
   - Up to 3 retry attempts before failing
@@ -23,20 +29,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Extracts title or h1 content from Saxo error pages
   - Cleaner error logs instead of raw HTML dumps
 
+### Changed
+- **Separate Timeout Handling**: Performance data now has its own timeout context
+  - Balance fetch (required): Uses coordinator timeout, must succeed
+  - Performance fetch (optional): Uses separate 30s timeout, fails gracefully
+  - Added `PERFORMANCE_FETCH_TIMEOUT = 30` constant in `const.py`
+
 ### Fixed
 - **Missing DIAGNOSTICS_REDACTED Constant**: Added missing constant to const.py
   - Was causing ImportError when logging URLs with query parameters
-
-- **Unreachable Code**: Fixed dead code after return statement in `_fetch_portfolio_data()`
-  - Moved logging statement before return to ensure it executes
 
 - **Diagnostics Sensor Count**: Updated from 6 to 16 sensors
   - Added all diagnostic sensor types to the list
 
 ### Technical Details
-- New helper methods in coordinator.py: `_extract_error_from_html()`, `_log_refresh_token_status()`
+- Refactored `_fetch_portfolio_data()` to implement two-phase data fetching:
+  1. **Phase 1**: Fetch balance data (required) - if this fails, update fails
+  2. **Phase 2**: Fetch performance data (optional) - wrapped in try/except with 30s timeout
+- New method `_fetch_performance_data_safely()` handles all performance and client detail fetching
+- New helper methods: `_extract_error_from_html()`, `_log_refresh_token_status()`
 - Token refresh now distinguishes between permanent (401/403) and transient (5xx) failures
-- Uses existing `MAX_RETRIES` and `RETRY_BACKOFF_FACTOR` constants from const.py
+
+### Why This Matters
+- Previously: If performance API took >30s, entire 60s coordinator timeout was exceeded, ALL sensors became unavailable
+- Now: Balance sensors (cash, total value, positions) work independently of performance API health
+- Users see their balance data immediately while performance data may show cached values during API issues
+
+## [2.4.1] - 2026-01-04
+
+### Fixed
+- **Critical**: Fixed integration setup timeout causing "Setup cancelled" errors
+  - Staggered update offset was being applied during initial setup, adding 0-30 seconds of delay
+  - Combined with slow/unresponsive Saxo performance API, this exceeded Home Assistant's 60-second setup timeout
+  - Fix: Skip the staggered offset during initial setup (when `_last_successful_update` is None)
+  - Offset now only applies on subsequent scheduled updates where it prevents rate limiting
+
+### Root Cause Analysis
+- **Symptom**: Integration showed "Error" and failed to setup after reauthentication or restart
+- **Timeline in logs**:
+  1. 16.5s staggered offset delay applied during setup
+  2. Balance/client details fetch (~0.6s) - successful
+  3. Performance API timeout (~30s+) - slow/unresponsive
+  4. Total time >60s → Home Assistant cancelled setup
+- **Solution**: Check `_last_successful_update is not None` before applying staggered offset
+  - During initial setup: `_last_successful_update` is None → skip offset → data fetch starts immediately
+  - On subsequent updates: `_last_successful_update` is set → apply offset to prevent rate limiting
+
+### Technical Details
+- Modified condition in `coordinator.py:628` from `if self._initial_update_offset > 0` to include `and self._last_successful_update is not None`
+- The staggered offset design prevents multiple accounts from hitting the API simultaneously
+- During initial setup, accounts are set up one at a time anyway, so the offset provided no benefit
+- This fix eliminates the unnecessary delay during setup while preserving rate limiting protection for regular updates
 
 ## [2.4.0] - 2026-01-01
 

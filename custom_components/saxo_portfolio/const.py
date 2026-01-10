@@ -164,6 +164,10 @@ COORDINATOR_UPDATE_TIMEOUT: Final = (
     60  # seconds - enough for multiple sequential API calls
 )
 
+# Performance data fetch timeout (separate from coordinator to allow graceful degradation)
+# If performance fetch times out, balance data is still returned successfully
+PERFORMANCE_FETCH_TIMEOUT: Final = 30  # seconds
+
 # Security patterns for sensitive data masking
 SENSITIVE_URL_PATTERNS: Final = [
     r"(token=)[^&\s]*",  # token parameters
