@@ -17,6 +17,7 @@ import async_timeout
 from ..const import (
     API_BALANCE_ENDPOINT,
     API_CLIENT_DETAILS_ENDPOINT,
+    API_NET_POSITIONS_ENDPOINT,
     API_PERFORMANCE_ENDPOINT,
     API_PERFORMANCE_V4_ENDPOINT,
     API_RATE_LIMIT_PER_MINUTE,
@@ -27,6 +28,7 @@ from ..const import (
     ERROR_AUTH_FAILED,
     ERROR_NETWORK_ERROR,
     ERROR_RATE_LIMITED,
+    INTEGRATION_VERSION,
     MAX_RETRIES,
     RETRY_BACKOFF_FACTOR,
 )
@@ -174,7 +176,7 @@ class SaxoApiClient:
             headers = {
                 "Authorization": auth_header,
                 "Content-Type": "application/json",
-                "User-Agent": "HomeAssistant-SaxoPortfolio/1.0",
+                "User-Agent": f"HomeAssistant-SaxoPortfolio/{INTEGRATION_VERSION}",
             }
 
             _LOGGER.debug(
@@ -707,6 +709,43 @@ class SaxoApiClient:
                 "Error fetching performance v4 Quarter data: %s", type(e).__name__
             )
             raise APIError("Failed to fetch performance v4 Quarter data")
+
+    async def get_net_positions(self) -> dict[str, Any]:
+        """Get net positions from Saxo API.
+
+        Returns:
+            Net positions data containing open positions with FieldGroups data
+
+        Raises:
+            AuthenticationError: For authentication failures
+            APIError: For other API errors
+
+        """
+        try:
+            # NetPositionFieldGroup valid values: NetPositionBase, NetPositionView, DisplayAndFormat
+            # Pricing fields are in NetPositionView
+            params = {
+                "FieldGroups": "NetPositionBase,NetPositionView,DisplayAndFormat",
+            }
+
+            response = await self._make_request(API_NET_POSITIONS_ENDPOINT, params)
+
+            # Validate response structure
+            if not isinstance(response, dict):
+                raise APIError("Invalid net positions response format")
+
+            _LOGGER.debug(
+                "Net positions API response structure: %s",
+                list(response.keys()) if response else "empty",
+            )
+
+            return response
+
+        except (AuthenticationError, RateLimitError):
+            raise
+        except Exception as e:
+            _LOGGER.error("Error fetching net positions: %s", type(e).__name__)
+            raise APIError("Failed to fetch net positions")
 
     async def close(self):
         """Close the HTTP session."""

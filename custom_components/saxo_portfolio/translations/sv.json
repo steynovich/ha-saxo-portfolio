@@ -45,7 +45,11 @@
         "title": "Saxo Portfolio alternativ",
         "description": "Konfigurera hur integrationen uppdaterar portföljdata.",
         "data": {
-          "timezone": "Marknadstidszon"
+          "timezone": "Marknadstidszon",
+          "enable_position_sensors": "Aktivera positionssensorer"
+        },
+        "data_description": {
+          "enable_position_sensors": "Skapa individuella sensorer för varje portföljposition. Detta lägger till en sensor per öppen position som visar aktuellt pris och attribut som marknadsvärde och vinst/förlust."
         }
       }
     }

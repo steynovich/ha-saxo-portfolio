@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-02-02
+
+### Added
+- **Position Sensors**: Optional sensors for individual portfolio positions ([#8](https://github.com/steynovich/ha-saxo-portfolio/issues/8))
+  - One sensor per position from `/port/v1/netpositions/me` endpoint
+  - Current price as sensor state with long-term statistics support (`state_class: measurement`)
+  - Rich attributes: symbol, description, asset_type, amount, market_value, profit_loss, uic, currency
+  - Entity ID pattern: `sensor.saxo_{client_id}_position_{symbol}_{asset_type}`
+  - Dynamic sensor creation when new positions open
+  - Sensors become unavailable when positions are closed
+  - Opt-in via integration options (default: disabled)
+
+- **Position Data Infrastructure**:
+  - New `PositionData` dataclass with slug generation for URL-safe entity IDs
+  - New `PositionsCache` for efficient position data caching
+  - New `get_net_positions()` API method with graceful error handling
+  - Position listener for dynamic sensor creation on coordinator updates
+
+- **Market Data Access Detection**:
+  - New `SaxoMarketDataAccessSensor` diagnostic sensor (only created when position sensors enabled)
+    - Display name: "Real-Time Market Data Access"
+    - State: "Available", "Unavailable", or "Unknown"
+    - Attributes: `has_real_time_prices`, `note` (guidance when unavailable)
+    - Entity ID: `sensor.saxo_{client_id}_market_data_access`
+  - Automatic detection of API market data permissions
+  - Warning logged once per session if market data access unavailable
+  - Calculated prices from P/L data when real-time prices not available
+  - Real-time market data may require a separate Saxo market data subscription
+
+- **Options Flow**: New configuration option to enable/disable position sensors
+  - Integration reloads automatically when option changes
+  - Translations for all 11 supported languages
+
+### Technical Details
+- New constants: `API_NET_POSITIONS_ENDPOINT`, `CONF_ENABLE_POSITION_SENSORS`, `DEFAULT_ENABLE_POSITION_SENSORS`
+- New coordinator methods: `_fetch_positions_data_safely()`, `get_positions()`, `get_position()`, `get_position_ids()`, `has_market_data_access()`
+- New coordinator flag: `_has_market_data_access` for tracking API market data access status
+- New sensor classes: `SaxoPositionSensor`, `SaxoMarketDataAccessSensor` extending `SaxoSensorBase`/`SaxoDiagnosticSensorBase`
+- New helper: `_setup_position_listener()` for dynamic entity creation
+- Comprehensive test coverage: unit, integration, and contract tests
+
 ## [2.5.1] - 2026-01-10
 
 ### Added

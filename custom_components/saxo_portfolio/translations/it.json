@@ -45,7 +45,11 @@
         "title": "Opzioni Saxo Portfolio",
         "description": "Configura come l'integrazione aggiorna i dati del portafoglio.",
         "data": {
-          "timezone": "Fuso orario del mercato"
+          "timezone": "Fuso orario del mercato",
+          "enable_position_sensors": "Abilita sensori posizione"
+        },
+        "data_description": {
+          "enable_position_sensors": "Crea sensori individuali per ogni posizione del portafoglio. Questo aggiunge un sensore per posizione aperta che mostra il prezzo corrente e attributi come valore di mercato e profitto/perdita."
         }
       }
     }

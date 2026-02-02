@@ -9,6 +9,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import re
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, time
 import zoneinfo
 from typing import Any
@@ -24,8 +26,10 @@ from homeassistant.util import dt as dt_util
 
 from .api.saxo_client import SaxoApiClient, AuthenticationError, APIError
 from .const import (
+    CONF_ENABLE_POSITION_SENSORS,
     CONF_TIMEZONE,
     COORDINATOR_UPDATE_TIMEOUT,
+    DEFAULT_ENABLE_POSITION_SENSORS,
     DEFAULT_TIMEZONE,
     DEFAULT_UPDATE_INTERVAL_AFTER_HOURS,
     DEFAULT_UPDATE_INTERVAL_ANY,
@@ -42,6 +46,54 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@dataclass
+class PositionData:
+    """Data class for a single portfolio position."""
+
+    position_id: str
+    symbol: str
+    description: str
+    asset_type: str
+    amount: float
+    current_price: float
+    market_value: float
+    profit_loss: float
+    uic: int
+    currency: str = "USD"
+
+    @staticmethod
+    def generate_slug(symbol: str, asset_type: str) -> str:
+        """Generate a URL-safe slug for the position.
+
+        Args:
+            symbol: The position symbol (e.g., "AAPL", "EUR/USD")
+            asset_type: The asset type (e.g., "Stock", "FxSpot")
+
+        Returns:
+            A lowercase slug suitable for entity IDs (e.g., "aapl_stock", "eur_usd_fxspot")
+
+        """
+        # Clean and lowercase the symbol
+        clean_symbol = re.sub(r"[^a-zA-Z0-9]", "_", symbol.lower())
+        # Remove consecutive underscores and strip leading/trailing underscores
+        clean_symbol = re.sub(r"_+", "_", clean_symbol).strip("_")
+
+        # Clean and lowercase the asset type
+        clean_asset_type = re.sub(r"[^a-zA-Z0-9]", "_", asset_type.lower())
+        clean_asset_type = re.sub(r"_+", "_", clean_asset_type).strip("_")
+
+        return f"{clean_symbol}_{clean_asset_type}"
+
+
+@dataclass
+class PositionsCache:
+    """Cache for portfolio positions data."""
+
+    positions: dict[str, PositionData] = field(default_factory=dict)
+    last_updated: datetime | None = None
+    position_ids: list[str] = field(default_factory=list)
 
 
 class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -64,6 +116,17 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Performance data caching
         self._performance_data_cache: dict[str, Any] = {}
         self._performance_last_updated: datetime | None = None
+
+        # Positions data caching
+        self._positions_cache = PositionsCache()
+        self._enable_position_sensors = config_entry.options.get(
+            CONF_ENABLE_POSITION_SENSORS,
+            config_entry.data.get(
+                CONF_ENABLE_POSITION_SENSORS, DEFAULT_ENABLE_POSITION_SENSORS
+            ),
+        )
+        self._position_market_data_warning_logged = False
+        self._has_market_data_access: bool | None = None  # None = unknown/not checked
 
         # Track if sensors were skipped due to unknown client name
         self._sensors_initialized = False
@@ -525,6 +588,215 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 type(e).__name__,
             )
             return defaults
+
+    async def _fetch_positions_data_safely(
+        self, client: SaxoApiClient
+    ) -> dict[str, PositionData]:
+        """Fetch positions data with graceful error handling.
+
+        This method wraps positions fetching with error handling. If the fetch
+        fails, an empty dictionary is returned instead of raising an exception.
+
+        Args:
+            client: The Saxo API client to use for requests
+
+        Returns:
+            Dictionary mapping position IDs to PositionData objects
+
+        """
+        if not self._enable_position_sensors:
+            _LOGGER.debug("Position sensors disabled, skipping fetch")
+            return {}
+
+        try:
+            # Add delay before positions call to prevent rate limiting
+            await asyncio.sleep(0.5)
+
+            positions_response = await client.get_net_positions()
+
+            # Parse positions from API response
+            positions: dict[str, PositionData] = {}
+            raw_positions = positions_response.get("Data", [])
+
+            _LOGGER.debug(
+                "Fetched %d raw positions from API, response keys: %s",
+                len(raw_positions) if raw_positions else 0,
+                list(positions_response.keys()),
+            )
+
+            # Log first position structure for debugging
+            if raw_positions:
+                _LOGGER.debug(
+                    "Processing %d positions for market data access check",
+                    len(raw_positions),
+                )
+                _LOGGER.debug(
+                    "First raw position structure: %s",
+                    raw_positions[0],
+                )
+
+                # Check for market data access by inspecting first position
+                first_view = raw_positions[0].get("NetPositionView", {})
+                current_price_type = first_view.get("CurrentPriceType", "")
+                calc_reliability = first_view.get("CalculationReliability", "")
+
+                _LOGGER.debug(
+                    "Market data access check - CurrentPriceType: %r, CalculationReliability: %r",
+                    current_price_type,
+                    calc_reliability,
+                )
+
+                has_market_access = not (
+                    current_price_type == "None"
+                    or calc_reliability in ("NoMarketAccess", "ApproximatedPrice")
+                )
+                self._has_market_data_access = has_market_access
+
+                _LOGGER.debug(
+                    "Market data access determined: %s",
+                    "Available" if has_market_access else "Unavailable",
+                )
+
+                # Log warning once if no market data access
+                if (
+                    not has_market_access
+                    and not self._position_market_data_warning_logged
+                ):
+                    _LOGGER.warning(
+                        "Market data access not available for positions API. "
+                        "Position prices are calculated from P/L data and may not "
+                        "reflect real-time values. Real-time market data may require "
+                        "a separate market data subscription on your Saxo account. "
+                        "Contact Saxo support for more information"
+                    )
+                    self._position_market_data_warning_logged = True
+            else:
+                _LOGGER.debug(
+                    "No positions in portfolio - cannot determine market data access status"
+                )
+
+            for raw_position in raw_positions:
+                try:
+                    # Log the raw position structure for debugging
+                    _LOGGER.debug(
+                        "Raw position keys: %s",
+                        list(raw_position.keys()),
+                    )
+
+                    # Extract base position data
+                    net_position_base = raw_position.get("NetPositionBase", {})
+                    net_position_view = raw_position.get("NetPositionView", {})
+                    display_and_format = raw_position.get("DisplayAndFormat", {})
+
+                    # Also check for PositionView (individual position data with prices)
+                    position_view = raw_position.get("PositionView", {})
+
+                    _LOGGER.debug(
+                        "Position data - NetPositionView: %s, PositionView: %s",
+                        net_position_view,
+                        position_view,
+                    )
+
+                    # Extract required fields
+                    position_id = raw_position.get("NetPositionId", "")
+                    uic = net_position_base.get("Uic", 0)
+                    asset_type = net_position_base.get("AssetType", "Unknown")
+                    amount = net_position_base.get("Amount", 0.0)
+
+                    # Extract display info
+                    symbol = display_and_format.get("Symbol", "")
+                    description = display_and_format.get("Description", "")
+                    currency = display_and_format.get("Currency", "USD")
+
+                    # Extract profit/loss first (needed for price calculation)
+                    profit_loss = (
+                        net_position_view.get("ProfitLossOnTrade")
+                        or net_position_view.get("ProfitLossOnTradeInBaseCurrency")
+                        or 0.0
+                    )
+
+                    # MarketValueOpen is the cost basis (negative = money spent)
+                    # Current market value = abs(cost basis) + profit/loss
+                    market_value_open = net_position_view.get("MarketValueOpen", 0.0)
+
+                    # Calculate current market value from cost basis + P/L
+                    if market_value_open != 0.0:
+                        market_value = abs(market_value_open) + profit_loss
+                    else:
+                        # Fallback to Exposure if available
+                        market_value = net_position_view.get("Exposure", 0.0)
+
+                    # Try to get CurrentPrice directly first
+                    current_price = net_position_view.get("CurrentPrice", 0.0)
+
+                    # If CurrentPrice is 0.0, calculate from market value and amount
+                    if current_price == 0.0 and market_value != 0.0 and amount != 0.0:
+                        current_price = market_value / abs(amount)
+                        _LOGGER.debug(
+                            "Calculated price: (cost=%s + pnl=%s) / amount=%s = %s",
+                            abs(market_value_open),
+                            profit_loss,
+                            amount,
+                            current_price,
+                        )
+
+                    # Skip if no symbol
+                    if not symbol:
+                        _LOGGER.debug("Skipping position %s: no symbol", position_id)
+                        continue
+
+                    # Generate a unique slug for this position
+                    slug = PositionData.generate_slug(symbol, asset_type)
+
+                    position_data = PositionData(
+                        position_id=position_id,
+                        symbol=symbol,
+                        description=description,
+                        asset_type=asset_type,
+                        amount=amount,
+                        current_price=current_price,
+                        market_value=market_value,
+                        profit_loss=profit_loss,
+                        uic=uic,
+                        currency=currency,
+                    )
+
+                    positions[slug] = position_data
+
+                    _LOGGER.debug(
+                        "Parsed position: %s (%s) - %s units @ %s",
+                        symbol,
+                        asset_type,
+                        amount,
+                        current_price,
+                    )
+
+                except Exception as pos_error:
+                    _LOGGER.debug(
+                        "Error parsing position: %s",
+                        type(pos_error).__name__,
+                    )
+                    continue
+
+            # Update cache
+            self._positions_cache.positions = positions
+            self._positions_cache.position_ids = list(positions.keys())
+            self._positions_cache.last_updated = datetime.now()
+
+            _LOGGER.debug(
+                "Updated positions cache with %d positions: %s",
+                len(positions),
+                list(positions.keys()),
+            )
+
+            return positions
+
+        except Exception as e:
+            _LOGGER.debug(
+                "Positions data fetch failed: %s, returning cached/empty",
+                type(e).__name__,
+            )
+            return self._positions_cache.positions
 
     def _is_market_hours(self) -> bool:
         """Check if current time is during market hours.
@@ -1080,7 +1352,11 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # If it fails/times out, cached/default values are returned
             performance_data = await self._fetch_performance_data_safely(client)
 
-            # STEP 3: Combine balance and performance data
+            # STEP 3: Fetch positions data (OPTIONAL - only if enabled)
+            # This also uses graceful degradation
+            await self._fetch_positions_data_safely(client)
+
+            # STEP 4: Combine balance and performance data
             result = {
                 "cash_balance": balance_data.get("CashBalance", 0.0),
                 "currency": balance_data.get("Currency", "USD"),
@@ -1426,6 +1702,57 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not self.data:
             return "unknown"
         return self.data.get("client_name", "unknown")
+
+    def get_positions(self) -> dict[str, PositionData]:
+        """Get all cached positions.
+
+        Returns:
+            Dictionary mapping position slugs to PositionData objects
+
+        """
+        return self._positions_cache.positions
+
+    def get_position(self, slug: str) -> PositionData | None:
+        """Get a specific position by slug.
+
+        Args:
+            slug: The position slug (e.g., "aapl_stock")
+
+        Returns:
+            PositionData for the position, or None if not found
+
+        """
+        return self._positions_cache.positions.get(slug)
+
+    def get_position_ids(self) -> list[str]:
+        """Get list of all position slugs.
+
+        Returns:
+            List of position slugs
+
+        """
+        return self._positions_cache.position_ids
+
+    def has_market_data_access(self) -> bool | None:
+        """Check if the API has access to real-time market data.
+
+        Returns:
+            True if market data access is available,
+            False if prices are calculated from P/L data,
+            None if not yet determined (no positions fetched)
+
+        """
+        return self._has_market_data_access
+
+    @property
+    def position_sensors_enabled(self) -> bool:
+        """Check if position sensors are enabled.
+
+        Returns:
+            True if position sensors are enabled
+
+        """
+        return self._enable_position_sensors
 
     def mark_sensors_initialized(self) -> None:
         """Mark that sensors have been successfully initialized.

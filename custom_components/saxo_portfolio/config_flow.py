@@ -11,7 +11,9 @@ from homeassistant.helpers import config_entry_oauth2_flow
 from homeassistant import config_entries
 
 from .const import (
+    CONF_ENABLE_POSITION_SENSORS,
     CONF_TIMEZONE,
+    DEFAULT_ENABLE_POSITION_SENSORS,
     DEFAULT_TIMEZONE,
     DOMAIN,
     OAUTH_AUTHORIZE_ENDPOINT,
@@ -315,15 +317,47 @@ class SaxoOptionsFlowHandler(config_entries.OptionsFlow):
     ) -> FlowResult:
         """Manage the options."""
         if user_input is not None:
-            # Update the config entry with new timezone
+            # Check if position sensors setting changed (requires reload)
+            current_position_enabled = self.config_entry.options.get(
+                CONF_ENABLE_POSITION_SENSORS,
+                self.config_entry.data.get(
+                    CONF_ENABLE_POSITION_SENSORS, DEFAULT_ENABLE_POSITION_SENSORS
+                ),
+            )
+            new_position_enabled = user_input.get(
+                CONF_ENABLE_POSITION_SENSORS, DEFAULT_ENABLE_POSITION_SENSORS
+            )
+            needs_reload = current_position_enabled != new_position_enabled
+
+            # Update the config entry with new settings
             new_data = {**self.config_entry.data}
             new_data[CONF_TIMEZONE] = user_input[CONF_TIMEZONE]
+            new_data[CONF_ENABLE_POSITION_SENSORS] = user_input[
+                CONF_ENABLE_POSITION_SENSORS
+            ]
             self.hass.config_entries.async_update_entry(
                 self.config_entry, data=new_data
             )
+
+            # Schedule reload if position sensors setting changed
+            if needs_reload:
+                _LOGGER.info(
+                    "Position sensors setting changed, scheduling reload for entry %s",
+                    self.config_entry.entry_id,
+                )
+                self.hass.async_create_task(
+                    self.hass.config_entries.async_reload(self.config_entry.entry_id)
+                )
+
             return self.async_create_entry(title="", data={})
 
         current_timezone = self.config_entry.data.get(CONF_TIMEZONE, DEFAULT_TIMEZONE)
+        current_position_sensors = self.config_entry.options.get(
+            CONF_ENABLE_POSITION_SENSORS,
+            self.config_entry.data.get(
+                CONF_ENABLE_POSITION_SENSORS, DEFAULT_ENABLE_POSITION_SENSORS
+            ),
+        )
 
         return self.async_show_form(
             step_id="init",
@@ -332,6 +366,9 @@ class SaxoOptionsFlowHandler(config_entries.OptionsFlow):
                     vol.Required(CONF_TIMEZONE, default=current_timezone): vol.In(
                         TIMEZONE_OPTIONS
                     ),
+                    vol.Required(
+                        CONF_ENABLE_POSITION_SENSORS, default=current_position_sensors
+                    ): bool,
                 }
             ),
         )

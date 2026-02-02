@@ -45,7 +45,11 @@
         "title": "Opciones de Saxo Portfolio",
         "description": "Configure cómo la integración actualiza los datos de la cartera.",
         "data": {
-          "timezone": "Zona horaria del mercado"
+          "timezone": "Zona horaria del mercado",
+          "enable_position_sensors": "Activar sensores de posición"
+        },
+        "data_description": {
+          "enable_position_sensors": "Crear sensores individuales para cada posición de la cartera. Esto añade un sensor por posición abierta mostrando el precio actual y atributos como valor de mercado y ganancia/pérdida."
         }
       }
     }

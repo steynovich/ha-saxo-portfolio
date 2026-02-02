@@ -45,7 +45,11 @@
         "title": "Saxo Portfolio asetukset",
         "description": "Määritä miten integraatio päivittää salkkutiedot.",
         "data": {
-          "timezone": "Markkinoiden aikavyöhyke"
+          "timezone": "Markkinoiden aikavyöhyke",
+          "enable_position_sensors": "Ota käyttöön positiosensorit"
+        },
+        "data_description": {
+          "enable_position_sensors": "Luo yksittäiset sensorit jokaiselle salkun positiolle. Tämä lisää yhden sensorin avointa positiota kohden, joka näyttää nykyisen hinnan ja attribuutit kuten markkina-arvon ja voiton/tappion."
         }
       }
     }

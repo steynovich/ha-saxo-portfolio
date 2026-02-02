@@ -1,6 +1,6 @@
 # ha-saxo Development Guidelines
 
-Auto-generated from current implementation. Last updated: 2026-01-04
+Auto-generated from current implementation. Last updated: 2026-02-02
 
 ## Active Technologies
 - Home Assistant Custom Integration
@@ -50,7 +50,7 @@ python -m py_compile custom_components/saxo_portfolio/sensor.py
 ## Current Implementation
 
 ### Core Features
-- **Sixteen Entities**: Complete portfolio monitoring with balance, performance, transfer tracking, and diagnostics
+- **Sixteen+ Entities**: Complete portfolio monitoring with balance, performance, transfer tracking, diagnostics, and optional position sensors
   - `SaxoCashBalanceSensor` from `/port/v1/balances/me` (with long-term statistics)
   - `SaxoTotalValueSensor` from `/port/v1/balances/me` (with long-term statistics)
   - `SaxoNonMarginPositionsValueSensor` from `/port/v1/balances/me` (with long-term statistics)
@@ -78,6 +78,14 @@ python -m py_compile custom_components/saxo_portfolio/sensor.py
 - **Manual Refresh**: Button entity and service for on-demand data refresh
   - `SaxoRefreshButton` - Press to trigger immediate data refresh
   - `saxo_portfolio.refresh_data` service - Refresh all accounts via automations or Developer Tools
+- **Position Sensors** (opt-in): Individual sensors for each portfolio position
+  - `SaxoPositionSensor` from `/port/v1/netpositions/me` (with long-term statistics)
+  - `SaxoMarketDataAccessSensor` - Diagnostic sensor showing API market data access status
+  - One sensor per position with current price as state
+  - Attributes: symbol, description, asset_type, amount, market_value, profit_loss, uic, currency
+  - Dynamic creation: sensors added when new positions open, become unavailable when closed
+  - Calculated prices: when real-time market data unavailable, prices derived from P/L data
+  - Warning logged if API lacks market data access (may require Saxo market data subscription)
 
 ### Entity Naming Pattern
 - All entities use Client ID: `sensor.saxo_{client_id}_{sensor_type}`
@@ -99,6 +107,9 @@ python -m py_compile custom_components/saxo_portfolio/sensor.py
   - `sensor.saxo_123456_last_update` (diagnostic)
   - `sensor.saxo_123456_timezone` (diagnostic)
   - `button.saxo_123456_refresh` (configuration)
+  - `sensor.saxo_123456_market_data_access` (diagnostic, opt-in with positions)
+  - `sensor.saxo_123456_position_aapl_stock` (position, opt-in)
+  - `sensor.saxo_123456_position_eur_usd_fxspot` (position, opt-in)
 - Device: `"Saxo {ClientId} Portfolio"`
 
 ### Configuration Options
@@ -106,6 +117,10 @@ python -m py_compile custom_components/saxo_portfolio/sensor.py
 - Production endpoints only (no environment selection)
 - Automatic token refresh with proper security handling
 - Entity names automatically generated from Saxo Client ID
+- **Position Sensors** (Options Flow): Enable/disable individual position sensors
+  - Default: Disabled (to avoid entity clutter)
+  - Enable via: Integration options → "Enable position sensors"
+  - Triggers integration reload when changed
 
 ### GUI-Based Reauthentication
 - **Seamless Token Refresh**: When OAuth tokens expire, Home Assistant automatically displays a reauthentication button in the UI
@@ -236,6 +251,35 @@ max_failure_time = max(15 * 60, 3 * update_interval_seconds)
   - Service registered once per domain (not per config entry)
   - Service removed when last config entry is unloaded
   - Defined in `services.yaml` and `strings.json`
+
+## Recent Changes (v2.6.0)
+- **Position Sensors**: Optional sensors for individual portfolio positions
+  - One sensor per position with current price as state (supports long-term statistics)
+  - Attributes: symbol, description, asset_type, amount, market_value, profit_loss, uic, currency
+  - Entity ID pattern: `sensor.saxo_{client_id}_position_{symbol}_{asset_type}`
+  - Dynamic creation when positions open, unavailable when closed
+  - Opt-in via integration options (default: disabled)
+- **Position Data Infrastructure**:
+  - `PositionData` dataclass with `generate_slug()` for URL-safe entity IDs
+  - `_fetch_positions_data_safely()` with graceful error handling
+  - Getter methods: `get_positions()`, `get_position()`, `get_position_ids()`, `has_market_data_access()`
+- **Market Data Access Detection**:
+  - `SaxoMarketDataAccessSensor` - Diagnostic sensor showing real-time market data access status
+    - State: "Available", "Unavailable", or "Unknown"
+    - Attributes: `has_real_time_prices`, `note` (guidance when unavailable)
+    - Only created when position sensors are enabled
+    - Entity ID: `sensor.saxo_{client_id}_market_data_access`
+  - Warning logged if API lacks market data permissions
+  - Calculated prices from P/L data when real-time prices unavailable
+  - Price formula: `(abs(MarketValueOpen) + ProfitLossOnTrade) / Amount`
+- **Key Files**:
+  - `coordinator.py:590-760`: Position data fetching and parsing
+  - `coordinator.py:129`: `_has_market_data_access` flag tracking
+  - `coordinator.py:1717-1727`: `has_market_data_access()` getter method
+  - `sensor.py:1119-1169`: `SaxoMarketDataAccessSensor` class
+  - `sensor.py:1171-1230`: `SaxoPositionSensor` class
+  - `sensor.py:30-65`: `_setup_position_listener()` for dynamic creation
+  - `config_flow.py`: Options flow for position sensors toggle
 
 ## Recent Changes (v2.5.1)
 - **Token Refresh Retry Logic**: Improved resilience for OAuth token refresh failures

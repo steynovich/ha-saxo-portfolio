@@ -1,12 +1,26 @@
 """Constants for Saxo Portfolio integration."""
 
+import json
 from datetime import timedelta
+from pathlib import Path
 from typing import Final
+
+
+def _get_version_from_manifest() -> str:
+    """Read version from manifest.json."""
+    try:
+        manifest_path = Path(__file__).parent / "manifest.json"
+        with open(manifest_path, encoding="utf-8") as f:
+            manifest = json.load(f)
+            return manifest.get("version", "0.0.0")
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        return "0.0.0"
+
 
 # Integration identity
 DOMAIN: Final = "saxo_portfolio"
 INTEGRATION_NAME: Final = "Saxo Portfolio"
-INTEGRATION_VERSION: Final = "1.0.0"
+INTEGRATION_VERSION: Final = _get_version_from_manifest()
 
 # Saxo API endpoints - Production only
 SAXO_API_BASE_URL: Final = "https://gateway.saxobank.com/openapi"
@@ -21,6 +35,7 @@ API_BALANCE_ENDPOINT: Final = "/port/v1/balances/me"
 API_CLIENT_DETAILS_ENDPOINT: Final = "/port/v1/clients/me"
 API_PERFORMANCE_ENDPOINT: Final = "/hist/v3/perf/"
 API_PERFORMANCE_V4_ENDPOINT: Final = "/hist/v4/performance/timeseries"
+API_NET_POSITIONS_ENDPOINT: Final = "/port/v1/netpositions/me"
 
 
 # Default configuration
@@ -47,6 +62,10 @@ MARKET_WEEKDAYS: Final = [0, 1, 2, 3, 4]  # Monday through Friday
 # Timezone configuration
 CONF_TIMEZONE: Final = "timezone"
 DEFAULT_TIMEZONE: Final = "America/New_York"
+
+# Position sensors configuration
+CONF_ENABLE_POSITION_SENSORS: Final = "enable_position_sensors"
+DEFAULT_ENABLE_POSITION_SENSORS: Final = False
 
 # Available timezones for market hours detection
 TIMEZONE_OPTIONS: Final = {

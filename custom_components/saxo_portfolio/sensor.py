@@ -27,6 +27,42 @@ from .coordinator import SaxoCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 
+def _setup_position_listener(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    coordinator: SaxoCoordinator,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up listener for new positions.
+
+    This listener creates new position sensors when positions are opened.
+    """
+    known_positions: set[str] = set(coordinator.get_position_ids())
+
+    def _check_new_positions() -> None:
+        """Check for new positions and create sensors."""
+        nonlocal known_positions
+        current_positions = set(coordinator.get_position_ids())
+
+        new_positions = current_positions - known_positions
+
+        if new_positions:
+            _LOGGER.info(
+                "Detected %d new positions, creating sensors: %s",
+                len(new_positions),
+                list(new_positions),
+            )
+            new_entities = [
+                SaxoPositionSensor(coordinator, position_slug)
+                for position_slug in new_positions
+            ]
+            async_add_entities(new_entities, True)
+            known_positions.update(new_positions)
+
+    # Register listener for coordinator updates
+    config_entry.async_on_unload(coordinator.async_add_listener(_check_new_positions))
+
+
 class SaxoSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
     """Base class for all Saxo Portfolio sensors."""
 
@@ -307,6 +343,19 @@ async def async_setup_entry(
         SaxoTimezoneSensor(coordinator),
     ]
 
+    # Add position sensors if enabled
+    if coordinator.position_sensors_enabled:
+        # Add market data access diagnostic sensor
+        entities.append(SaxoMarketDataAccessSensor(coordinator))
+
+        position_ids = coordinator.get_position_ids()
+        _LOGGER.debug(
+            "Position sensors enabled - creating %d position sensors + market data access sensor",
+            len(position_ids),
+        )
+        for position_slug in position_ids:
+            entities.append(SaxoPositionSensor(coordinator, position_slug))
+
     _LOGGER.info(
         "Setting up %d Saxo Portfolio sensors for client '%s' (entry %s)",
         len(entities),
@@ -314,6 +363,10 @@ async def async_setup_entry(
         config_entry.entry_id,
     )
     async_add_entities(entities, True)
+
+    # Set up listener for position changes if enabled
+    if coordinator.position_sensors_enabled:
+        _setup_position_listener(hass, config_entry, coordinator, async_add_entities)
 
     # Mark sensors as initialized in the coordinator
     coordinator.mark_sensors_initialized()
@@ -1065,3 +1118,137 @@ class SaxoTimezoneSensor(SaxoDiagnosticSensorBase):
     def available(self) -> bool:
         """Return True if entity is available."""
         return True
+
+
+class SaxoMarketDataAccessSensor(SaxoDiagnosticSensorBase):
+    """Diagnostic sensor showing if API has access to real-time market data."""
+
+    def __init__(self, coordinator: SaxoCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(
+            coordinator,
+            "market_data_access",
+            "Real-Time Market Data Access",
+            "mdi:chart-line",
+        )
+
+        _LOGGER.debug(
+            "Initialized real-time market data access sensor with unique_id: %s, name: %s",
+            self._attr_unique_id,
+            self._attr_name,
+        )
+
+    @property
+    def native_value(self) -> str:
+        """Return market data access status."""
+        has_access = self.coordinator.has_market_data_access()
+
+        if has_access is None:
+            return "Unknown"
+        elif has_access:
+            return "Available"
+        else:
+            return "Unavailable"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        has_access = self.coordinator.has_market_data_access()
+
+        attrs = {
+            "has_real_time_prices": has_access if has_access is not None else "unknown",
+        }
+
+        if has_access is False:
+            attrs["note"] = (
+                "Prices are calculated from P/L data. Real-time market data may "
+                "require a separate subscription on your Saxo account."
+            )
+
+        return attrs
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        # Available as long as position sensors are enabled
+        return self.coordinator.position_sensors_enabled
+
+
+class SaxoPositionSensor(SaxoSensorBase):
+    """Representation of a Saxo Portfolio Position sensor."""
+
+    def __init__(
+        self,
+        coordinator: SaxoCoordinator,
+        position_slug: str,
+    ) -> None:
+        """Initialize the position sensor.
+
+        Args:
+            coordinator: The coordinator instance
+            position_slug: Unique slug for the position (e.g., "aapl_stock")
+
+        """
+        self._position_slug = position_slug
+        position = coordinator.get_position(position_slug)
+
+        # Get display info from position
+        symbol = position.symbol if position else position_slug
+
+        # Note: We don't use device_class=MONETARY because HA only allows
+        # state_class='total' for monetary sensors. We need state_class='measurement'
+        # to enable historical statistics tracking for price changes.
+        super().__init__(
+            coordinator,
+            f"position_{position_slug}",
+            f"Position {symbol}",
+            icon="mdi:chart-line",
+            unit_of_measurement=position.currency if position else "USD",
+        )
+
+        self._attr_state_class = "measurement"
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the current price of the position."""
+        position = self.coordinator.get_position(self._position_slug)
+        if position is None:
+            return None
+
+        try:
+            import math
+
+            if not math.isfinite(position.current_price):
+                return None
+
+            return round(position.current_price, 4)
+        except Exception:
+            return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return position-specific attributes."""
+        attributes = super().extra_state_attributes
+        position = self.coordinator.get_position(self._position_slug)
+
+        if position:
+            attributes["symbol"] = position.symbol
+            attributes["description"] = position.description
+            attributes["asset_type"] = position.asset_type
+            attributes["amount"] = position.amount
+            attributes["market_value"] = round(position.market_value, 2)
+            attributes["profit_loss"] = round(position.profit_loss, 2)
+            attributes["uic"] = position.uic
+            attributes["currency"] = position.currency
+
+        return attributes
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        # Use improved availability from base class
+        if not super().available:
+            return False
+
+        # Position is available if it exists in cache
+        return self.coordinator.get_position(self._position_slug) is not None

@@ -45,7 +45,11 @@
         "title": "Saxo Portfolio Options",
         "description": "Configure how the integration updates portfolio data.",
         "data": {
-          "timezone": "Market Timezone"
+          "timezone": "Market Timezone",
+          "enable_position_sensors": "Enable Position Sensors"
+        },
+        "data_description": {
+          "enable_position_sensors": "Create individual sensors for each portfolio position. This adds one sensor per open position showing current price and attributes like market value and profit/loss."
         }
       }
     }

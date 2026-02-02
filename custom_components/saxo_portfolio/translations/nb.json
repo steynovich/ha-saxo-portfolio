@@ -45,7 +45,11 @@
         "title": "Saxo Portfolio alternativer",
         "description": "Konfigurer hvordan integrasjonen oppdaterer porteføljedata.",
         "data": {
-          "timezone": "Markedstidssone"
+          "timezone": "Markedstidssone",
+          "enable_position_sensors": "Aktiver posisjonssensorer"
+        },
+        "data_description": {
+          "enable_position_sensors": "Opprett individuelle sensorer for hver porteføljeposisjon. Dette legger til én sensor per åpen posisjon som viser gjeldende pris og attributter som markedsverdi og gevinst/tap."
         }
       }
     }

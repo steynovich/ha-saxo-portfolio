@@ -45,7 +45,11 @@
         "title": "Saxo Portfolio opties",
         "description": "Configureer hoe de integratie portefeuillegegevens bijwerkt.",
         "data": {
-          "timezone": "Markt tijdzone"
+          "timezone": "Markt tijdzone",
+          "enable_position_sensors": "Positiesensoren inschakelen"
+        },
+        "data_description": {
+          "enable_position_sensors": "Maak individuele sensoren voor elke portefeuillepositie. Dit voegt één sensor per open positie toe met de huidige prijs en attributen zoals marktwaarde en winst/verlies."
         }
       }
     }
