@@ -35,7 +35,7 @@
       "unknown": "Ocorreu um erro inesperado. Por favor, tente novamente."
     },
     "abort": {
-      "missing_credentials": "**Credenciais de aplicativo necessárias**\n\nAntes de configurar o Saxo Portfolio, você precisa configurar as credenciais do aplicativo.\n\n**Passos:**\n1. Acesse o [Portal de Desenvolvedores Saxo](https://www.developer.saxo/openapi/appmanagement)\n2. Crie um aplicativo de produção com URI de redirecionamento: `https://my.home-assistant.io/redirect/oauth`\n3. Vá para [Credenciais de Aplicativo]({setup_url}) no Home Assistant\n4. Adicione credenciais para {domain} com sua chave de aplicativo e segredo\n5. Retorne aqui para concluir a configuração\n\n**Endpoints OAuth de produção:**\n• Autorizar: {authorize_url}\n• Token: {token_url}",
+      "missing_credentials": "**Credenciais de aplicativo necessárias**\n\nAntes de configurar o Saxo Portfolio, você precisa configurar as credenciais do aplicativo.\n\n**Passos:**\n1. Acesse o [Portal de Desenvolvedores Saxo]({developer_portal_url})\n2. Crie um aplicativo de produção com URI de redirecionamento: `{redirect_uri}`\n3. Vá para [Credenciais de Aplicativo]({setup_url}) no Home Assistant\n4. Adicione credenciais para {domain} com sua chave de aplicativo e segredo\n5. Retorne aqui para concluir a configuração\n\n**Endpoints OAuth de produção:**\n• Autorizar: {authorize_url}\n• Token: {token_url}",
       "reauth_successful": "Reautenticação com Saxo Bank bem-sucedida. Sua integração agora funcionará com as novas credenciais."
     }
   },

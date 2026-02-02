@@ -35,7 +35,7 @@
       "unknown": "Onverwachte fout opgetreden. Probeer het opnieuw."
     },
     "abort": {
-      "missing_credentials": "**Applicatiegegevens vereist**\n\nVoordat u Saxo Portfolio instelt, moet u applicatiegegevens configureren.\n\n**Stappen:**\n1. Ga naar het [Saxo Developer Portal](https://www.developer.saxo/openapi/appmanagement)\n2. Maak een productieapplicatie met redirect URI: `https://my.home-assistant.io/redirect/oauth`\n3. Ga naar [Applicatiegegevens]({setup_url}) in Home Assistant\n4. Voeg gegevens toe voor {domain} met uw App Key en Secret\n5. Keer hier terug om de installatie te voltooien\n\n**Productie OAuth-eindpunten:**\n• Autoriseren: {authorize_url}\n• Token: {token_url}",
+      "missing_credentials": "**Applicatiegegevens vereist**\n\nVoordat u Saxo Portfolio instelt, moet u applicatiegegevens configureren.\n\n**Stappen:**\n1. Ga naar het [Saxo Developer Portal]({developer_portal_url})\n2. Maak een productieapplicatie met redirect URI: `{redirect_uri}`\n3. Ga naar [Applicatiegegevens]({setup_url}) in Home Assistant\n4. Voeg gegevens toe voor {domain} met uw App Key en Secret\n5. Keer hier terug om de installatie te voltooien\n\n**Productie OAuth-eindpunten:**\n• Autoriseren: {authorize_url}\n• Token: {token_url}",
       "reauth_successful": "Succesvol opnieuw geauthenticeerd met Saxo Bank. Uw integratie werkt nu met de nieuwe gegevens."
     }
   },

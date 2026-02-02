@@ -35,7 +35,7 @@
       "unknown": "Unerwarteter Fehler aufgetreten. Bitte versuchen Sie es erneut."
     },
     "abort": {
-      "missing_credentials": "**Anwendungsanmeldedaten erforderlich**\n\nBevor Sie Saxo Portfolio einrichten, müssen Sie Anwendungsanmeldedaten konfigurieren.\n\n**Schritte:**\n1. Gehen Sie zum [Saxo Developer Portal](https://www.developer.saxo/openapi/appmanagement)\n2. Erstellen Sie eine Produktionsanwendung mit Redirect-URI: `https://my.home-assistant.io/redirect/oauth`\n3. Gehen Sie zu [Anwendungsanmeldedaten]({setup_url}) in Home Assistant\n4. Fügen Sie Anmeldedaten für {domain} mit Ihrem App-Schlüssel und Geheimnis hinzu\n5. Kehren Sie hierher zurück, um die Einrichtung abzuschließen\n\n**Produktions-OAuth-Endpunkte:**\n• Autorisieren: {authorize_url}\n• Token: {token_url}",
+      "missing_credentials": "**Anwendungsanmeldedaten erforderlich**\n\nBevor Sie Saxo Portfolio einrichten, müssen Sie Anwendungsanmeldedaten konfigurieren.\n\n**Schritte:**\n1. Gehen Sie zum [Saxo Developer Portal]({developer_portal_url})\n2. Erstellen Sie eine Produktionsanwendung mit Redirect-URI: `{redirect_uri}`\n3. Gehen Sie zu [Anwendungsanmeldedaten]({setup_url}) in Home Assistant\n4. Fügen Sie Anmeldedaten für {domain} mit Ihrem App-Schlüssel und Geheimnis hinzu\n5. Kehren Sie hierher zurück, um die Einrichtung abzuschließen\n\n**Produktions-OAuth-Endpunkte:**\n• Autorisieren: {authorize_url}\n• Token: {token_url}",
       "reauth_successful": "Erfolgreich bei Saxo Bank erneut authentifiziert. Ihre Integration funktioniert jetzt mit den neuen Anmeldedaten."
     }
   },

@@ -35,7 +35,7 @@
       "unknown": "Odottamaton virhe tapahtui. Yritä uudelleen."
     },
     "abort": {
-      "missing_credentials": "**Sovelluksen tunnistetiedot vaaditaan**\n\nEnnen Saxo Portfolion määrittämistä sinun on määritettävä sovelluksen tunnistetiedot.\n\n**Vaiheet:**\n1. Siirry [Saxo Developer Portal](https://www.developer.saxo/openapi/appmanagement)\n2. Luo tuotantosovellus uudelleenohjaus-URI:lla: `https://my.home-assistant.io/redirect/oauth`\n3. Siirry [Sovelluksen tunnistetiedot]({setup_url}) Home Assistantissa\n4. Lisää tunnistetiedot domainille {domain} App Key ja Secret -tiedoillasi\n5. Palaa tänne viimeistelläksesi asennuksen\n\n**Tuotannon OAuth-päätepisteet:**\n• Valtuuta: {authorize_url}\n• Token: {token_url}",
+      "missing_credentials": "**Sovelluksen tunnistetiedot vaaditaan**\n\nEnnen Saxo Portfolion määrittämistä sinun on määritettävä sovelluksen tunnistetiedot.\n\n**Vaiheet:**\n1. Siirry [Saxo Developer Portal]({developer_portal_url})\n2. Luo tuotantosovellus uudelleenohjaus-URI:lla: `{redirect_uri}`\n3. Siirry [Sovelluksen tunnistetiedot]({setup_url}) Home Assistantissa\n4. Lisää tunnistetiedot domainille {domain} App Key ja Secret -tiedoillasi\n5. Palaa tänne viimeistelläksesi asennuksen\n\n**Tuotannon OAuth-päätepisteet:**\n• Valtuuta: {authorize_url}\n• Token: {token_url}",
       "reauth_successful": "Uudelleentodennus Saxo Bankin kanssa onnistui. Integraatiosi toimii nyt uusilla tunnistetiedoilla."
     }
   },

@@ -35,7 +35,7 @@
       "unknown": "Der opstod en uventet fejl. Prøv venligst igen."
     },
     "abort": {
-      "missing_credentials": "**Applikationslegitimationsoplysninger påkrævet**\n\nFør du opsætter Saxo Portfolio, skal du konfigurere applikationslegitimationsoplysninger.\n\n**Trin:**\n1. Gå til [Saxo Developer Portal](https://www.developer.saxo/openapi/appmanagement)\n2. Opret en produktionsapplikation med omdirigerings-URI: `https://my.home-assistant.io/redirect/oauth`\n3. Gå til [Applikationslegitimationsoplysninger]({setup_url}) i Home Assistant\n4. Tilføj legitimationsoplysninger for {domain} med din App Key og Secret\n5. Vend tilbage hertil for at fuldføre opsætningen\n\n**Produktions OAuth-endpoints:**\n• Godkend: {authorize_url}\n• Token: {token_url}",
+      "missing_credentials": "**Applikationslegitimationsoplysninger påkrævet**\n\nFør du opsætter Saxo Portfolio, skal du konfigurere applikationslegitimationsoplysninger.\n\n**Trin:**\n1. Gå til [Saxo Developer Portal]({developer_portal_url})\n2. Opret en produktionsapplikation med omdirigerings-URI: `{redirect_uri}`\n3. Gå til [Applikationslegitimationsoplysninger]({setup_url}) i Home Assistant\n4. Tilføj legitimationsoplysninger for {domain} med din App Key og Secret\n5. Vend tilbage hertil for at fuldføre opsætningen\n\n**Produktions OAuth-endpoints:**\n• Godkend: {authorize_url}\n• Token: {token_url}",
       "reauth_successful": "Genautentificering med Saxo Bank lykkedes. Din integration vil nu fungere med de nye legitimationsoplysninger."
     }
   },

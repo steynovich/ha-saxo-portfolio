@@ -35,7 +35,7 @@
       "unknown": "Ett oväntat fel uppstod. Vänligen försök igen."
     },
     "abort": {
-      "missing_credentials": "**Applikationsuppgifter krävs**\n\nInnan du ställer in Saxo Portfolio måste du konfigurera applikationsuppgifter.\n\n**Steg:**\n1. Gå till [Saxo Developer Portal](https://www.developer.saxo/openapi/appmanagement)\n2. Skapa en produktionsapplikation med omdirigerings-URI: `https://my.home-assistant.io/redirect/oauth`\n3. Gå till [Applikationsuppgifter]({setup_url}) i Home Assistant\n4. Lägg till uppgifter för {domain} med din App Key och Secret\n5. Återvänd hit för att slutföra inställningen\n\n**Produktions OAuth-endpoints:**\n• Auktorisera: {authorize_url}\n• Token: {token_url}",
+      "missing_credentials": "**Applikationsuppgifter krävs**\n\nInnan du ställer in Saxo Portfolio måste du konfigurera applikationsuppgifter.\n\n**Steg:**\n1. Gå till [Saxo Developer Portal]({developer_portal_url})\n2. Skapa en produktionsapplikation med omdirigerings-URI: `{redirect_uri}`\n3. Gå till [Applikationsuppgifter]({setup_url}) i Home Assistant\n4. Lägg till uppgifter för {domain} med din App Key och Secret\n5. Återvänd hit för att slutföra inställningen\n\n**Produktions OAuth-endpoints:**\n• Auktorisera: {authorize_url}\n• Token: {token_url}",
       "reauth_successful": "Återautentisering med Saxo Bank lyckades. Din integration kommer nu att fungera med de nya uppgifterna."
     }
   },

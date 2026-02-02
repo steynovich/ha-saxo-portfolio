@@ -92,6 +92,8 @@ class SaxoPortfolioFlowHandler(
                     "token_url": f"{SAXO_AUTH_BASE_URL}{OAUTH_TOKEN_ENDPOINT}",
                     "setup_url": "/config/application_credentials",
                     "domain": DOMAIN,
+                    "developer_portal_url": "https://www.developer.saxo/openapi/appmanagement",
+                    "redirect_uri": "https://my.home-assistant.io/redirect/oauth",
                 },
             )
 
