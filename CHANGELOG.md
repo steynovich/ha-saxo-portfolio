@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.1] - 2026-02-10
+
+### Fixed
+- **Home Assistant Validation Error**: Removed `device_class='monetary'` from `SaxoAccumulatedProfitLossSensor`
+  - Home Assistant doesn't allow `device_class='monetary'` with `state_class='measurement'`
+  - Profit/loss can be negative, requiring `state_class='measurement'` for long-term statistics
+  - Sensor still displays currency unit and includes currency in attributes
+  - Resolves warning: "Entity is using state class 'measurement' which is impossible considering device class ('monetary')"
+
 ## [2.7.0] - 2026-02-10
 
 ### Added
@@ -1286,6 +1295,7 @@ Condition #4 ensures reload only happens AFTER initial setup completes, when sen
 - Modular data models for type safety and consistency
 - Proper Home Assistant integration patterns
 
+[2.7.1]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.7.1
 [2.7.0]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.7.0
 [2.6.0]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.6.0
 [2.2.1]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.2.1
