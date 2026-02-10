@@ -14,6 +14,7 @@ A **Platinum-grade** Home Assistant integration for monitoring your Saxo Bank po
 - 💰 **Nine Portfolio Sensors**: Real-time balance, performance metrics, and cash transfer tracking from multiple Saxo API endpoints
 - 📊 **Seven Diagnostic Sensors**: Built-in monitoring for integration health, account identification, token expiry, and market status
 - ⚡ **Smart Performance Caching**: Performance data updates hourly while balance data remains real-time for optimal API usage
+- 📈 **Long-Term Statistics**: Performance sensors support Home Assistant statistics for historical tracking and trend analysis
 - 🏷️ **Automatic Entity Naming**: Entity names auto-generated using your Saxo Client ID (e.g., `saxo_123456_cash_balance`)
 - 🕒 **Intelligent Scheduling**: Configurable market timezone with dynamic update intervals (5 min during market hours, 30 min after hours)
 - 📊 **Performance Analytics**: All-time profit/loss, investment returns, and cash transfer balance tracking
@@ -39,6 +40,12 @@ The integration provides **nine comprehensive sensors** that automatically use y
 - **Month Investment Performance**: Month-to-Date portfolio return percentage (`sensor.saxo_{clientid}_month_investment_performance`)
 - **Quarter Investment Performance**: Quarter-to-Date portfolio return percentage (`sensor.saxo_{clientid}_quarter_investment_performance`)
 - **Cash Transfer Balance**: Latest cash transfer value tracking deposits and withdrawals (`sensor.saxo_{clientid}_cash_transfer_balance`)
+
+**Long-Term Statistics**: All performance sensors support Home Assistant's long-term statistics system with `state_class: measurement`, enabling:
+- Historical data retention beyond the default 10-day recorder purge period
+- Trend visualization in History and Energy panels
+- Statistical analysis with min, max, and mean values
+- Support for both positive and negative performance values
 
 ### Key Features
 - **API Endpoints Used**: `/port/v1/balances/me`, `/port/v1/clients/me`, `/port/v1/accounts/{AccountKey}`, `/hist/v3/perf/`, `/hist/v4/performance/timeseries`

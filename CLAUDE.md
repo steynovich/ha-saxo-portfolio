@@ -45,6 +45,7 @@ python -m pytest tests/   # Run tests
 - `SaxoMonthInvestmentPerformanceSensor`, `SaxoQuarterInvestmentPerformanceSensor`
 - `SaxoAccumulatedProfitLossSensor` (from `/hist/v3/perf/`)
 - `SaxoCashTransferBalanceSensor`
+- All performance sensors support long-term statistics (`state_class="measurement"`)
 
 ### Diagnostic Sensors
 - `SaxoClientIDSensor`, `SaxoAccountIDSensor`, `SaxoNameSensor`
@@ -68,11 +69,12 @@ Device: `"Saxo {ClientId} Portfolio"`
 - `SaxoSensorBase` - Common functionality for all sensors
 - `SaxoBalanceSensorBase` - Monetary sensors with currency handling, `state_class="total"`
 - `SaxoDiagnosticSensorBase` - EntityCategory.DIAGNOSTIC
-- `SaxoPerformanceSensorBase` - Time period handling and caching
+- `SaxoPerformanceSensorBase` - Time period handling, caching, and long-term statistics (`state_class="measurement"`)
 
 ### Key Behaviors
 - **Market Hours**: 5 min updates during market hours, 30 min after hours
 - **Performance Caching**: 2-hour cache for performance data
+- **Long-Term Statistics**: Performance sensors support HA statistics for historical tracking
 - **Sticky Availability**: Sensors stay available during updates, unavailable after 15+ min failures
 - **Graceful Degradation**: Performance API failures don't block balance data
 - **GUI Reauthentication**: OAuth reauth without removing integration

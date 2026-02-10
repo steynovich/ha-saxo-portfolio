@@ -427,7 +427,8 @@ class SaxoAccumulatedProfitLossSensor(SaxoSensorBase):
             icon="mdi:trending-up",
             unit_of_measurement=coordinator.get_currency(),
         )
-        self._attr_state_class = "total"
+        self._attr_state_class = "measurement"
+        self._attr_suggested_display_precision = 2
 
     @property
     def native_value(self) -> StateType:
@@ -493,6 +494,8 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
             unit_of_measurement="%",
         )
         self._data_key = data_key
+        self._attr_state_class = "measurement"
+        self._attr_suggested_display_precision = 2
 
     @property
     def native_value(self) -> StateType:

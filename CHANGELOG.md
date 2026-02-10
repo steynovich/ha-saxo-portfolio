@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2026-02-10
+
+### Added
+- **Long-Term Statistics Support**: Performance sensors now support Home Assistant's long-term statistics system ([#10](https://github.com/steynovich/ha-saxo-portfolio/issues/10))
+  - Changed `state_class` from `"total"` to `"measurement"` for all performance sensors
+  - Enables historical tracking beyond the default 10-day recorder retention period
+  - Supports trend visualization in History/Energy panels and statistical analysis
+  - Compatible with negative performance values (losses)
+  - Affects all 5 performance sensors:
+    - `SaxoInvestmentPerformanceSensor` (all-time)
+    - `SaxoYTDInvestmentPerformanceSensor`
+    - `SaxoMonthInvestmentPerformanceSensor`
+    - `SaxoQuarterInvestmentPerformanceSensor`
+    - `SaxoAccumulatedProfitLossSensor`
+
+### Changed
+- **Performance Sensor Configuration**: All performance sensors now use `state_class="measurement"` with `suggested_display_precision=2`
+- **SaxoPerformanceSensorBase**: Added default `state_class` and display precision configuration
+- **SaxoAccumulatedProfitLossSensor**: Changed from `state_class="total"` to `state_class="measurement"`
+
+### Technical Details
+- Updated `SaxoPerformanceSensorBase.__init__()` to set `state_class="measurement"` and `suggested_display_precision=2`
+- Updated `SaxoAccumulatedProfitLossSensor.__init__()` to use `state_class="measurement"`
+- Home Assistant `state_class="measurement"` allows both positive and negative values, suitable for investment performance tracking
+- No breaking changes - existing functionality preserved, statistics tracking now enabled
+
 ## [2.6.0] - 2026-02-03
 
 ### Added
@@ -1260,6 +1286,7 @@ Condition #4 ensures reload only happens AFTER initial setup completes, when sen
 - Modular data models for type safety and consistency
 - Proper Home Assistant integration patterns
 
+[2.7.0]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.7.0
 [2.6.0]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.6.0
 [2.2.1]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.2.1
 [2.2.0]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.2.0
