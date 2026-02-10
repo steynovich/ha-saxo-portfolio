@@ -423,7 +423,6 @@ class SaxoAccumulatedProfitLossSensor(SaxoSensorBase):
             coordinator,
             "accumulated_profit_loss",
             "Portfolio Accumulated Profit/Loss",
-            device_class=SensorDeviceClass.MONETARY,
             icon="mdi:trending-up",
             unit_of_measurement=coordinator.get_currency(),
         )
