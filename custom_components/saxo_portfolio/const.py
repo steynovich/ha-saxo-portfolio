@@ -1,5 +1,7 @@
 """Constants for Saxo Portfolio integration."""
 
+from __future__ import annotations
+
 import json
 from datetime import timedelta
 from pathlib import Path
@@ -13,7 +15,7 @@ def _get_version_from_manifest() -> str:
         with open(manifest_path, encoding="utf-8") as f:
             manifest = json.load(f)
             return manifest.get("version", "0.0.0")
-    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+    except FileNotFoundError, json.JSONDecodeError, KeyError:
         return "0.0.0"
 
 

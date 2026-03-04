@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.0-beta.1] - 2026-03-04
+
+### Added
+- **Python 3.14 Support**: Full compatibility with Python 3.14 and Home Assistant 2026.3
+  - Updated ruff target-version to `py314`
+  - Updated mypy python_version to `3.14`
+  - Added Python 3.14 classifier to pyproject.toml
+  - Added Python 3.14 to CI test matrix
+  - Updated quality workflow to Python 3.14
+
+### Changed
+- **Replaced `async_timeout` with `asyncio.timeout`**: Removed third-party `async_timeout` dependency
+  - `asyncio.timeout` is available in stdlib since Python 3.11
+  - Updated `coordinator.py` and `api/saxo_client.py`
+- **Code consistency**: Added `from __future__ import annotations` to `const.py`
+- **Formatting**: Applied ruff formatting to `diagnostics.py` and `models.py`
+
 ## [2.7.1] - 2026-02-10
 
 ### Fixed
@@ -1295,6 +1312,7 @@ Condition #4 ensures reload only happens AFTER initial setup completes, when sen
 - Modular data models for type safety and consistency
 - Proper Home Assistant integration patterns
 
+[2.8.0-beta.1]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.8.0-beta.1
 [2.7.1]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.7.1
 [2.7.0]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.7.0
 [2.6.0]: https://github.com/steynovich/ha-saxo-portfolio/releases/tag/v2.6.0

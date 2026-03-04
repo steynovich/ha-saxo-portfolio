@@ -7,6 +7,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import config_entry_oauth2_flow
 
 from .const import (
     CONF_ENTITY_PREFIX,
@@ -38,8 +39,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
     try:
+        # Create OAuth2 session for automatic token management
+        implementation = (
+            await config_entry_oauth2_flow.async_get_config_entry_implementation(
+                hass, entry
+            )
+        )
+        oauth_session = config_entry_oauth2_flow.OAuth2Session(
+            hass, entry, implementation
+        )
+
         # Create the coordinator
-        coordinator = SaxoCoordinator(hass, entry)
+        coordinator = SaxoCoordinator(hass, entry, oauth_session)
 
         # Perform initial refresh to validate configuration
         await coordinator.async_refresh()

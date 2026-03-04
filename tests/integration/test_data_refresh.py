@@ -46,6 +46,14 @@ class TestDataRefreshCycle:
         return config_entry
 
     @pytest.fixture
+    def mock_oauth_session(self, mock_config_entry):
+        """Create a mock OAuth2 session."""
+        session = Mock()
+        session.token = mock_config_entry.data["token"]
+        session.async_ensure_token_valid = AsyncMock()
+        return session
+
+    @pytest.fixture
     def mock_saxo_api_response(self):
         """Mock successful Saxo API responses."""
         return {
@@ -90,7 +98,7 @@ class TestDataRefreshCycle:
 
     @pytest.mark.asyncio
     async def test_coordinator_initial_refresh_on_setup(
-        self, mock_hass, mock_config_entry, mock_saxo_api_response
+        self, mock_hass, mock_config_entry, mock_oauth_session, mock_saxo_api_response
     ):
         """Test that coordinator performs initial data refresh during setup.
 
@@ -111,7 +119,9 @@ class TestDataRefreshCycle:
             mock_client_class.return_value = mock_client
 
             # Create coordinator
-            coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+            coordinator = SaxoCoordinator(
+                mock_hass, mock_config_entry, mock_oauth_session
+            )
 
             # Perform initial refresh
             await coordinator.async_config_entry_first_refresh()
@@ -130,7 +140,7 @@ class TestDataRefreshCycle:
 
     @pytest.mark.asyncio
     async def test_dynamic_update_interval_market_hours(
-        self, mock_hass, mock_config_entry
+        self, mock_hass, mock_config_entry, mock_oauth_session
     ):
         """Test that update interval changes based on market hours.
 
@@ -139,7 +149,7 @@ class TestDataRefreshCycle:
         """
         # This test MUST FAIL initially - no implementation exists
 
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
         # Mock market hours check (9 AM EST = market open)
         with patch.object(coordinator, "_is_market_hours") as mock_market_check:
@@ -160,11 +170,13 @@ class TestDataRefreshCycle:
             assert coordinator.update_interval == timedelta(minutes=30)
 
     @pytest.mark.asyncio
-    async def test_market_hours_detection_logic(self, mock_hass, mock_config_entry):
+    async def test_market_hours_detection_logic(
+        self, mock_hass, mock_config_entry, mock_oauth_session
+    ):
         """Test market hours detection for different time zones and days."""
         # This test MUST FAIL initially - no implementation exists
 
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
         # Test weekday during market hours (9:30 AM - 4 PM EST)
         with patch("homeassistant.util.dt.now") as mock_now:
@@ -187,11 +199,13 @@ class TestDataRefreshCycle:
             assert is_market_hours is False
 
     @pytest.mark.asyncio
-    async def test_automatic_refresh_scheduling(self, mock_hass, mock_config_entry):
+    async def test_automatic_refresh_scheduling(
+        self, mock_hass, mock_config_entry, mock_oauth_session
+    ):
         """Test that coordinator schedules automatic refreshes."""
         # This test MUST FAIL initially - no implementation exists
 
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
         # Mock time-based refresh scheduling
         with patch("asyncio.sleep") as mock_sleep:
@@ -210,7 +224,7 @@ class TestDataRefreshCycle:
 
     @pytest.mark.asyncio
     async def test_manual_refresh_request(
-        self, mock_hass, mock_config_entry, mock_saxo_api_response
+        self, mock_hass, mock_config_entry, mock_oauth_session, mock_saxo_api_response
     ):
         """Test manual refresh request functionality.
 
@@ -229,7 +243,9 @@ class TestDataRefreshCycle:
             mock_client.get_accounts.return_value = mock_saxo_api_response["accounts"]
             mock_client_class.return_value = mock_client
 
-            coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+            coordinator = SaxoCoordinator(
+                mock_hass, mock_config_entry, mock_oauth_session
+            )
 
             # Record initial last updated time
             await coordinator.async_config_entry_first_refresh()
@@ -249,12 +265,12 @@ class TestDataRefreshCycle:
 
     @pytest.mark.asyncio
     async def test_refresh_with_updated_data_triggers_sensors(
-        self, mock_hass, mock_config_entry
+        self, mock_hass, mock_config_entry, mock_oauth_session
     ):
         """Test that data refresh triggers sensor state updates."""
         # This test MUST FAIL initially - no implementation exists
 
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
         # Mock sensors listening to coordinator
         mock_sensor1 = Mock()
@@ -282,12 +298,12 @@ class TestDataRefreshCycle:
 
     @pytest.mark.asyncio
     async def test_refresh_failure_preserves_last_good_data(
-        self, mock_hass, mock_config_entry
+        self, mock_hass, mock_config_entry, mock_oauth_session
     ):
         """Test that refresh failures preserve last good data."""
         # This test MUST FAIL initially - no implementation exists
 
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
         # Successful initial refresh
         with patch.object(coordinator, "_async_update_data") as mock_update:
@@ -312,7 +328,7 @@ class TestDataRefreshCycle:
 
     @pytest.mark.asyncio
     async def test_oauth_token_refresh_during_data_update(
-        self, mock_hass, mock_config_entry
+        self, mock_hass, mock_config_entry, mock_oauth_session
     ):
         """Test automatic OAuth token refresh during data updates."""
         # This test MUST FAIL initially - no implementation exists
@@ -320,34 +336,26 @@ class TestDataRefreshCycle:
         # Set expired token
         expired_time = (datetime.now() - timedelta(hours=1)).timestamp()
         mock_config_entry.data["token"]["expires_at"] = expired_time
+        mock_oauth_session.token = mock_config_entry.data["token"]
 
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
-        with patch.object(coordinator, "_refresh_oauth_token") as mock_refresh_token:
-            mock_refresh_token.return_value = {
-                "access_token": "new_token",
-                "refresh_token": "new_refresh",
-                "expires_at": (datetime.now() + timedelta(hours=1)).timestamp(),
-            }
+        with patch.object(coordinator, "_fetch_portfolio_data") as mock_fetch:
+            mock_fetch.return_value = {"portfolio": {"total_value": 100000}}
 
-            with patch.object(coordinator, "_fetch_portfolio_data") as mock_fetch:
-                mock_fetch.return_value = {"portfolio": {"total_value": 100000}}
+            await coordinator._async_update_data()
 
-                await coordinator._async_update_data()
-
-                # Should have refreshed token
-                mock_refresh_token.assert_called_once()
-
-                # Should have updated config entry with new token
-                updated_token = mock_config_entry.data["token"]
-                assert updated_token["access_token"] == "new_token"
+            # Should have called async_ensure_token_valid via OAuth2Session
+            mock_oauth_session.async_ensure_token_valid.assert_called()
 
     @pytest.mark.asyncio
-    async def test_rate_limiting_between_requests(self, mock_hass, mock_config_entry):
+    async def test_rate_limiting_between_requests(
+        self, mock_hass, mock_config_entry, mock_oauth_session
+    ):
         """Test that rate limiting is enforced between API requests."""
         # This test MUST FAIL initially - no implementation exists
 
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
         with patch(
             "custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient"
@@ -368,12 +376,12 @@ class TestDataRefreshCycle:
 
     @pytest.mark.asyncio
     async def test_concurrent_refresh_requests_handled(
-        self, mock_hass, mock_config_entry
+        self, mock_hass, mock_config_entry, mock_oauth_session
     ):
         """Test that concurrent refresh requests are handled properly."""
         # This test MUST FAIL initially - no implementation exists
 
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
         with patch.object(coordinator, "_async_update_data") as mock_update:
             # Slow update simulation
@@ -397,11 +405,13 @@ class TestDataRefreshCycle:
             assert mock_update.call_count <= 3
 
     @pytest.mark.asyncio
-    async def test_refresh_timing_accuracy(self, mock_hass, mock_config_entry):
+    async def test_refresh_timing_accuracy(
+        self, mock_hass, mock_config_entry, mock_oauth_session
+    ):
         """Test that refresh intervals are accurate within acceptable tolerance."""
         # This test MUST FAIL initially - no implementation exists
 
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
         # Set 5-minute interval (market hours)
         coordinator.update_interval = timedelta(minutes=5)
@@ -422,12 +432,12 @@ class TestDataRefreshCycle:
 
     @pytest.mark.asyncio
     async def test_data_consistency_across_refresh_cycles(
-        self, mock_hass, mock_config_entry
+        self, mock_hass, mock_config_entry, mock_oauth_session
     ):
         """Test data consistency across multiple refresh cycles."""
         # This test MUST FAIL initially - no implementation exists
 
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
         # Track data consistency
         data_snapshots = []

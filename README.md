@@ -244,7 +244,7 @@ This integration maintains high code quality standards with comprehensive CI/CD:
 ### 🚀 **GitHub Actions Workflows**
 - **HACS Validation**: Ensures repository meets HACS standards for publication
 - **Hassfest**: Validates Home Assistant integration compliance and manifest structure
-- **Automated Testing**: Multi-version Python testing (3.11, 3.12) with dependency management
+- **Automated Testing**: Multi-version Python testing (3.13, 3.14) with dependency management
 - **Code Quality**: Linting, formatting, and type checking with Ruff and MyPy
 
 ### 🧪 **Testing Framework**

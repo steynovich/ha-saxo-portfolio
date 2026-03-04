@@ -3,7 +3,7 @@
 ## Technologies
 - Home Assistant Custom Integration (HACS compatible)
 - OAuth 2.0 Authentication with Saxo Bank OpenAPI
-- Python 3.13+
+- Python 3.14+
 
 ## Project Structure
 ```

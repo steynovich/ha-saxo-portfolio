@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ha-saxo-portfolio"
-version = "1.0.1"
+version = "2.8.0-beta.1"
 description = "Home Assistant integration for Saxo Portfolio monitoring"
 authors = [{name = "Home Assistant Community", email = "hello@home-assistant.io"}]
 license = {text = "MIT"}
@@ -17,6 +17,7 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Home Automation",
 ]
 dependencies = [
@@ -47,7 +48,7 @@ include-package-data = true
 include = ["custom_components*"]
 
 [tool.ruff]
-target-version = "py313"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = [
@@ -93,7 +94,7 @@ fixture-parentheses = false
 keep-runtime-typing = true
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 ignore_errors = true
 follow_imports = "silent"
 ignore_missing_imports = true

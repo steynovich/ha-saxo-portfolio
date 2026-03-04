@@ -12,7 +12,6 @@ import time
 from typing import Any
 
 import aiohttp
-import async_timeout
 
 from ..const import (
     API_BALANCE_ENDPOINT,
@@ -220,7 +219,7 @@ class SaxoApiClient:
 
         for attempt in range(MAX_RETRIES):
             try:
-                async with async_timeout.timeout(API_TIMEOUT_TOTAL):
+                async with asyncio.timeout(API_TIMEOUT_TOTAL):
                     async with self.session.get(url, params=params) as response:
                         from ..models import mask_url_for_logging
 
@@ -391,7 +390,7 @@ class SaxoApiClient:
 
             return response
 
-        except (AuthenticationError, RateLimitError):
+        except AuthenticationError, RateLimitError:
             raise
         except Exception as e:
             _LOGGER.error("Error fetching account balance: %s", type(e).__name__)
@@ -432,7 +431,7 @@ class SaxoApiClient:
 
             return response
 
-        except (AuthenticationError, RateLimitError):
+        except AuthenticationError, RateLimitError:
             raise
         except Exception as e:
             _LOGGER.debug("Error fetching client details: %s", type(e).__name__)
@@ -469,7 +468,7 @@ class SaxoApiClient:
 
             return response
 
-        except (AuthenticationError, RateLimitError):
+        except AuthenticationError, RateLimitError:
             raise
         except Exception as e:
             _LOGGER.error("Error fetching performance data: %s", type(e).__name__)
@@ -532,7 +531,7 @@ class SaxoApiClient:
                 if i < len(periods) - 1:
                     await asyncio.sleep(0.5)
 
-            except (AuthenticationError, RateLimitError):
+            except AuthenticationError, RateLimitError:
                 raise
             except Exception as e:
                 _LOGGER.error(
@@ -578,7 +577,7 @@ class SaxoApiClient:
 
             return response
 
-        except (AuthenticationError, RateLimitError):
+        except AuthenticationError, RateLimitError:
             raise
         except Exception as e:
             _LOGGER.error("Error fetching performance v4 data: %s", type(e).__name__)
@@ -618,7 +617,7 @@ class SaxoApiClient:
 
             return response
 
-        except (AuthenticationError, RateLimitError):
+        except AuthenticationError, RateLimitError:
             raise
         except Exception as e:
             _LOGGER.error(
@@ -660,7 +659,7 @@ class SaxoApiClient:
 
             return response
 
-        except (AuthenticationError, RateLimitError):
+        except AuthenticationError, RateLimitError:
             raise
         except Exception as e:
             _LOGGER.error(
@@ -702,7 +701,7 @@ class SaxoApiClient:
 
             return response
 
-        except (AuthenticationError, RateLimitError):
+        except AuthenticationError, RateLimitError:
             raise
         except Exception as e:
             _LOGGER.error(
@@ -741,7 +740,7 @@ class SaxoApiClient:
 
             return response
 
-        except (AuthenticationError, RateLimitError):
+        except AuthenticationError, RateLimitError:
             raise
         except Exception as e:
             _LOGGER.error("Error fetching net positions: %s", type(e).__name__)

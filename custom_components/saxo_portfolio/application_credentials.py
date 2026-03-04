@@ -2,8 +2,17 @@
 
 from __future__ import annotations
 
-from homeassistant.components.application_credentials import AuthorizationServer
+import logging
+import time
+
+import aiohttp
+from homeassistant.components.application_credentials import (
+    AuthImplementation,
+    AuthorizationServer,
+    ClientCredential,
+)
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     SAXO_AUTH_BASE_URL,
@@ -11,29 +20,79 @@ from .const import (
     OAUTH_TOKEN_ENDPOINT,
 )
 
+_LOGGER = logging.getLogger(__name__)
 
-async def async_get_authorization_server(hass: HomeAssistant) -> AuthorizationServer:
-    """Return authorization server for OAuth flow.
 
-    This provides the OAuth endpoints for Home Assistant's
-    application credentials system. Always uses production endpoints.
+class SaxoAuthImplementation(AuthImplementation):
+    """Saxo-specific OAuth implementation.
+
+    Saxo requires:
+    - HTTP Basic Auth for token requests (not POST body params)
+    - redirect_uri in refresh token requests
     """
-    import logging
 
-    _LOGGER = logging.getLogger(__name__)
+    async def _async_refresh_token(self, token: dict) -> dict:
+        """Refresh tokens with redirect_uri included."""
+        new_token = await self._token_request(
+            {
+                "grant_type": "refresh_token",
+                "refresh_token": token["refresh_token"],
+                "redirect_uri": self.redirect_uri,
+            }
+        )
+        return {**token, **new_token}
 
+    async def _token_request(self, data: dict) -> dict:
+        """Make a token request using HTTP Basic Auth."""
+        session = async_get_clientsession(self.hass)
+        resp = await session.post(
+            self.token_url,
+            data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            auth=aiohttp.BasicAuth(self.client_id, self.client_secret),
+        )
+
+        if resp.status >= 400:
+            error_response = (
+                await resp.json() if resp.content_type == "application/json" else {}
+            )
+            _LOGGER.error(
+                "Token request failed (%s): %s",
+                error_response.get("error", "unknown"),
+                error_response.get("error_description", "unknown"),
+            )
+        resp.raise_for_status()
+
+        result = await resp.json()
+        result["token_issued_at"] = time.time()
+        return result
+
+
+async def async_get_auth_implementation(
+    hass: HomeAssistant, auth_domain: str, credential: ClientCredential
+) -> SaxoAuthImplementation:
+    """Return a custom auth implementation for Saxo.
+
+    This replaces async_get_authorization_server() and provides
+    Saxo-specific token request handling (Basic Auth + redirect_uri).
+    """
     authorize_url = f"{SAXO_AUTH_BASE_URL}{OAUTH_AUTHORIZE_ENDPOINT}"
     token_url = f"{SAXO_AUTH_BASE_URL}{OAUTH_TOKEN_ENDPOINT}"
 
     _LOGGER.debug(
-        "Application credentials OAuth server - authorize_url: %s, token_url: %s",
+        "Creating Saxo OAuth implementation - authorize_url: %s, token_url: %s",
         authorize_url,
         token_url,
     )
 
-    return AuthorizationServer(
-        authorize_url=authorize_url,
-        token_url=token_url,
+    return SaxoAuthImplementation(
+        hass,
+        auth_domain,
+        credential,
+        AuthorizationServer(
+            authorize_url=authorize_url,
+            token_url=token_url,
+        ),
     )
 
 

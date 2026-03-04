@@ -332,7 +332,7 @@ def sanitize_financial_value(value: str | int | float) -> float:
             return 0.0
 
         return float_value
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         _LOGGER.warning("Could not convert value to float: %s", value)
         return 0.0
 

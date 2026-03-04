@@ -48,6 +48,14 @@ class TestErrorHandlingAndRecovery:
         return config_entry
 
     @pytest.fixture
+    def mock_oauth_session(self, mock_config_entry):
+        """Create a mock OAuth2 session."""
+        session = Mock()
+        session.token = mock_config_entry.data["token"]
+        session.async_ensure_token_valid = AsyncMock()
+        return session
+
+    @pytest.fixture
     def mock_expired_config_entry(self):
         """Create config entry with expired token."""
         config_entry = Mock(spec=ConfigEntry)
@@ -62,15 +70,25 @@ class TestErrorHandlingAndRecovery:
         }
         return config_entry
 
+    @pytest.fixture
+    def mock_expired_oauth_session(self, mock_expired_config_entry):
+        """Create a mock OAuth2 session with expired token."""
+        session = Mock()
+        session.token = mock_expired_config_entry.data["token"]
+        session.async_ensure_token_valid = AsyncMock()
+        return session
+
     @pytest.mark.asyncio
-    async def test_authentication_failure_handling(self, mock_hass, mock_config_entry):
+    async def test_authentication_failure_handling(
+        self, mock_hass, mock_config_entry, mock_oauth_session
+    ):
         """Test handling of authentication failures (401 errors).
 
         This validates troubleshooting: 'Sensors show Unavailable'
         """
         # This test MUST FAIL initially - no implementation exists
 
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
         with patch(
             "custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient"
@@ -93,7 +111,7 @@ class TestErrorHandlingAndRecovery:
 
     @pytest.mark.asyncio
     async def test_network_connectivity_failure_recovery(
-        self, mock_hass, mock_config_entry
+        self, mock_hass, mock_config_entry, mock_oauth_session
     ):
         """Test handling of network connectivity issues.
 
@@ -101,7 +119,7 @@ class TestErrorHandlingAndRecovery:
         """
         # This test MUST FAIL initially - no implementation exists
 
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
         with patch(
             "custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient"
@@ -137,7 +155,7 @@ class TestErrorHandlingAndRecovery:
 
     @pytest.mark.asyncio
     async def test_rate_limit_error_handling_with_backoff(
-        self, mock_hass, mock_config_entry
+        self, mock_hass, mock_config_entry, mock_oauth_session
     ):
         """Test handling of API rate limits (429 errors).
 
@@ -145,7 +163,7 @@ class TestErrorHandlingAndRecovery:
         """
         # This test MUST FAIL initially - no implementation exists
 
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
         with patch(
             "custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient"
@@ -178,33 +196,32 @@ class TestErrorHandlingAndRecovery:
 
     @pytest.mark.asyncio
     async def test_oauth_token_refresh_failure_handling(
-        self, mock_hass, mock_expired_config_entry
+        self, mock_hass, mock_expired_config_entry, mock_expired_oauth_session
     ):
         """Test handling of OAuth token refresh failures."""
         # This test MUST FAIL initially - no implementation exists
 
-        coordinator = SaxoCoordinator(mock_hass, mock_expired_config_entry)
+        coordinator = SaxoCoordinator(
+            mock_hass, mock_expired_config_entry, mock_expired_oauth_session
+        )
 
-        with patch.object(coordinator, "_refresh_oauth_token") as mock_refresh:
-            # Token refresh fails
-            refresh_error = aiohttp.ClientResponseError(
-                request_info=Mock(),
-                history=(),
-                status=400,
-                message="Invalid refresh token",
-            )
-            mock_refresh.side_effect = refresh_error
+        # OAuth2Session raises ConfigEntryAuthFailed on refresh failure
+        mock_expired_oauth_session.async_ensure_token_valid.side_effect = (
+            ConfigEntryAuthFailed("Token refresh failed")
+        )
 
-            # Should raise ConfigEntryAuthFailed to trigger re-authentication
-            with pytest.raises(ConfigEntryAuthFailed):
-                await coordinator._async_update_data()
+        # Should raise ConfigEntryAuthFailed to trigger re-authentication
+        with pytest.raises(ConfigEntryAuthFailed):
+            await coordinator._async_update_data()
 
     @pytest.mark.asyncio
-    async def test_partial_api_failure_handling(self, mock_hass, mock_config_entry):
+    async def test_partial_api_failure_handling(
+        self, mock_hass, mock_config_entry, mock_oauth_session
+    ):
         """Test handling when some API endpoints fail but others succeed."""
         # This test MUST FAIL initially - no implementation exists
 
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
         with patch(
             "custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient"
@@ -269,14 +286,14 @@ class TestErrorHandlingAndRecovery:
 
     @pytest.mark.asyncio
     async def test_sensor_unavailable_state_during_errors(
-        self, mock_hass, mock_config_entry
+        self, mock_hass, mock_config_entry, mock_oauth_session
     ):
         """Test that sensors show unavailable state during coordinator errors."""
         # This test MUST FAIL initially - no implementation exists
 
         from custom_components.saxo_portfolio.sensor import SaxoPortfolioSensor
 
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
         # Coordinator in error state
         coordinator.last_update_success = False
@@ -291,7 +308,7 @@ class TestErrorHandlingAndRecovery:
 
     @pytest.mark.asyncio
     async def test_integration_setup_failure_handling(
-        self, mock_hass, mock_config_entry
+        self, mock_hass, mock_config_entry, mock_oauth_session
     ):
         """Test integration setup failure handling."""
         # This test MUST FAIL initially - no implementation exists
@@ -311,11 +328,13 @@ class TestErrorHandlingAndRecovery:
             assert result is False
 
     @pytest.mark.asyncio
-    async def test_concurrent_error_handling(self, mock_hass, mock_config_entry):
+    async def test_concurrent_error_handling(
+        self, mock_hass, mock_config_entry, mock_oauth_session
+    ):
         """Test error handling under concurrent request scenarios."""
         # This test MUST FAIL initially - no implementation exists
 
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
         with patch.object(coordinator, "_async_update_data") as mock_update:
             # Some requests succeed, some fail
@@ -344,11 +363,13 @@ class TestErrorHandlingAndRecovery:
             assert len(successful_results) >= 1
 
     @pytest.mark.asyncio
-    async def test_data_corruption_handling(self, mock_hass, mock_config_entry):
+    async def test_data_corruption_handling(
+        self, mock_hass, mock_config_entry, mock_oauth_session
+    ):
         """Test handling of corrupted or malformed API responses."""
         # This test MUST FAIL initially - no implementation exists
 
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
         with patch(
             "custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient"
@@ -377,11 +398,13 @@ class TestErrorHandlingAndRecovery:
                         assert isinstance(portfolio["total_value"], int | float)
 
     @pytest.mark.asyncio
-    async def test_timeout_handling_for_slow_api(self, mock_hass, mock_config_entry):
+    async def test_timeout_handling_for_slow_api(
+        self, mock_hass, mock_config_entry, mock_oauth_session
+    ):
         """Test handling of API timeouts."""
         # This test MUST FAIL initially - no implementation exists
 
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
         with patch(
             "custom_components.saxo_portfolio.api.saxo_client.SaxoApiClient"
@@ -401,11 +424,13 @@ class TestErrorHandlingAndRecovery:
             assert coordinator.last_update_success is False
 
     @pytest.mark.asyncio
-    async def test_recovery_after_extended_outage(self, mock_hass, mock_config_entry):
+    async def test_recovery_after_extended_outage(
+        self, mock_hass, mock_config_entry, mock_oauth_session
+    ):
         """Test recovery after extended API outage."""
         # This test MUST FAIL initially - no implementation exists
 
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
         # Initial successful state
         coordinator.data = {
@@ -446,11 +471,13 @@ class TestErrorHandlingAndRecovery:
             assert coordinator.data["portfolio"]["total_value"] == 135000.00
 
     @pytest.mark.asyncio
-    async def test_error_logging_and_diagnostics(self, mock_hass, mock_config_entry):
+    async def test_error_logging_and_diagnostics(
+        self, mock_hass, mock_config_entry, mock_oauth_session
+    ):
         """Test that errors are properly logged for diagnostics."""
         # This test MUST FAIL initially - no implementation exists
 
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
         with patch(
             "custom_components.saxo_portfolio.coordinator._LOGGER"

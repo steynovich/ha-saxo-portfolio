@@ -15,12 +15,10 @@ from datetime import datetime, timedelta, time
 import zoneinfo
 from typing import Any
 
-import aiohttp
-import async_timeout
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers import config_entry_oauth2_flow
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -36,13 +34,9 @@ from .const import (
     DEFAULT_UPDATE_INTERVAL_MARKET_HOURS,
     DOMAIN,
     MARKET_HOURS,
-    MAX_RETRIES,
     PERFORMANCE_FETCH_TIMEOUT,
     PERFORMANCE_UPDATE_INTERVAL,
     REFRESH_TOKEN_BUFFER,
-    RETRY_BACKOFF_FACTOR,
-    TOKEN_MIN_VALIDITY,
-    TOKEN_REFRESH_BUFFER,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -99,18 +93,23 @@ class PositionsCache:
 class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Saxo Portfolio data coordinator."""
 
-    def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        config_entry: ConfigEntry,
+        oauth_session: config_entry_oauth2_flow.OAuth2Session,
+    ) -> None:
         """Initialize the coordinator.
 
         Args:
             hass: Home Assistant instance
             config_entry: Configuration entry with OAuth token
+            oauth_session: OAuth2 session for automatic token management
 
         """
         self.config_entry = config_entry
+        self._oauth_session = oauth_session
         self._api_client: SaxoApiClient | None = None
-        self._last_token_check = datetime.now()
-        self._token_refresh_lock = asyncio.Lock()
         self._last_successful_update: datetime | None = None
 
         # Performance data caching
@@ -172,7 +171,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def api_client(self) -> SaxoApiClient:
         """Get or create API client."""
         # Check if we need to recreate the client (token refresh case)
-        token_data = self.config_entry.data.get("token", {})
+        token_data = self._oauth_session.token
         access_token = token_data.get("access_token")
 
         if not access_token:
@@ -242,83 +241,6 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.debug("Successfully closed old API client session")
         except Exception as e:
             _LOGGER.warning("Error while closing old API client: %s", e, exc_info=True)
-
-    def _extract_error_from_html(self, html_text: str) -> str:
-        """Extract meaningful error message from HTML error page.
-
-        Args:
-            html_text: Raw HTML error response
-
-        Returns:
-            Extracted error message or truncated HTML if extraction fails
-
-        """
-        import re
-
-        # Try to extract title from HTML (often contains the error message)
-        title_match = re.search(r"<title>([^<]+)</title>", html_text, re.IGNORECASE)
-        if title_match:
-            return title_match.group(1).strip()
-
-        # Try to extract h1 heading
-        h1_match = re.search(r"<h1[^>]*>([^<]+)</h1>", html_text, re.IGNORECASE)
-        if h1_match:
-            return h1_match.group(1).strip()
-
-        # Fallback: return first 100 chars of text content
-        text_only = re.sub(r"<[^>]+>", " ", html_text)
-        text_only = " ".join(text_only.split())[:100]
-        return text_only if text_only else "Unknown HTML error"
-
-    def _log_refresh_token_status(self) -> None:
-        """Log the current refresh token status for debugging."""
-        token_data = self.config_entry.data.get("token", {})
-        refresh_token_expires_in = token_data.get("refresh_token_expires_in")
-        token_issued_at_timestamp = token_data.get("token_issued_at")
-        expires_at = token_data.get("expires_at")
-
-        if not expires_at:
-            _LOGGER.warning(
-                "No token expiry information available - cannot determine token status"
-            )
-            return
-
-        current_time = dt_util.now()
-        expiry_time = dt_util.utc_from_timestamp(expires_at)
-        access_token_remaining = expiry_time - current_time
-
-        if refresh_token_expires_in:
-            if token_issued_at_timestamp:
-                token_issued_at = dt_util.utc_from_timestamp(token_issued_at_timestamp)
-            else:
-                token_issued_at = expiry_time - timedelta(
-                    seconds=token_data.get("expires_in", 1200)
-                )
-
-            refresh_token_expires_at = token_issued_at + timedelta(
-                seconds=refresh_token_expires_in
-            )
-            refresh_token_remaining = refresh_token_expires_at - current_time
-
-            _LOGGER.info(
-                "Token status - Access token: %s remaining, Refresh token: %s remaining (expires: %s)",
-                str(access_token_remaining).split(".")[0],  # Remove microseconds
-                str(refresh_token_remaining).split(".")[0],
-                refresh_token_expires_at.strftime("%Y-%m-%d %H:%M:%S"),
-            )
-
-            if refresh_token_remaining.total_seconds() < 300:  # Less than 5 minutes
-                _LOGGER.warning(
-                    "CRITICAL: Refresh token expires in %s! Reauthentication may be required soon.",
-                    str(refresh_token_remaining).split(".")[0],
-                )
-        else:
-            _LOGGER.info(
-                "Token status - Access token: %s remaining (expires: %s). "
-                "Note: Refresh token lifetime unknown (not provided by Saxo).",
-                str(access_token_remaining).split(".")[0],
-                expiry_time.strftime("%Y-%m-%d %H:%M:%S"),
-            )
 
     def _should_update_performance_data(self) -> bool:
         """Check if performance data should be updated based on cache age.
@@ -396,7 +318,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.debug("Updating performance data (cache expired or missing)")
 
         try:
-            async with async_timeout.timeout(PERFORMANCE_FETCH_TIMEOUT):
+            async with asyncio.timeout(PERFORMANCE_FETCH_TIMEOUT):
                 # Initialize values from defaults
                 ytd_earnings_percentage = defaults["ytd_earnings_percentage"]
                 investment_performance_percentage = defaults[
@@ -874,411 +796,57 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Default to after-hours if we can't determine market status
             return False
 
-    async def _check_and_refresh_token(self) -> None:
-        """Check token expiry and refresh if needed.
+    async def _ensure_token_valid(self) -> None:
+        """Ensure the OAuth token is valid, refreshing if needed.
 
-        This method checks both refresh token and access token expiry:
-        1. First checks if refresh token will expire soon (proactive refresh)
-        2. Then checks if access token needs refresh
-
-        This ensures we refresh the access token before the refresh token expires,
-        allowing us to get a new refresh token (if Saxo supports refresh token rotation).
-        """
-        async with self._token_refresh_lock:
-            token_data = self.config_entry.data.get("token", {})
-            expires_at = token_data.get("expires_at")
-
-            if not expires_at:
-                _LOGGER.warning("No token expiry information available")
-                return
-
-            current_time = datetime.now()
-            expiry_time = datetime.fromtimestamp(expires_at)
-
-            # STEP 1: Check if refresh token will expire soon (CRITICAL)
-            # We need to check this FIRST, independently of access token expiry
-            refresh_token_expires_in = token_data.get("refresh_token_expires_in")
-            if refresh_token_expires_in:
-                # Calculate when the refresh token expires
-                # Use stored token_issued_at timestamp if available, otherwise calculate from expiry
-                token_issued_at_timestamp = token_data.get("token_issued_at")
-
-                if token_issued_at_timestamp:
-                    # Use the stored timestamp (most accurate)
-                    token_issued_at = datetime.fromtimestamp(token_issued_at_timestamp)
-                else:
-                    # Fallback: calculate from access token expiry (legacy behavior)
-                    token_issued_at = expiry_time - timedelta(
-                        seconds=token_data.get("expires_in", 1200)
-                    )
-
-                refresh_token_expires_at = token_issued_at + timedelta(
-                    seconds=refresh_token_expires_in
-                )
-                refresh_token_refresh_time = (
-                    refresh_token_expires_at - REFRESH_TOKEN_BUFFER
-                )
-
-                _LOGGER.debug(
-                    "Refresh token expires at %s (will refresh at %s, lifetime: %d seconds)",
-                    refresh_token_expires_at.isoformat(),
-                    refresh_token_refresh_time.isoformat(),
-                    refresh_token_expires_in,
-                )
-
-                # Check if refresh token has ALREADY expired
-                if current_time >= refresh_token_expires_at:
-                    _LOGGER.error(
-                        "Refresh token has expired (expired at %s, current time %s). Cannot refresh - reauth required.",
-                        refresh_token_expires_at.isoformat(),
-                        current_time.isoformat(),
-                    )
-                    _LOGGER.info(
-                        "Please re-authenticate: Go to Settings > Devices & Services > Saxo Portfolio and click the 'Reauthenticate' button"
-                    )
-                    raise ConfigEntryAuthFailed(
-                        "Refresh token expired - please click the reauthentication button in Settings > Devices & Services"
-                    )
-
-                # Check if refresh token WILL expire soon (proactive refresh)
-                if current_time >= refresh_token_refresh_time:
-                    _LOGGER.warning(
-                        "Refresh token will expire soon (%s remaining). Proactively refreshing to get new refresh token.",
-                        refresh_token_expires_at - current_time,
-                    )
-                    await self._refresh_oauth_token()
-                    self._last_token_check = current_time
-                    return  # Done - we refreshed proactively
-
-            # STEP 2: Check if access token needs refresh (normal flow)
-            refresh_time = expiry_time - TOKEN_REFRESH_BUFFER
-
-            if current_time >= refresh_time:
-                _LOGGER.debug(
-                    "Access token needs refresh (expires at %s, refresh buffer %s)",
-                    expiry_time.isoformat(),
-                    TOKEN_REFRESH_BUFFER,
-                )
-
-                # Validate token still has minimum validity
-                if current_time >= (expiry_time - TOKEN_MIN_VALIDITY):
-                    _LOGGER.debug(
-                        "Access token expires very soon, immediate refresh needed"
-                    )
-
-                await self._refresh_oauth_token()
-                self._last_token_check = current_time
-
-    async def _refresh_oauth_token(self) -> dict[str, Any]:
-        """Refresh OAuth access token using refresh token.
-
-        Includes retry logic for transient failures (5xx, network errors).
-        Only raises ConfigEntryAuthFailed for permanent failures (401, 403).
-
-        Returns:
-            New token data
+        Checks Saxo-specific refresh token expiry (HA doesn't handle this),
+        then delegates access token refresh to OAuth2Session.
 
         Raises:
-            ConfigEntryAuthFailed: If token refresh fails permanently
-            UpdateFailed: If token refresh fails due to transient issues after retries
+            ConfigEntryAuthFailed: If refresh token has expired
 
         """
-        token_data = self.config_entry.data.get("token", {})
-        refresh_token = token_data.get("refresh_token")
+        token_data = self._oauth_session.token
 
-        if not refresh_token:
-            raise ConfigEntryAuthFailed("No refresh token available")
+        # Check Saxo-specific refresh token expiry
+        refresh_token_expires_in = token_data.get("refresh_token_expires_in")
+        if refresh_token_expires_in:
+            token_issued_at_timestamp = token_data.get("token_issued_at")
+            expires_at = token_data.get("expires_at")
 
-        # Log current token status before attempting refresh
-        self._log_refresh_token_status()
-
-        # Debug token data structure (with sensitive data masked)
-        masked_token_data = {}
-        for key, value in token_data.items():
-            if key in ["access_token", "refresh_token"]:
-                masked_token_data[key] = (
-                    f"***{value[-4:]}" if value and len(str(value)) > 4 else "***"
+            if token_issued_at_timestamp:
+                token_issued_at = datetime.fromtimestamp(token_issued_at_timestamp)
+            elif expires_at:
+                token_issued_at = datetime.fromtimestamp(expires_at) - timedelta(
+                    seconds=token_data.get("expires_in", 1200)
                 )
             else:
-                masked_token_data[key] = value
+                token_issued_at = datetime.now()
 
-        _LOGGER.debug(
-            "Starting token refresh: token_data_keys=%s", list(masked_token_data.keys())
-        )
-        _LOGGER.debug("Token data structure: %s", masked_token_data)
-
-        # Use production endpoints
-        from .const import SAXO_AUTH_BASE_URL, OAUTH_TOKEN_ENDPOINT
-
-        # Prepare refresh request
-        token_url = f"{SAXO_AUTH_BASE_URL}{OAUTH_TOKEN_ENDPOINT}"
-
-        # Use Home Assistant's aiohttp session
-        session = async_get_clientsession(self.hass)
-
-        # Get client credentials and redirect_uri from OAuth implementation
-        auth = None
-        redirect_uri = None
-        client_id = None
-        try:
-            from homeassistant.helpers.config_entry_oauth2_flow import (
-                async_get_config_entry_implementation,
+            refresh_token_expires_at = token_issued_at + timedelta(
+                seconds=refresh_token_expires_in
             )
 
-            # Get the OAuth implementation from the config entry
-            implementation = await async_get_config_entry_implementation(
-                self.hass, self.config_entry
-            )
-            if implementation:
-                client_id = implementation.client_id
-                auth = aiohttp.BasicAuth(
-                    implementation.client_id, implementation.client_secret
-                )
-                _LOGGER.debug(
-                    "Using HTTP Basic Auth for token refresh with client_id: %s",
-                    client_id[:8] + "..." if len(client_id) > 8 else client_id,
-                )
+            current_time = datetime.now()
 
-                # Get the correct redirect_uri from the OAuth implementation
-                if hasattr(implementation, "redirect_uri"):
-                    redirect_uri = implementation.redirect_uri
-                    _LOGGER.debug(
-                        "Using redirect_uri from OAuth implementation: %s",
-                        redirect_uri,
-                    )
-                else:
-                    _LOGGER.warning("OAuth implementation has no redirect_uri property")
-            else:
-                _LOGGER.error("Could not get OAuth implementation for Basic Auth")
-        except Exception as e:
-            _LOGGER.error(
-                "Failed to get OAuth implementation: %s: %s",
-                type(e).__name__,
-                str(e),
-            )
-
-        # Fallback to stored redirect_uri if we couldn't get it from implementation
-        if not redirect_uri:
-            redirect_uri = self.config_entry.data.get("redirect_uri")
-            if redirect_uri:
-                _LOGGER.debug("Using redirect_uri from config entry: %s", redirect_uri)
-            else:
+            if current_time >= refresh_token_expires_at:
                 _LOGGER.error(
-                    "No redirect_uri found in OAuth implementation or config entry. "
-                    "This will likely cause token refresh to fail."
+                    "Refresh token has expired (expired at %s). Reauth required.",
+                    refresh_token_expires_at.isoformat(),
+                )
+                raise ConfigEntryAuthFailed(
+                    "Refresh token expired - please reauthenticate in Settings > Devices & Services"
                 )
 
-        # Build refresh request data
-        refresh_data = {
-            "grant_type": "refresh_token",
-            "refresh_token": refresh_token,
-        }
-
-        if redirect_uri:
-            refresh_data["redirect_uri"] = redirect_uri
-
-        # Token refresh requests should use application/x-www-form-urlencoded
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
-
-        # Retry loop for transient failures
-        last_error: Exception | None = None
-        last_status: int | None = None
-
-        for attempt in range(MAX_RETRIES):
-            try:
-                _LOGGER.debug(
-                    "Token refresh attempt %d/%d to %s",
-                    attempt + 1,
-                    MAX_RETRIES,
-                    token_url,
+            remaining = refresh_token_expires_at - current_time
+            if remaining <= REFRESH_TOKEN_BUFFER:
+                _LOGGER.warning(
+                    "Refresh token will expire soon (%s remaining). Triggering proactive refresh.",
+                    str(remaining).split(".")[0],
                 )
 
-                async with session.post(
-                    token_url, data=refresh_data, headers=headers, auth=auth
-                ) as response:
-                    last_status = response.status
-
-                    _LOGGER.debug(
-                        "Token refresh response: status=%d",
-                        response.status,
-                    )
-
-                    # Success
-                    if response.status in [200, 201]:
-                        new_token_data = await response.json()
-
-                        # Calculate expiry time and store when token was issued
-                        current_timestamp = datetime.now().timestamp()
-                        expires_in = new_token_data.get("expires_in", 1200)
-                        expires_at = current_timestamp + expires_in
-                        new_token_data["expires_at"] = expires_at
-                        new_token_data["token_issued_at"] = current_timestamp
-
-                        # Preserve config data, update token
-                        new_data = self.config_entry.data.copy()
-                        new_data["token"] = new_token_data
-
-                        self.hass.config_entries.async_update_entry(
-                            self.config_entry, data=new_data
-                        )
-
-                        # Close old API client before forcing recreation with new token
-                        if self._api_client is not None:
-                            old_client = self._api_client
-                            self._api_client = None
-                            self.hass.async_create_task(
-                                self._close_old_client(old_client)
-                            )
-                        else:
-                            self._api_client = None
-
-                        token_expires = datetime.fromtimestamp(
-                            new_token_data["expires_at"]
-                        )
-                        _LOGGER.info(
-                            "Successfully refreshed OAuth token (expires: %s)",
-                            token_expires.isoformat(),
-                        )
-
-                        # Log new token status
-                        self._log_refresh_token_status()
-
-                        return new_token_data
-
-                    # Permanent auth failures - don't retry
-                    if response.status in [401, 403]:
-                        error_text = await response.text()
-
-                        # Extract meaningful error from HTML if present
-                        if "<html" in error_text.lower():
-                            error_message = self._extract_error_from_html(error_text)
-                        else:
-                            error_message = (
-                                error_text[:200] if error_text else "No details"
-                            )
-
-                        _LOGGER.error(
-                            "Token refresh failed with HTTP %d: %s",
-                            response.status,
-                            error_message,
-                        )
-
-                        if response.status == 401:
-                            _LOGGER.error(
-                                "401 Unauthorized - Possible causes: "
-                                "(1) Refresh token expired - reauthentication required, "
-                                "(2) redirect_uri mismatch (%s), "
-                                "(3) Invalid client credentials",
-                                redirect_uri if redirect_uri else "NOT SET",
-                            )
-                            _LOGGER.info(
-                                "To reauthenticate: Go to Settings > Devices & Services > "
-                                "Saxo Portfolio and click 'Reauthenticate'"
-                            )
-
-                        raise ConfigEntryAuthFailed(
-                            f"Token refresh failed: {error_message}"
-                        )
-
-                    # Transient server errors (5xx) - retry with backoff
-                    if response.status >= 500:
-                        error_text = await response.text()
-                        if "<html" in error_text.lower():
-                            error_message = self._extract_error_from_html(error_text)
-                        else:
-                            error_message = (
-                                error_text[:200] if error_text else "Server error"
-                            )
-
-                        if attempt < MAX_RETRIES - 1:
-                            backoff_time = RETRY_BACKOFF_FACTOR**attempt
-                            _LOGGER.warning(
-                                "Token refresh got HTTP %d (attempt %d/%d): %s. "
-                                "Retrying in %d seconds...",
-                                response.status,
-                                attempt + 1,
-                                MAX_RETRIES,
-                                error_message,
-                                backoff_time,
-                            )
-                            await asyncio.sleep(backoff_time)
-                            continue
-                        else:
-                            last_error = UpdateFailed(
-                                f"Token refresh failed after {MAX_RETRIES} attempts: "
-                                f"HTTP {response.status} - {error_message}"
-                            )
-
-                    # Other errors (4xx except 401/403)
-                    else:
-                        error_text = await response.text()
-                        if "<html" in error_text.lower():
-                            error_message = self._extract_error_from_html(error_text)
-                        else:
-                            error_message = (
-                                error_text[:200] if error_text else "Unknown error"
-                            )
-
-                        _LOGGER.error(
-                            "Token refresh failed with HTTP %d: %s",
-                            response.status,
-                            error_message,
-                        )
-                        raise ConfigEntryAuthFailed(
-                            f"Token refresh failed: HTTP {response.status} - {error_message}"
-                        )
-
-            except ConfigEntryAuthFailed:
-                # Re-raise auth failures immediately
-                raise
-
-            except aiohttp.ClientError as e:
-                # Network errors - retry with backoff
-                if attempt < MAX_RETRIES - 1:
-                    backoff_time = RETRY_BACKOFF_FACTOR**attempt
-                    _LOGGER.warning(
-                        "Token refresh network error (attempt %d/%d): %s. "
-                        "Retrying in %d seconds...",
-                        attempt + 1,
-                        MAX_RETRIES,
-                        type(e).__name__,
-                        backoff_time,
-                    )
-                    await asyncio.sleep(backoff_time)
-                    continue
-                else:
-                    last_error = UpdateFailed(
-                        f"Token refresh failed after {MAX_RETRIES} attempts: {type(e).__name__}"
-                    )
-
-            except TimeoutError:
-                # Timeout - retry with backoff
-                if attempt < MAX_RETRIES - 1:
-                    backoff_time = RETRY_BACKOFF_FACTOR**attempt
-                    _LOGGER.warning(
-                        "Token refresh timeout (attempt %d/%d). Retrying in %d seconds...",
-                        attempt + 1,
-                        MAX_RETRIES,
-                        backoff_time,
-                    )
-                    await asyncio.sleep(backoff_time)
-                    continue
-                else:
-                    last_error = UpdateFailed(
-                        f"Token refresh timed out after {MAX_RETRIES} attempts"
-                    )
-
-        # All retries exhausted
-        if last_error:
-            _LOGGER.error(
-                "Token refresh failed after %d attempts (last status: %s): %s",
-                MAX_RETRIES,
-                last_status,
-                last_error,
-            )
-            raise last_error
-
-        raise UpdateFailed("Token refresh failed unexpectedly")
+        # Delegate access token refresh to OAuth2Session
+        await self._oauth_session.async_ensure_token_valid()
 
     async def _fetch_portfolio_data(self) -> dict[str, Any]:
         """Fetch portfolio data from Saxo API.
@@ -1312,8 +880,8 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await asyncio.sleep(self._initial_update_offset)
                 self._initial_update_offset = 0  # Only apply once
 
-            # Check and refresh token if needed
-            await self._check_and_refresh_token()
+            # Ensure OAuth token is valid (refresh if needed)
+            await self._ensure_token_valid()
 
             # Get API client
             client = self.api_client

@@ -177,7 +177,7 @@ async def async_get_config_entry_diagnostics(
     try:
         manifest = json.loads(manifest_path.read_text())
         version = manifest.get("version", "unknown")
-    except (FileNotFoundError, json.JSONDecodeError):
+    except FileNotFoundError, json.JSONDecodeError:
         pass
 
     # Integration information

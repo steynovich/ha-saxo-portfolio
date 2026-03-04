@@ -7,7 +7,7 @@ the Home Assistant DataUpdateCoordinator interface contract.
 """
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, AsyncMock, patch
 from datetime import datetime, timedelta
 
 from custom_components.saxo_portfolio.coordinator import SaxoCoordinator
@@ -39,10 +39,18 @@ class TestSaxoCoordinatorContract:
         return config_entry
 
     @pytest.fixture
-    def coordinator(self, mock_hass, mock_config_entry):
+    def mock_oauth_session(self, mock_config_entry):
+        """Create a mock OAuth2 session."""
+        session = Mock()
+        session.token = mock_config_entry.data["token"]
+        session.async_ensure_token_valid = AsyncMock()
+        return session
+
+    @pytest.fixture
+    def coordinator(self, mock_hass, mock_config_entry, mock_oauth_session):
         """Create a SaxoCoordinator instance."""
         # This MUST FAIL initially - no implementation exists
-        return SaxoCoordinator(mock_hass, mock_config_entry)
+        return SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
     @pytest.mark.asyncio
     async def test_coordinator_initialization(self, coordinator):
@@ -163,10 +171,11 @@ class TestSaxoCoordinatorContract:
             datetime.now() - timedelta(hours=1)
         ).timestamp()
 
-        # Should attempt token refresh during update
-        with patch.object(coordinator, "_refresh_oauth_token") as mock_refresh:
+        # Should delegate token refresh to OAuth2Session
+        with patch.object(coordinator, "_fetch_portfolio_data") as mock_fetch:
+            mock_fetch.return_value = {"cash_balance": 100}
             await coordinator._async_update_data()
-            mock_refresh.assert_called_once()
+            coordinator._oauth_session.async_ensure_token_valid.assert_called()
 
     @pytest.mark.asyncio
     async def test_coordinator_rate_limiting(self, coordinator):

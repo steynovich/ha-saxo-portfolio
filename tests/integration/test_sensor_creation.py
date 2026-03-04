@@ -265,8 +265,13 @@ class TestSensorCreationAndUpdates:
             }
         }
 
+        # Create mock OAuth session
+        mock_oauth_session = Mock()
+        mock_oauth_session.token = mock_config_entry.data["token"]
+        mock_oauth_session.async_ensure_token_valid = AsyncMock()
+
         # Create coordinator instance
-        coordinator = SaxoCoordinator(mock_hass, mock_config_entry)
+        coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
 
         # Initial state - client name unknown, sensors not initialized
         assert coordinator._last_known_client_name == "unknown"
