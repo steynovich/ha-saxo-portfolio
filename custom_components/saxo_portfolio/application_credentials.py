@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 
@@ -18,6 +19,7 @@ from .const import (
     SAXO_AUTH_BASE_URL,
     OAUTH_AUTHORIZE_ENDPOINT,
     OAUTH_TOKEN_ENDPOINT,
+    TOKEN_REFRESH_TIMEOUT,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -43,29 +45,117 @@ class SaxoAuthImplementation(AuthImplementation):
         return {**token, **new_token}
 
     async def _token_request(self, data: dict) -> dict:
-        """Make a token request using HTTP Basic Auth."""
+        """Make a token request using HTTP Basic Auth with timeout and retry."""
         session = async_get_clientsession(self.hass)
-        resp = await session.post(
-            self.token_url,
-            data=data,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            auth=aiohttp.BasicAuth(self.client_id, self.client_secret),
-        )
+        max_attempts = 3
+        last_exception: Exception | None = None
 
-        if resp.status >= 400:
-            error_response = (
-                await resp.json() if resp.content_type == "application/json" else {}
-            )
-            _LOGGER.error(
-                "Token request failed (%s): %s",
-                error_response.get("error", "unknown"),
-                error_response.get("error_description", "unknown"),
-            )
-        resp.raise_for_status()
+        for attempt in range(1, max_attempts + 1):
+            try:
+                async with asyncio.timeout(TOKEN_REFRESH_TIMEOUT):
+                    resp = await session.post(
+                        self.token_url,
+                        data=data,
+                        headers={"Content-Type": "application/x-www-form-urlencoded"},
+                        auth=aiohttp.BasicAuth(self.client_id, self.client_secret),
+                    )
 
-        result = await resp.json()
-        result["token_issued_at"] = time.time()
-        return result
+                if resp.status in (400, 401):
+                    # Auth errors — no retry, credentials are bad
+                    error_response = (
+                        await resp.json()
+                        if resp.content_type == "application/json"
+                        else {}
+                    )
+                    _LOGGER.error(
+                        "Token request failed (%s): %s",
+                        error_response.get("error", "unknown"),
+                        error_response.get("error_description", "unknown"),
+                    )
+                    resp.raise_for_status()
+
+                if resp.status >= 500:
+                    # Server error — retry
+                    _LOGGER.warning(
+                        "Token request server error (HTTP %s), attempt %d/%d",
+                        resp.status,
+                        attempt,
+                        max_attempts,
+                    )
+                    last_exception = aiohttp.ClientResponseError(
+                        resp.request_info,
+                        resp.history,
+                        status=resp.status,
+                    )
+                    if attempt < max_attempts:
+                        await asyncio.sleep(2 ** (attempt - 1))
+                        continue
+                    resp.raise_for_status()
+
+                if resp.status >= 400:
+                    # Other 4xx — log and raise immediately
+                    error_response = (
+                        await resp.json()
+                        if resp.content_type == "application/json"
+                        else {}
+                    )
+                    _LOGGER.error(
+                        "Token request failed (%s): %s",
+                        error_response.get("error", "unknown"),
+                        error_response.get("error_description", "unknown"),
+                    )
+                    resp.raise_for_status()
+
+                result = await resp.json()
+                result["token_issued_at"] = time.time()
+                if attempt > 1:
+                    _LOGGER.info(
+                        "Token refresh succeeded on attempt %d/%d",
+                        attempt,
+                        max_attempts,
+                    )
+                return result
+
+            except TimeoutError:
+                _LOGGER.warning(
+                    "Token refresh timed out after %ds, attempt %d/%d",
+                    TOKEN_REFRESH_TIMEOUT,
+                    attempt,
+                    max_attempts,
+                )
+                last_exception = TimeoutError(
+                    f"Token refresh timed out after {TOKEN_REFRESH_TIMEOUT}s"
+                )
+                if attempt < max_attempts:
+                    await asyncio.sleep(2 ** (attempt - 1))
+
+            except aiohttp.ClientResponseError as err:
+                if err.status in (400, 401):
+                    # Auth errors that escaped the status check — don't retry
+                    raise
+                _LOGGER.warning(
+                    "Token refresh network error (%s), attempt %d/%d",
+                    type(err).__name__,
+                    attempt,
+                    max_attempts,
+                )
+                last_exception = err
+                if attempt < max_attempts:
+                    await asyncio.sleep(2 ** (attempt - 1))
+
+            except aiohttp.ClientError as err:
+                _LOGGER.warning(
+                    "Token refresh network error (%s), attempt %d/%d",
+                    type(err).__name__,
+                    attempt,
+                    max_attempts,
+                )
+                last_exception = err
+                if attempt < max_attempts:
+                    await asyncio.sleep(2 ** (attempt - 1))
+
+        # All attempts exhausted
+        raise last_exception  # type: ignore[misc]
 
 
 async def async_get_auth_implementation(

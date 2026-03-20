@@ -167,6 +167,8 @@ DATA_UNSUB: Final = "unsub"
 SERVICE_REFRESH_DATA: Final = "refresh_data"
 
 # Token management
+TOKEN_REFRESH_TIMEOUT: Final = 15  # seconds - conservative to leave budget for data fetching within 60s coordinator timeout
+
 TOKEN_REFRESH_BUFFER: Final = timedelta(
     minutes=5
 )  # Refresh token 5 minutes before expiry

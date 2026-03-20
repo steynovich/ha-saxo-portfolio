@@ -22,6 +22,8 @@ from homeassistant.helpers import config_entry_oauth2_flow
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
+import aiohttp
+
 from .api.saxo_client import SaxoApiClient, AuthenticationError, APIError
 from .const import (
     CONF_ENABLE_POSITION_SENSORS,
@@ -989,6 +991,17 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except APIError as e:
             _LOGGER.error("API error fetching portfolio data: %s", type(e).__name__)
             raise UpdateFailed("API error") from e
+
+        except aiohttp.ClientError as e:
+            _LOGGER.warning(
+                "Network error during portfolio update (%s). "
+                "This may be caused by a token refresh failure or Saxo API connectivity issue. "
+                "The integration will automatically retry on the next update cycle.",
+                type(e).__name__,
+            )
+            raise UpdateFailed(
+                "Network error - check connectivity and try again"
+            ) from e
 
         except ConfigEntryAuthFailed:
             # Re-raise authentication failures to trigger reauth flow in Home Assistant
