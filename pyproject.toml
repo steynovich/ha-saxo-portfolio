@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ha-saxo-portfolio"
-version = "2.8.0-beta.1"
+version = "2.8.0"
 description = "Home Assistant integration for Saxo Portfolio monitoring"
 authors = [{name = "Home Assistant Community", email = "hello@home-assistant.io"}]
 license = {text = "MIT"}

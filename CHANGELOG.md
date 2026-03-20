@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.8.0-beta.1] - 2026-03-04
+## [2.8.0] - 2026-03-20
 
 ### Added
 - **Python 3.14 Support**: Full compatibility with Python 3.14 and Home Assistant 2026.3
@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added Python 3.14 classifier to pyproject.toml
   - Added Python 3.14 to CI test matrix
   - Updated quality workflow to Python 3.14
+- **Token Refresh Resilience**: Added timeout, retry, and error handling to OAuth token refresh
+  - 15-second timeout on token requests (prevents hanging within 60s coordinator timeout)
+  - 3-attempt retry with exponential backoff (1s, 2s) for transient failures (5xx, timeouts, network errors)
+  - Immediate failure on 400/401 auth errors (no retry — credentials are bad)
+  - Specific `aiohttp.ClientError` handling in coordinator with actionable log messages
+  - New `TOKEN_REFRESH_TIMEOUT` constant in `const.py`
+
+### Fixed
+- **Auth error retry bug**: `aiohttp.ClientResponseError` from 400/401 responses was incorrectly caught by the generic `aiohttp.ClientError` retry handler; now re-raised immediately
 
 ### Changed
 - **Replaced `async_timeout` with `asyncio.timeout`**: Removed third-party `async_timeout` dependency
