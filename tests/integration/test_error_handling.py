@@ -500,3 +500,226 @@ class TestErrorHandlingAndRecovery:
                 )
                 log_message = str(log_calls[0][0][0]) if log_calls else ""
                 assert "API" in log_message or "error" in log_message.lower()
+
+
+@pytest.mark.integration
+class TestProactiveTokenRefresh:
+    """Tests for surviving Saxo downtime via proactive refresh-token rotation.
+
+    These validate that we refresh the refresh token well before it expires
+    server-side, and that transient failures while doing so don't cascade
+    into a forced reauthentication.
+    """
+
+    @pytest.fixture
+    def mock_hass(self):
+        """Mock Home Assistant with a config_entries namespace."""
+        hass = Mock(spec=HomeAssistant)
+        hass.data = {DOMAIN: {}}
+        hass.config_entries = Mock()
+        hass.config_entries.async_update_entry = Mock()
+        return hass
+
+    def _make_entry(self, token: dict) -> Mock:
+        entry = Mock(spec=ConfigEntry)
+        entry.entry_id = "test_entry_proactive"
+        entry.data = {"token": token}
+        entry.title = "Saxo Portfolio"
+        entry.options = {}
+        return entry
+
+    def _make_session(self, token: dict, implementation: Mock) -> Mock:
+        session = Mock()
+        session.token = token
+        session.implementation = implementation
+        session.async_ensure_token_valid = AsyncMock()
+        return session
+
+    def _past_half_life_token(self) -> dict:
+        """Token that is past half-life but whose access token is still valid."""
+        now = datetime.now().timestamp()
+        return {
+            "access_token": "old_access",
+            "refresh_token": "old_refresh",
+            "token_type": "Bearer",
+            # access token issued 1900s ago, expires in 1200s (so expired 700s ago
+            # from access-token perspective, but still "usable" since
+            # async_ensure_token_valid is mocked)
+            "expires_at": now - 700,
+            "expires_in": 1200,
+            # refresh token lifetime = 3600s, issued 1900s ago → 53% elapsed,
+            # safely past the 50% half-life threshold
+            "refresh_token_expires_in": 3600,
+            "token_issued_at": now - 1900,
+        }
+
+    def _young_token(self) -> dict:
+        """Token comfortably under the half-life threshold."""
+        now = datetime.now().timestamp()
+        return {
+            "access_token": "fresh_access",
+            "refresh_token": "fresh_refresh",
+            "token_type": "Bearer",
+            "expires_at": now + 1000,
+            "expires_in": 1200,
+            "refresh_token_expires_in": 3600,
+            "token_issued_at": now - 600,  # 17% elapsed, well under half-life
+        }
+
+    @pytest.mark.asyncio
+    async def test_proactive_refresh_fires_past_half_life(self, mock_hass):
+        """Proactive refresh fires once the refresh token is past half-life.
+
+        The rotated token must be persisted to the config entry.
+        """
+        token = self._past_half_life_token()
+        entry = self._make_entry(token)
+
+        new_token = {
+            "access_token": "rotated_access",
+            "refresh_token": "rotated_refresh",
+            "token_type": "Bearer",
+            "expires_in": 1200,
+            "refresh_token_expires_in": 3600,
+            "token_issued_at": datetime.now().timestamp(),
+        }
+        implementation = Mock()
+        implementation.async_refresh_token = AsyncMock(return_value=new_token)
+        session = self._make_session(token, implementation)
+
+        coordinator = SaxoCoordinator(mock_hass, entry, session)
+        await coordinator._ensure_token_valid()
+
+        implementation.async_refresh_token.assert_awaited_once_with(token)
+        mock_hass.config_entries.async_update_entry.assert_called_once()
+        persisted_kwargs = mock_hass.config_entries.async_update_entry.call_args.kwargs
+        assert persisted_kwargs["data"]["token"] == new_token
+        # Safety-net call still happens
+        session.async_ensure_token_valid.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_proactive_refresh_skipped_for_young_token(self, mock_hass):
+        """Token under half-life → no proactive refresh, just the safety net."""
+        token = self._young_token()
+        entry = self._make_entry(token)
+
+        implementation = Mock()
+        implementation.async_refresh_token = AsyncMock()
+        session = self._make_session(token, implementation)
+
+        coordinator = SaxoCoordinator(mock_hass, entry, session)
+        await coordinator._ensure_token_valid()
+
+        implementation.async_refresh_token.assert_not_awaited()
+        mock_hass.config_entries.async_update_entry.assert_not_called()
+        session.async_ensure_token_valid.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_proactive_refresh_swallows_network_error(self, mock_hass):
+        """Transient network failure during proactive refresh is swallowed.
+
+        ConfigEntryAuthFailed must not be raised - the existing token is still
+        usable on Saxo's side and the next coordinator cycle will retry.
+        """
+        token = self._past_half_life_token()
+        entry = self._make_entry(token)
+
+        implementation = Mock()
+        implementation.async_refresh_token = AsyncMock(
+            side_effect=aiohttp.ClientConnectionError("Saxo unreachable")
+        )
+        session = self._make_session(token, implementation)
+
+        coordinator = SaxoCoordinator(mock_hass, entry, session)
+        # Must not raise - transient errors are swallowed
+        await coordinator._ensure_token_valid()
+
+        implementation.async_refresh_token.assert_awaited_once()
+        mock_hass.config_entries.async_update_entry.assert_not_called()
+        # Safety net still runs
+        session.async_ensure_token_valid.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_proactive_refresh_swallows_timeout(self, mock_hass):
+        """TimeoutError during proactive refresh is treated as transient."""
+        token = self._past_half_life_token()
+        entry = self._make_entry(token)
+
+        implementation = Mock()
+        implementation.async_refresh_token = AsyncMock(side_effect=TimeoutError())
+        session = self._make_session(token, implementation)
+
+        coordinator = SaxoCoordinator(mock_hass, entry, session)
+        await coordinator._ensure_token_valid()
+
+        mock_hass.config_entries.async_update_entry.assert_not_called()
+        session.async_ensure_token_valid.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_proactive_refresh_swallows_5xx(self, mock_hass):
+        """5xx from Saxo during proactive refresh is a transient server error."""
+        token = self._past_half_life_token()
+        entry = self._make_entry(token)
+
+        implementation = Mock()
+        implementation.async_refresh_token = AsyncMock(
+            side_effect=aiohttp.ClientResponseError(
+                request_info=Mock(),
+                history=(),
+                status=503,
+                message="Service Unavailable",
+            )
+        )
+        session = self._make_session(token, implementation)
+
+        coordinator = SaxoCoordinator(mock_hass, entry, session)
+        await coordinator._ensure_token_valid()
+
+        mock_hass.config_entries.async_update_entry.assert_not_called()
+        session.async_ensure_token_valid.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_proactive_refresh_raises_reauth_on_invalid_grant(self, mock_hass):
+        """400/401 from Saxo during proactive refresh → ConfigEntryAuthFailed."""
+        token = self._past_half_life_token()
+        entry = self._make_entry(token)
+
+        implementation = Mock()
+        implementation.async_refresh_token = AsyncMock(
+            side_effect=aiohttp.ClientResponseError(
+                request_info=Mock(),
+                history=(),
+                status=400,
+                message="Bad Request",
+            )
+        )
+        session = self._make_session(token, implementation)
+
+        coordinator = SaxoCoordinator(mock_hass, entry, session)
+        with pytest.raises(ConfigEntryAuthFailed):
+            await coordinator._ensure_token_valid()
+
+        mock_hass.config_entries.async_update_entry.assert_not_called()
+        # Safety net should NOT be reached on hard auth failure
+        session.async_ensure_token_valid.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_proactive_refresh_raises_reauth_on_401(self, mock_hass):
+        """401 from Saxo during proactive refresh → ConfigEntryAuthFailed."""
+        token = self._past_half_life_token()
+        entry = self._make_entry(token)
+
+        implementation = Mock()
+        implementation.async_refresh_token = AsyncMock(
+            side_effect=aiohttp.ClientResponseError(
+                request_info=Mock(),
+                history=(),
+                status=401,
+                message="Unauthorized",
+            )
+        )
+        session = self._make_session(token, implementation)
+
+        coordinator = SaxoCoordinator(mock_hass, entry, session)
+        with pytest.raises(ConfigEntryAuthFailed):
+            await coordinator._ensure_token_valid()

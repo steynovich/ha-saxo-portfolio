@@ -39,6 +39,7 @@ from .const import (
     PERFORMANCE_FETCH_TIMEOUT,
     PERFORMANCE_UPDATE_INTERVAL,
     REFRESH_TOKEN_BUFFER,
+    REFRESH_TOKEN_REFRESH_AT_FRACTION,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -799,18 +800,30 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return False
 
     async def _ensure_token_valid(self) -> None:
-        """Ensure the OAuth token is valid, refreshing if needed.
+        """Ensure the OAuth token is valid, refreshing proactively when needed.
 
-        Checks Saxo-specific refresh token expiry (HA doesn't handle this),
-        then delegates access token refresh to OAuth2Session.
+        Strategy for surviving Saxo downtime:
+        1. Once more than REFRESH_TOKEN_REFRESH_AT_FRACTION of the refresh-token
+           lifetime has elapsed, force a refresh so the rotated refresh token has
+           a full lifetime again. This caps the worst-case age of our refresh
+           token, giving the integration runway against an outage.
+        2. Transient failures during the proactive refresh (network errors,
+           timeouts, 5xx from Saxo) are swallowed. The existing tokens are still
+           valid on Saxo's side and the next coordinator cycle will retry.
+        3. Only a hard `invalid_grant` style failure (HTTP 400/401) triggers
+           ConfigEntryAuthFailed. We no longer preemptively declare the refresh
+           token dead based on client-side math alone.
+        4. After any proactive refresh attempt, fall through to OAuth2Session's
+           async_ensure_token_valid() as a safety net for the access token.
 
         Raises:
-            ConfigEntryAuthFailed: If refresh token has expired
+            ConfigEntryAuthFailed: If Saxo explicitly rejects the refresh with
+                an auth-level error (400/401 - invalid_grant or invalid_client).
 
         """
         token_data = self._oauth_session.token
 
-        # Check Saxo-specific refresh token expiry
+        # Decide whether to force a proactive refresh based on refresh-token age.
         refresh_token_expires_in = token_data.get("refresh_token_expires_in")
         if refresh_token_expires_in:
             token_issued_at_timestamp = token_data.get("token_issued_at")
@@ -828,27 +841,85 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             refresh_token_expires_at = token_issued_at + timedelta(
                 seconds=refresh_token_expires_in
             )
-
             current_time = datetime.now()
-
-            if current_time >= refresh_token_expires_at:
-                _LOGGER.error(
-                    "Refresh token has expired (expired at %s). Reauth required.",
-                    refresh_token_expires_at.isoformat(),
-                )
-                raise ConfigEntryAuthFailed(
-                    "Refresh token expired - please reauthenticate in Settings > Devices & Services"
-                )
-
+            elapsed = current_time - token_issued_at
+            half_life = timedelta(
+                seconds=refresh_token_expires_in * REFRESH_TOKEN_REFRESH_AT_FRACTION
+            )
             remaining = refresh_token_expires_at - current_time
-            if remaining <= REFRESH_TOKEN_BUFFER:
+
+            # Log a warning when the refresh token is near expiry - useful during
+            # sustained Saxo outages where proactive refreshes keep failing.
+            if timedelta(0) < remaining <= REFRESH_TOKEN_BUFFER:
                 _LOGGER.warning(
-                    "Refresh token will expire soon (%s remaining). Triggering proactive refresh.",
+                    "Refresh token will expire soon (%s remaining).",
                     str(remaining).split(".")[0],
                 )
 
-        # Delegate access token refresh to OAuth2Session
+            if elapsed >= half_life:
+                await self._proactive_refresh_token()
+                # _proactive_refresh_token either succeeded (token rotated),
+                # swallowed a transient error, or raised ConfigEntryAuthFailed.
+                # Either way, fall through to the safety net below.
+
+        # Safety net: delegate access token refresh to OAuth2Session. This is a
+        # no-op if the access token is still valid (which it usually is after
+        # a successful proactive refresh).
         await self._oauth_session.async_ensure_token_valid()
+
+    async def _proactive_refresh_token(self) -> None:
+        """Force a refresh of the OAuth token and persist the new token.
+
+        Transient failures (network, timeout, 5xx) are logged and swallowed -
+        our existing tokens remain usable and the next coordinator cycle will
+        retry. Auth-level failures (400/401) are reclassified as
+        ConfigEntryAuthFailed to trigger reauthentication.
+
+        Raises:
+            ConfigEntryAuthFailed: On invalid_grant / invalid_client responses.
+
+        """
+        implementation = self._oauth_session.implementation
+        try:
+            _LOGGER.debug(
+                "Proactive token refresh triggered (refresh token past half-life)"
+            )
+            new_token = await implementation.async_refresh_token(
+                self._oauth_session.token
+            )
+        except aiohttp.ClientResponseError as err:
+            if err.status in (400, 401):
+                _LOGGER.error(
+                    "Proactive token refresh rejected by Saxo (HTTP %s) - "
+                    "reauthentication required",
+                    err.status,
+                )
+                raise ConfigEntryAuthFailed(
+                    "Saxo rejected the refresh token - please reauthenticate in "
+                    "Settings > Devices & Services"
+                ) from err
+            _LOGGER.warning(
+                "Proactive token refresh deferred - Saxo returned HTTP %s. "
+                "Existing token still valid, will retry on next update cycle.",
+                err.status,
+            )
+            return
+        except (TimeoutError, aiohttp.ClientError) as err:
+            _LOGGER.warning(
+                "Proactive token refresh deferred - Saxo unreachable (%s). "
+                "Existing token still valid, will retry on next update cycle.",
+                type(err).__name__,
+            )
+            return
+
+        # Persist the rotated token to the config entry so it survives HA
+        # restarts during a subsequent outage. Mirrors what
+        # OAuth2Session.async_ensure_token_valid does internally.
+        self.hass.config_entries.async_update_entry(
+            self.config_entry,
+            data={**self.config_entry.data, "token": new_token},
+        )
+        _LOGGER.debug("Proactive token refresh succeeded, new token persisted")
 
     async def _fetch_portfolio_data(self) -> dict[str, Any]:
         """Fetch portfolio data from Saxo API.

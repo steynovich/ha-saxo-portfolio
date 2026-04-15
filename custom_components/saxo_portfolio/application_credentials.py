@@ -47,7 +47,10 @@ class SaxoAuthImplementation(AuthImplementation):
     async def _token_request(self, data: dict) -> dict:
         """Make a token request using HTTP Basic Auth with timeout and retry."""
         session = async_get_clientsession(self.hass)
-        max_attempts = 3
+        # Backoff schedule: 1s, 2s, 4s, 8s, 16s (~31s total) - long enough to
+        # absorb a brief Saxo hiccup while still failing fast on bad credentials
+        # (the 400/401 branch below short-circuits without retrying).
+        max_attempts = 5
         last_exception: Exception | None = None
 
         for attempt in range(1, max_attempts + 1):
