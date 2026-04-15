@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.0-beta.1] - 2026-04-15
+
+### Added
+- **Proactive Refresh Token Rotation**: Survives brief Saxo outages without forcing reauthentication ([#11](https://github.com/steynovich/ha-saxo-portfolio/pull/11))
+  - New `_proactive_refresh_token()` in `coordinator.py` forces refresh once the refresh token passes 50% of its lifetime, capping worst-case token age
+  - For a typical 3600s refresh-token lifetime, the integration can now absorb up to ~30 minutes of Saxo downtime
+  - Transient failures (network errors, timeouts, 5xx) during proactive refresh are logged and swallowed; only 400/401 trigger `ConfigEntryAuthFailed`
+  - New `REFRESH_TOKEN_REFRESH_AT_FRACTION = 0.5` constant in `const.py`
+- **Extended Token Refresh Retries**: Increased from 3 to 5 attempts in `application_credentials.py` with exponential backoff (1s, 2s, 4s, 8s, 16s) to absorb brief Saxo hiccups
+
+### Changed
+- **`_ensure_token_valid()` strategy**: Replaced hard client-side refresh-token expiry check with half-life proactive refresh; the preemptive `ConfigEntryAuthFailed` is removed — Saxo now decides when a token is truly invalid
+
 ## [2.8.0] - 2026-03-20
 
 ### Added
