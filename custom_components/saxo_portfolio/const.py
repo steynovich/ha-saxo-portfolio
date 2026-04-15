@@ -176,6 +176,11 @@ TOKEN_MIN_VALIDITY: Final = timedelta(minutes=10)  # Minimum time token should b
 REFRESH_TOKEN_BUFFER: Final = timedelta(
     minutes=5
 )  # Proactively refresh when refresh token has less than 5 minutes left
+# Force a token refresh once this fraction of the refresh-token lifetime has elapsed,
+# regardless of whether the access token is about to expire. This keeps the refresh
+# token "young" so Saxo outages up to (1 - fraction) * refresh_token_expires_in can
+# be survived without forcing the user to reauthenticate.
+REFRESH_TOKEN_REFRESH_AT_FRACTION: Final = 0.5
 
 # API timeouts
 API_TIMEOUT_CONNECT: Final = 10  # seconds
