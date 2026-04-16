@@ -161,7 +161,7 @@ def _load_manifest_version() -> str:
     manifest_path = Path(__file__).parent / "manifest.json"
     try:
         manifest = json.loads(manifest_path.read_text())
-        return manifest.get("version", "unknown")
+        return str(manifest.get("version", "unknown"))
     except FileNotFoundError, json.JSONDecodeError:
         return "unknown"
 

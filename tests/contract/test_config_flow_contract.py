@@ -133,9 +133,7 @@ class TestSaxoConfigFlowContract:
                 "custom_components.saxo_portfolio.config_flow.SaxoApiClient",
                 return_value=mock_client,
             ),
-            patch.object(
-                config_flow, "async_set_unique_id", new_callable=AsyncMock
-            ),
+            patch.object(config_flow, "async_set_unique_id", new_callable=AsyncMock),
             patch.object(config_flow, "_abort_if_unique_id_configured"),
         ):
             result = await config_flow.async_oauth_create_entry(mock_oauth_data)
@@ -172,9 +170,7 @@ class TestSaxoConfigFlowContract:
                 "custom_components.saxo_portfolio.config_flow.SaxoApiClient",
                 return_value=mock_client,
             ),
-            patch.object(
-                config_flow, "async_set_unique_id", new_callable=AsyncMock
-            ),
+            patch.object(config_flow, "async_set_unique_id", new_callable=AsyncMock),
             patch.object(config_flow, "_abort_if_unique_id_configured"),
         ):
             await config_flow.async_oauth_create_entry(mock_oauth_data)

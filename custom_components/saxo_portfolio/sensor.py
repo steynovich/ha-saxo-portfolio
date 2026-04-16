@@ -94,6 +94,7 @@ class SaxoSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
+        assert self.coordinator.config_entry is not None
         client_id = self.coordinator.get_client_id()
         device_name = f"Saxo {client_id} Portfolio"
 
@@ -235,7 +236,7 @@ class SaxoBalanceSensorBase(SaxoSensorBase):
                 # Round financial value to 2 decimal places
                 return round(float(balance), 2)
 
-            return balance
+            return balance  # type: ignore[no-any-return]
 
         except Exception as e:
             _LOGGER.error(
@@ -803,6 +804,7 @@ class SaxoTokenExpirySensor(SaxoDiagnosticSensorBase):
         """Return the token expiry status."""
         import time
 
+        assert self.coordinator.config_entry is not None
         token_data = self.coordinator.config_entry.data.get("token", {})
         if not token_data or "expires_at" not in token_data:
             return "Unknown"
@@ -828,7 +830,8 @@ class SaxoTokenExpirySensor(SaxoDiagnosticSensorBase):
         import time
         from datetime import datetime
 
-        attrs = {}
+        assert self.coordinator.config_entry is not None
+        attrs: dict[str, Any] = {}
         token_data = self.coordinator.config_entry.data.get("token", {})
 
         if token_data and "expires_at" in token_data:
@@ -848,6 +851,7 @@ class SaxoTokenExpirySensor(SaxoDiagnosticSensorBase):
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
+        assert self.coordinator.config_entry is not None
         return self.coordinator.config_entry.data.get("token") is not None
 
 
@@ -967,7 +971,7 @@ class SaxoLastUpdateSensor(SaxoDiagnosticSensorBase):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
-        attrs = {
+        attrs: dict[str, Any] = {
             "update_success": self.coordinator.last_update_success
             if hasattr(self.coordinator, "last_update_success")
             else None,
@@ -1029,8 +1033,9 @@ class SaxoTimezoneSensor(SaxoDiagnosticSensorBase):
             DEFAULT_UPDATE_INTERVAL_ANY,
         )
 
+        assert self.coordinator.config_entry is not None
         timezone = getattr(self.coordinator, "_timezone", "Unknown")
-        attrs = {
+        attrs: dict[str, Any] = {
             "configured_timezone": timezone,
             "config_entry_timezone": self.coordinator.config_entry.data.get(
                 CONF_TIMEZONE, "Not configured"

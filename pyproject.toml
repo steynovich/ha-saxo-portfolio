@@ -103,9 +103,6 @@ keep-runtime-typing = true
 
 [tool.mypy]
 python_version = "3.14"
-ignore_errors = true
+strict = true
 follow_imports = "silent"
 ignore_missing_imports = true
-warn_incomplete_stub = true
-warn_redundant_casts = true
-warn_unused_configs = true

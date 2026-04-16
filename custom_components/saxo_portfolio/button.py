@@ -66,6 +66,7 @@ class SaxoRefreshButton(CoordinatorEntity[SaxoCoordinator], ButtonEntity):
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
+        assert self.coordinator.config_entry is not None
         client_id = self.coordinator.get_client_id()
         device_name = f"Saxo {client_id} Portfolio"
 

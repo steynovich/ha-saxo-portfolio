@@ -153,6 +153,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Cache market hours check to avoid repeated calculations
         self._market_hours_cache: bool | None = None
         self._market_hours_cache_time: datetime | None = None
+        self._last_timeout_warning: datetime | None = None
 
         # Determine initial update interval
         if self._timezone == "any":
@@ -819,6 +820,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Persist the rotated token to the config entry so it survives HA
         # restarts during a subsequent outage. Mirrors what
         # OAuth2Session.async_ensure_token_valid does internally.
+        assert self.config_entry is not None
         self.hass.config_entries.async_update_entry(
             self.config_entry,
             data={**self.config_entry.data, "token": new_token},
@@ -986,7 +988,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # First occurrence as warning, subsequent as debug to reduce noise
         if (
-            not hasattr(self, "_last_timeout_warning")
+            self._last_timeout_warning is None
             or (datetime.now() - self._last_timeout_warning).total_seconds() > 300
         ):  # 5 minutes
             _LOGGER.warning(timeout_msg)
@@ -1089,6 +1091,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._last_known_client_name = current_client_name
 
                 # Schedule config entry reload to create sensors
+                assert self.config_entry is not None
                 self.hass.async_create_task(
                     self.hass.config_entries.async_reload(self.config_entry.entry_id)
                 )
@@ -1118,7 +1121,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         if not self.data:
             return 0.0
-        return self.data.get("cash_balance", 0.0)
+        return float(self.data.get("cash_balance", 0.0))
 
     def get_total_value(self) -> float:
         """Get total portfolio value from data.
@@ -1129,7 +1132,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         if not self.data:
             return 0.0
-        return self.data.get("total_value", 0.0)
+        return float(self.data.get("total_value", 0.0))
 
     def get_non_margin_positions_value(self) -> float:
         """Get non-margin positions value from data.
@@ -1140,7 +1143,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         if not self.data:
             return 0.0
-        return self.data.get("non_margin_positions_value", 0.0)
+        return float(self.data.get("non_margin_positions_value", 0.0))
 
     def get_currency(self) -> str:
         """Get the portfolio base currency.
@@ -1150,7 +1153,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         """
         if self.data:
-            return self.data.get("currency", "USD")
+            return str(self.data.get("currency", "USD"))
         return "USD"
 
     def get_ytd_earnings_percentage(self) -> float:
@@ -1162,7 +1165,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         if not self.data:
             return 0.0
-        return self.data.get("ytd_earnings_percentage", 0.0)
+        return float(self.data.get("ytd_earnings_percentage", 0.0))
 
     def get_client_id(self) -> str:
         """Get ClientId from client details.
@@ -1173,7 +1176,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         if not self.data:
             return "unknown"
-        return self.data.get("client_id", "unknown")
+        return str(self.data.get("client_id", "unknown"))
 
     def get_investment_performance_percentage(self) -> float:
         """Get investment performance percentage from v4 performance API.
@@ -1184,7 +1187,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         if not self.data:
             return 0.0
-        return self.data.get("investment_performance_percentage", 0.0)
+        return float(self.data.get("investment_performance_percentage", 0.0))
 
     def get_cash_transfer_balance(self) -> float:
         """Get latest cash transfer balance from v4 performance API.
@@ -1195,7 +1198,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         if not self.data:
             return 0.0
-        return self.data.get("cash_transfer_balance", 0.0)
+        return float(self.data.get("cash_transfer_balance", 0.0))
 
     def get_ytd_investment_performance_percentage(self) -> float:
         """Get YTD investment performance percentage from v4 performance API.
@@ -1206,7 +1209,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         if not self.data:
             return 0.0
-        return self.data.get("ytd_investment_performance_percentage", 0.0)
+        return float(self.data.get("ytd_investment_performance_percentage", 0.0))
 
     def get_month_investment_performance_percentage(self) -> float:
         """Get Month investment performance percentage from v4 performance API.
@@ -1217,7 +1220,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         if not self.data:
             return 0.0
-        return self.data.get("month_investment_performance_percentage", 0.0)
+        return float(self.data.get("month_investment_performance_percentage", 0.0))
 
     def get_quarter_investment_performance_percentage(self) -> float:
         """Get Quarter investment performance percentage from v4 performance API.
@@ -1228,7 +1231,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         if not self.data:
             return 0.0
-        return self.data.get("quarter_investment_performance_percentage", 0.0)
+        return float(self.data.get("quarter_investment_performance_percentage", 0.0))
 
     def get_account_id(self) -> str:
         """Get AccountId from account data.
@@ -1239,7 +1242,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         if not self.data:
             return "unknown"
-        return self.data.get("account_id", "unknown")
+        return str(self.data.get("account_id", "unknown"))
 
     def get_client_name(self) -> str:
         """Get client Name from client data.
@@ -1250,7 +1253,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         if not self.data:
             return "unknown"
-        return self.data.get("client_name", "unknown")
+        return str(self.data.get("client_name", "unknown"))
 
     def get_positions(self) -> dict[str, PositionData]:
         """Get all cached positions.
@@ -1301,13 +1304,14 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             True if position sensors are enabled
 
         """
-        return self._enable_position_sensors
+        return bool(self._enable_position_sensors)
 
     def mark_sensors_initialized(self) -> None:
         """Mark that sensors have been successfully initialized.
 
         This prevents unnecessary config entry reloads once sensors are created.
         """
+        assert self.config_entry is not None
         self._sensors_initialized = True
         _LOGGER.debug(
             "Marked sensors as initialized for entry %s", self.config_entry.entry_id
@@ -1318,6 +1322,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         This allows the reload logic to work correctly for genuinely skipped sensors.
         """
+        assert self.config_entry is not None
         self._setup_complete = True
         _LOGGER.debug(
             "Marked setup as complete for entry %s", self.config_entry.entry_id
@@ -1333,6 +1338,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             client_id: The Saxo Client ID to include in the title
 
         """
+        assert self.config_entry is not None
         if client_id == "unknown":
             return
 

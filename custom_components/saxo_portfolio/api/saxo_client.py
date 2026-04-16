@@ -97,9 +97,9 @@ class RateLimiter:
         """
         self.max_requests = max_requests
         self.window = window
-        self.requests = []
+        self.requests: list[float] = []
         self._lock = asyncio.Lock()
-        self._rate_limited_until = 0  # Timestamp when rate limiting ends
+        self._rate_limited_until: float = 0  # Timestamp when rate limiting ends
 
     async def wait_if_needed(self) -> None:
         """Wait if rate limit would be exceeded."""
@@ -273,7 +273,8 @@ class SaxoApiClient:
         )
 
         if response.status == 200:
-            return await response.json()
+            result: dict[str, Any] = await response.json()
+            return result
 
         if response.status == 401:
             self._log_unauthorized_details(response)
@@ -339,12 +340,12 @@ class SaxoApiClient:
         if attempt >= MAX_RETRIES - 1:
             raise RateLimitError(f"{ERROR_RATE_LIMITED} (reset: {rate_limit_reset})")
 
-        return min(retry_after * (RETRY_BACKOFF_FACTOR**attempt), 300)
+        return float(min(retry_after * (RETRY_BACKOFF_FACTOR**attempt), 300))
 
     @staticmethod
     def _compute_timeout_backoff(attempt: int) -> float:
         """Exponential backoff for timeouts, capped at 30 seconds."""
-        return min(RETRY_BACKOFF_FACTOR**attempt, 30)
+        return float(min(RETRY_BACKOFF_FACTOR**attempt, 30))
 
     @staticmethod
     def _compute_client_error_backoff(
@@ -353,8 +354,8 @@ class SaxoApiClient:
         """Exponential backoff for network errors, with DNS-aware widening."""
         error_msg = str(error)
         if "DNS" in error_msg or "resolve" in error_msg.lower():
-            return min(5 * (RETRY_BACKOFF_FACTOR**attempt), 60)
-        return min(RETRY_BACKOFF_FACTOR**attempt, 30)
+            return float(min(5 * (RETRY_BACKOFF_FACTOR**attempt), 60))
+        return float(min(RETRY_BACKOFF_FACTOR**attempt, 30))
 
     async def get_account_balance(self) -> dict[str, Any]:
         """Get account balance from Saxo API.

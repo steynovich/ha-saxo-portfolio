@@ -76,9 +76,7 @@ class TestOAuthAuthenticationFlow:
                 "custom_components.saxo_portfolio.config_flow.SaxoApiClient",
                 return_value=mock_client,
             ),
-            patch.object(
-                config_flow, "async_set_unique_id", new_callable=AsyncMock
-            ),
+            patch.object(config_flow, "async_set_unique_id", new_callable=AsyncMock),
             patch.object(config_flow, "_abort_if_unique_id_configured"),
         ):
             result = await config_flow.async_oauth_create_entry(oauth_data)
@@ -224,9 +222,7 @@ class TestOAuthAuthenticationFlow:
                 "custom_components.saxo_portfolio.config_flow.SaxoApiClient",
                 return_value=mock_client,
             ),
-            patch.object(
-                config_flow, "async_set_unique_id", new_callable=AsyncMock
-            ),
+            patch.object(config_flow, "async_set_unique_id", new_callable=AsyncMock),
             patch.object(config_flow, "_abort_if_unique_id_configured"),
         ):
             await config_flow.async_oauth_create_entry(oauth_data)
@@ -260,8 +256,6 @@ class TestOAuthAuthenticationFlow:
         from homeassistant.components.application_credentials import ClientCredential
 
         credential = ClientCredential("test_key", "test_secret")
-        impl = await async_get_auth_implementation(
-            mock_hass, DOMAIN, credential
-        )
+        impl = await async_get_auth_implementation(mock_hass, DOMAIN, credential)
 
         assert isinstance(impl, SaxoAuthImplementation)

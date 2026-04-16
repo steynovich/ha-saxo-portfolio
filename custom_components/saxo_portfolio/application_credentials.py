@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from typing import Any
 
 import aiohttp
 from homeassistant.components.application_credentials import (
@@ -27,7 +28,7 @@ _LOGGER = logging.getLogger(__name__)
 
 def _token_retry_backoff(attempt: int) -> int:
     """Return the uniform `2^(attempt-1)` backoff delay in seconds."""
-    return 2 ** (attempt - 1)
+    return int(2 ** (attempt - 1))
 
 
 async def _retry_wait_if_not_last(attempt: int, max_attempts: int) -> None:
@@ -56,7 +57,7 @@ class SaxoAuthImplementation(AuthImplementation):
     - redirect_uri in refresh token requests
     """
 
-    async def _async_refresh_token(self, token: dict) -> dict:
+    async def _async_refresh_token(self, token: dict[str, Any]) -> dict[str, Any]:
         """Refresh tokens with redirect_uri included."""
         new_token = await self._token_request(
             {
@@ -67,7 +68,7 @@ class SaxoAuthImplementation(AuthImplementation):
         )
         return {**token, **new_token}
 
-    async def _token_request(self, data: dict) -> dict:
+    async def _token_request(self, data: dict[str, Any]) -> dict[str, Any]:
         """Make a token request using HTTP Basic Auth with timeout and retry."""
         session = async_get_clientsession(self.hass)
         # Backoff schedule: 1s, 2s, 4s, 8s, 16s (~31s total) - long enough to
@@ -114,7 +115,7 @@ class SaxoAuthImplementation(AuthImplementation):
                     await _log_token_error_response(resp)
                     resp.raise_for_status()
 
-                result = await resp.json()
+                result: dict[str, Any] = await resp.json()
                 result["token_issued_at"] = time.time()
                 if attempt > 1:
                     _LOGGER.info(

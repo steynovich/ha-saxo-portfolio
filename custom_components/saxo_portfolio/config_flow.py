@@ -7,7 +7,7 @@ from typing import Any
 
 import aiohttp
 import voluptuous as vol
-from homeassistant.data_entry_flow import FlowResult
+from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.helpers import config_entry_oauth2_flow
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant import config_entries
@@ -57,7 +57,7 @@ class SaxoPortfolioFlowHandler(
 
     async def async_step_pick_implementation(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle picking the OAuth implementation with environment-specific URLs."""
         if user_input is not None:
             # Store the implementation selection and continue with OAuth
@@ -112,13 +112,13 @@ class SaxoPortfolioFlowHandler(
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle a flow initialized by the user."""
         return await self.async_step_pick_implementation()
 
     # Remove custom auth step - let parent class handle OAuth2 flow
 
-    async def async_oauth_create_entry(self, data: dict[str, Any]) -> FlowResult:
+    async def async_oauth_create_entry(self, data: dict[str, Any]) -> ConfigFlowResult:
         """Create an entry for the flow."""
         # Add token_issued_at timestamp if not present
         # This helps accurately track refresh token expiry
@@ -191,9 +191,9 @@ class SaxoPortfolioFlowHandler(
 
     async def async_step_timezone(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Configure timezone for market hours detection."""
-        errors = {}
+        errors: dict[str, str] = {}
 
         if user_input is not None:
             # Combine OAuth data with timezone configuration
@@ -272,7 +272,7 @@ class SaxoPortfolioFlowHandler(
             errors=errors,
         )
 
-    async def async_step_reauth(self, entry_data: dict[str, Any]) -> FlowResult:
+    async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
         """Handle reauthorization request."""
         # Get the config entry that triggered reauth
         entry_id = self.context.get("entry_id")
@@ -290,7 +290,7 @@ class SaxoPortfolioFlowHandler(
 
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Confirm reauth dialog."""
         if user_input is not None:
             # User clicked Submit/Continue - start OAuth flow
@@ -308,7 +308,7 @@ class SaxoPortfolioFlowHandler(
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle reconfiguration request (manual reauthentication)."""
         # Get the config entry being reconfigured using HA's built-in method
         reconfigure_entry = self._get_reconfigure_entry()
@@ -333,7 +333,7 @@ class SaxoPortfolioFlowHandler(
         )
 
     @staticmethod
-    @config_entries.callback
+    @config_entries.callback  # type: ignore[attr-defined]
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
     ) -> config_entries.OptionsFlow:
@@ -347,11 +347,13 @@ class SaxoOptionsFlowHandler(config_entries.OptionsFlow):
     @property
     def config_entry(self) -> config_entries.ConfigEntry:
         """Return config entry."""
-        return self.hass.config_entries.async_get_entry(self.handler)
+        entry = self.hass.config_entries.async_get_entry(self.handler)
+        assert entry is not None
+        return entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
             # Check if position sensors setting changed (requires reload)

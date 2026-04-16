@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import logging
 import re
+from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,7 +72,7 @@ class PortfolioData:
     pnl_percentage: float | None = None
     margin_available: float | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate portfolio data after initialization."""
         # Validate required fields
         if self.total_value < 0:
@@ -102,7 +103,7 @@ class AccountData:
     display_name: str | None = None
     active: bool = True
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate account data after initialization."""
         if not self.account_id:
             raise ValueError("Account ID cannot be empty")
@@ -130,7 +131,7 @@ class PositionData:
     pnl_percentage: float | None = None
     currency: str = "USD"
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate position data after initialization."""
         if not self.position_id:
             raise ValueError("Position ID cannot be empty")
@@ -173,7 +174,7 @@ class CoordinatorData:
     positions: list[PositionData]
     last_updated: datetime
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate coordinator data consistency."""
         # Validate data consistency
         account_ids = {account.account_id for account in self.accounts}
@@ -196,7 +197,10 @@ class CoordinatorData:
 
     @classmethod
     def from_api_responses(
-        cls, balance_response: dict, positions_response: dict, accounts_response: dict
+        cls,
+        balance_response: dict[str, Any],
+        positions_response: dict[str, Any],
+        accounts_response: dict[str, Any],
     ) -> CoordinatorData:
         """Create CoordinatorData from Saxo API responses."""
 
@@ -262,7 +266,7 @@ class CoordinatorData:
             last_updated=datetime.now(),
         )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for Home Assistant storage."""
         return {
             "portfolio": {
