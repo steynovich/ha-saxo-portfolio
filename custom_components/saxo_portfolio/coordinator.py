@@ -24,6 +24,8 @@ from homeassistant.util import dt as dt_util
 
 import aiohttp
 
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
 from .api.saxo_client import SaxoApiClient, AuthenticationError, APIError
 from .const import (
     CONF_ENABLE_POSITION_SENSORS,
@@ -172,78 +174,31 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     @property
     def api_client(self) -> SaxoApiClient:
-        """Get or create API client."""
-        # Check if we need to recreate the client (token refresh case)
+        """Get or create API client, using HA's shared HTTP session."""
         token_data = self._oauth_session.token
         access_token = token_data.get("access_token")
 
         if not access_token:
             raise ConfigEntryAuthFailed("No access token available")
 
-        # If client exists but token might have changed, close old client first
+        # Recreate client when token changes (lightweight — session is shared)
         if self._api_client is not None:
-            # Simple check: if the current token is different from the client's token
-            # we need to recreate the client
             current_token = getattr(self._api_client, "access_token", None)
             if current_token != access_token:
-                _LOGGER.debug(
-                    "Token changed, closing old API client and creating new one"
-                )
-                # Store reference to old client and schedule safe closure
-                old_client = self._api_client
+                _LOGGER.debug("Token changed, creating new API client wrapper")
                 self._api_client = None
-                # Create task to close the old client safely with error handling
-                if old_client:
-                    self.hass.async_create_task(self._close_old_client(old_client))
 
         if self._api_client is None:
-            # Debug token details (without exposing the actual token)
-            token_type = token_data.get("token_type", "unknown")
-            expires_at = token_data.get("expires_at")
-            has_refresh_token = bool(token_data.get("refresh_token"))
-
-            if expires_at:
-                expires_datetime = datetime.fromtimestamp(expires_at)
-                is_expired = datetime.now() > expires_datetime
-                _LOGGER.debug(
-                    "Token details - type: %s, expires_at: %s, is_expired: %s, has_refresh: %s",
-                    token_type,
-                    expires_datetime.isoformat(),
-                    is_expired,
-                    has_refresh_token,
-                )
-            else:
-                _LOGGER.debug(
-                    "Token details - type: %s, no expiry info, has_refresh: %s",
-                    token_type,
-                    has_refresh_token,
-                )
-
-            # Get base URL - always use production
             from .const import SAXO_API_BASE_URL
 
-            base_url = SAXO_API_BASE_URL
-
+            session = async_get_clientsession(self.hass)
+            self._api_client = SaxoApiClient(access_token, SAXO_API_BASE_URL, session)
             _LOGGER.debug(
-                "Creating API client for production environment, base_url: %s, token_length: %d",
-                base_url,
-                len(access_token) if access_token else 0,
+                "Created API client with HA session, base_url: %s",
+                SAXO_API_BASE_URL,
             )
 
-            # Don't pass session - let API client create its own with auth headers
-            self._api_client = SaxoApiClient(access_token, base_url)
-
         return self._api_client
-
-    async def _close_old_client(self, client: SaxoApiClient) -> None:
-        """Safely close an old API client with proper error handling."""
-        try:
-            if client:
-                _LOGGER.debug("Closing old API client session")
-                await client.close()
-                _LOGGER.debug("Successfully closed old API client session")
-        except Exception as e:
-            _LOGGER.warning("Error while closing old API client: %s", e, exc_info=True)
 
     def _should_update_performance_data(self) -> bool:
         """Check if performance data should be updated based on cache age.
@@ -1146,18 +1101,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_shutdown(self) -> None:
         """Shutdown the coordinator and cleanup resources."""
         _LOGGER.debug("Shutting down Saxo coordinator")
-
-        if self._api_client:
-            try:
-                await self._api_client.close()
-                _LOGGER.debug("Successfully closed API client during shutdown")
-            except Exception as e:
-                _LOGGER.warning(
-                    "Error closing API client during shutdown: %s", e, exc_info=True
-                )
-            finally:
-                self._api_client = None
-
+        self._api_client = None
         await super().async_shutdown()
 
     @property

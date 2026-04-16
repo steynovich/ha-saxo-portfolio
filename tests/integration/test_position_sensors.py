@@ -12,7 +12,6 @@ from homeassistant.config_entries import ConfigEntry
 from custom_components.saxo_portfolio.const import (
     CONF_ENABLE_POSITION_SENSORS,
     CONF_TIMEZONE,
-    DOMAIN,
 )
 from custom_components.saxo_portfolio.coordinator import PositionData
 

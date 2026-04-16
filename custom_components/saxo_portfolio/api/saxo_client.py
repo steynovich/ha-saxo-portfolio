@@ -22,8 +22,6 @@ from ..const import (
     API_PERFORMANCE_V4_ENDPOINT,
     API_RATE_LIMIT_PER_MINUTE,
     API_RATE_LIMIT_WINDOW,
-    API_TIMEOUT_CONNECT,
-    API_TIMEOUT_READ,
     API_TIMEOUT_TOTAL,
     ERROR_AUTH_FAILED,
     ERROR_NETWORK_ERROR,
@@ -163,7 +161,7 @@ class SaxoApiClient:
         Args:
             access_token: OAuth access token
             base_url: Base URL for API endpoints
-            session: Optional aiohttp session (for testing)
+            session: aiohttp session (use async_get_clientsession(hass) in production)
 
         """
         self.access_token = access_token
@@ -172,53 +170,14 @@ class SaxoApiClient:
         self._rate_limiter = RateLimiter()
         self._last_request_time = 0
 
-    async def __aenter__(self):
-        """Async context manager entry."""
-        return self
-
-    async def __aexit__(self, _exc_type, _exc_val, _exc_tb):
-        """Async context manager exit."""
-        if self._session and not self._session.closed:
-            await self._session.close()
-
     @property
-    def session(self) -> aiohttp.ClientSession:
-        """Get or create aiohttp session."""
-        if self._session is None or self._session.closed:
-            if self._session is not None and self._session.closed:
-                _LOGGER.debug("Previous session was closed, creating new session")
-
-            timeout = aiohttp.ClientTimeout(
-                connect=API_TIMEOUT_CONNECT,
-                sock_read=API_TIMEOUT_READ,
-                total=API_TIMEOUT_TOTAL,
-            )
-            # Create SSL-secure connector (explicit SSL verification)
-            connector = aiohttp.TCPConnector(
-                ssl=True,  # Ensure SSL verification is enabled
-                limit=100,  # Connection pool limit
-                limit_per_host=30,  # Per-host connection limit
-            )
-
-            auth_header = f"Bearer {self.access_token}"
-            headers = {
-                "Authorization": auth_header,
-                "Content-Type": "application/json",
-                "User-Agent": f"HomeAssistant-SaxoPortfolio/{INTEGRATION_VERSION}",
-            }
-
-            _LOGGER.debug(
-                "Creating new API session with auth header length: %d, user-agent: %s",
-                len(auth_header),
-                headers["User-Agent"],
-            )
-
-            self._session = aiohttp.ClientSession(
-                timeout=timeout,
-                connector=connector,
-                headers=headers,
-            )
-        return self._session
+    def _request_headers(self) -> dict[str, str]:
+        """Build per-request headers with current access token."""
+        return {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+            "User-Agent": f"HomeAssistant-SaxoPortfolio/{INTEGRATION_VERSION}",
+        }
 
     async def _make_request(
         self, endpoint: str, params: dict[str, Any] | None = None
@@ -240,6 +199,8 @@ class SaxoApiClient:
         """
         if not self.base_url:
             raise APIError("Base URL not configured")
+        if not self._session:
+            raise APIError("HTTP session not configured")
 
         url = f"{self.base_url}{endpoint}"
 
@@ -250,7 +211,9 @@ class SaxoApiClient:
             try:
                 async with (
                     asyncio.timeout(API_TIMEOUT_TOTAL),
-                    self.session.get(url, params=params) as response,
+                    self._session.get(
+                        url, params=params, headers=self._request_headers
+                    ) as response,
                 ):
                     result = await self._handle_response_status(response, url, attempt)
                 if isinstance(result, dict):
@@ -333,14 +296,12 @@ class SaxoApiClient:
 
     def _log_unauthorized_details(self, response: aiohttp.ClientResponse) -> None:
         """Log diagnostic info for a 401 response (no secrets)."""
-        auth_header = self.session.headers.get("Authorization", "")
-        has_bearer = auth_header.startswith("Bearer ")
-        token_length = len(auth_header.replace("Bearer ", "")) if has_bearer else 0
+        has_token = bool(self.access_token)
+        token_length = len(self.access_token) if has_token else 0
         _LOGGER.debug(
-            "401 Unauthorized - has_bearer_token: %s, token_length: %d, user_agent: %s",
-            has_bearer,
+            "401 Unauthorized - has_bearer_token: %s, token_length: %d",
+            has_token,
             token_length,
-            self.session.headers.get("User-Agent", "unknown"),
         )
         www_auth = response.headers.get("WWW-Authenticate", "")
         if www_auth:
@@ -766,15 +727,3 @@ class SaxoApiClient:
         except Exception as e:
             _LOGGER.error("Error fetching net positions: %s", type(e).__name__)
             raise APIError("Failed to fetch net positions")
-
-    async def close(self):
-        """Close the HTTP session."""
-        if self._session and not self._session.closed:
-            _LOGGER.debug("Closing HTTP session")
-            try:
-                await self._session.close()
-                _LOGGER.debug("HTTP session closed successfully")
-            except Exception as e:
-                _LOGGER.warning("Error closing HTTP session: %s", e, exc_info=True)
-        else:
-            _LOGGER.debug("HTTP session already closed or None")

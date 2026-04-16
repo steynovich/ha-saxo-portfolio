@@ -15,7 +15,6 @@ from custom_components.saxo_portfolio.api.saxo_client import (
     SaxoApiClient,
     AuthenticationError,
     RateLimitError,
-    APIError,
 )
 
 

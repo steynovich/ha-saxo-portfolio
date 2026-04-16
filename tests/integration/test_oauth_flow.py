@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_entry_oauth2_flow
 
 from custom_components.saxo_portfolio.config_flow import SaxoPortfolioFlowHandler
 from custom_components.saxo_portfolio.const import CONF_TIMEZONE, DOMAIN
