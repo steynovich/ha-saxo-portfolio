@@ -1,0 +1,65 @@
+{
+  "entity": {
+    "button": {
+      "refresh": {
+        "default": "mdi:refresh"
+      }
+    },
+    "sensor": {
+      "cash_balance": {
+        "default": "mdi:cash"
+      },
+      "total_value": {
+        "default": "mdi:wallet"
+      },
+      "non_margin_positions_value": {
+        "default": "mdi:finance"
+      },
+      "accumulated_profit_loss": {
+        "default": "mdi:trending-up"
+      },
+      "investment_performance": {
+        "default": "mdi:trending-up"
+      },
+      "ytd_investment_performance": {
+        "default": "mdi:trending-up"
+      },
+      "month_investment_performance": {
+        "default": "mdi:trending-up"
+      },
+      "quarter_investment_performance": {
+        "default": "mdi:trending-up"
+      },
+      "cash_transfer_balance": {
+        "default": "mdi:bank-transfer"
+      },
+      "client_id": {
+        "default": "mdi:identifier"
+      },
+      "account_id": {
+        "default": "mdi:account"
+      },
+      "name": {
+        "default": "mdi:account-box"
+      },
+      "token_expiry": {
+        "default": "mdi:clock-alert-outline"
+      },
+      "market_status": {
+        "default": "mdi:chart-timeline-variant"
+      },
+      "last_update": {
+        "default": "mdi:update"
+      },
+      "timezone": {
+        "default": "mdi:earth"
+      },
+      "market_data_access": {
+        "default": "mdi:chart-line"
+      }
+    }
+  },
+  "services": {
+    "refresh_data": "mdi:refresh"
+  }
+}

@@ -5,19 +5,24 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import aiohttp
 import voluptuous as vol
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import config_entry_oauth2_flow
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant import config_entries
 
+from .api.saxo_client import APIError, AuthenticationError, SaxoApiClient
 from .const import (
     CONF_ENABLE_POSITION_SENSORS,
+    CONF_ENTITY_PREFIX,
     CONF_TIMEZONE,
     DEFAULT_ENABLE_POSITION_SENSORS,
     DEFAULT_TIMEZONE,
     DOMAIN,
     OAUTH_AUTHORIZE_ENDPOINT,
     OAUTH_TOKEN_ENDPOINT,
+    SAXO_API_BASE_URL,
     SAXO_AUTH_BASE_URL,
     TIMEZONE_OPTIONS,
 )
@@ -148,7 +153,39 @@ class SaxoPortfolioFlowHandler(
 
             return self.async_abort(reason="reauth_successful")
 
-        # Not a reauth flow - store OAuth data and proceed to timezone configuration
+        # Not a reauth flow — validate credentials and check uniqueness
+        # before proceeding to timezone configuration (test-before-configure)
+        access_token = data.get("token", {}).get("access_token", "")
+        session = async_get_clientsession(self.hass)
+        client = SaxoApiClient(
+            access_token=access_token,
+            base_url=SAXO_API_BASE_URL,
+            session=session,
+        )
+
+        try:
+            client_details = await client.get_client_details()
+        except AuthenticationError:
+            return self.async_abort(reason="invalid_auth")
+        except TimeoutError, aiohttp.ClientError:
+            return self.async_abort(reason="cannot_connect")
+        except APIError, Exception:
+            return self.async_abort(reason="api_validation_failed")
+
+        if not client_details or "ClientKey" not in client_details:
+            return self.async_abort(reason="api_validation_failed")
+
+        client_key = client_details["ClientKey"]
+        client_id = client_details.get("ClientId")
+
+        # Set unique ID based on ClientKey to prevent duplicate entries
+        await self.async_set_unique_id(client_key)
+        self._abort_if_unique_id_configured()
+
+        # Store entity prefix so entity naming works immediately
+        if client_id:
+            data[CONF_ENTITY_PREFIX] = client_id
+
         self._oauth_data = data
         return await self.async_step_timezone()
 

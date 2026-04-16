@@ -36,6 +36,10 @@
     },
     "abort": {
       "missing_credentials": "**Application Credentials Required**\n\nBefore setting up Saxo Portfolio, you need to configure Application Credentials.\n\n**Steps:**\n1. Go to [Saxo Developer Portal]({developer_portal_url}) \n2. Create a production application with redirect URI: `{redirect_uri}`\n3. Go to [Application Credentials]({setup_url}) in Home Assistant\n4. Add credentials for {domain} with your App Key and Secret\n5. Return here to complete setup\n\n**Production OAuth Endpoints:**\n• Authorize: {authorize_url}\n• Token: {token_url}",
+      "already_configured": "This Saxo account is already configured.",
+      "api_validation_failed": "Could not validate your Saxo API credentials. Please try again.",
+      "invalid_auth": "Invalid authentication credentials. Please try again.",
+      "cannot_connect": "Failed to connect to Saxo Bank. Please check your internet connection.",
       "reauth_successful": "Successfully reauthenticated with Saxo Bank. Your integration will now continue working with the new credentials."
     }
   },
@@ -112,6 +116,11 @@
       "market_data_access": {
         "name": "Market Data Access"
       }
+    }
+  },
+  "exceptions": {
+    "refresh_failed": {
+      "message": "Failed to refresh portfolio data: {error}"
     }
   },
   "issues": {

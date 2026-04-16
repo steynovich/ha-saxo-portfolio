@@ -28,6 +28,7 @@ class TestOAuthAuthenticationFlow:
         hass.data = {DOMAIN: {}}
         hass.config_entries = Mock()
         hass.config_entries.async_entries = Mock(return_value=[])
+        hass.config_entries.flow.async_progress_by_handler = Mock(return_value=[])
         return hass
 
     @pytest.fixture
@@ -62,7 +63,26 @@ class TestOAuthAuthenticationFlow:
             },
         }
 
-        result = await config_flow.async_oauth_create_entry(oauth_data)
+        mock_client = AsyncMock()
+        mock_client.get_client_details = AsyncMock(
+            return_value={"ClientKey": "test_key_123", "ClientId": "test_id"}
+        )
+
+        with (
+            patch(
+                "custom_components.saxo_portfolio.config_flow.async_get_clientsession",
+                return_value=Mock(),
+            ),
+            patch(
+                "custom_components.saxo_portfolio.config_flow.SaxoApiClient",
+                return_value=mock_client,
+            ),
+            patch.object(
+                config_flow, "async_set_unique_id", new_callable=AsyncMock
+            ),
+            patch.object(config_flow, "_abort_if_unique_id_configured"),
+        ):
+            result = await config_flow.async_oauth_create_entry(oauth_data)
 
         # New entries route to timezone selection
         assert result["type"] == "form"
@@ -191,7 +211,26 @@ class TestOAuthAuthenticationFlow:
             },
         }
 
-        await config_flow.async_oauth_create_entry(oauth_data)
+        mock_client = AsyncMock()
+        mock_client.get_client_details = AsyncMock(
+            return_value={"ClientKey": "test_key_123", "ClientId": "test_id"}
+        )
+
+        with (
+            patch(
+                "custom_components.saxo_portfolio.config_flow.async_get_clientsession",
+                return_value=Mock(),
+            ),
+            patch(
+                "custom_components.saxo_portfolio.config_flow.SaxoApiClient",
+                return_value=mock_client,
+            ),
+            patch.object(
+                config_flow, "async_set_unique_id", new_callable=AsyncMock
+            ),
+            patch.object(config_flow, "_abort_if_unique_id_configured"),
+        ):
+            await config_flow.async_oauth_create_entry(oauth_data)
 
         # token_issued_at should be added
         assert "token_issued_at" in config_flow._oauth_data["token"]

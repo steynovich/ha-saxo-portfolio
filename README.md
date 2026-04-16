@@ -182,6 +182,18 @@ The integration intelligently adjusts update frequency based on your configured 
 
 The integration automatically handles daylight saving time transitions for all supported markets.
 
+### Data Update Strategy
+
+| Data Type | Update Interval | Source |
+|-----------|----------------|--------|
+| Cash balance, total value | 5 min (market hours) / 30 min (after hours) | `/port/v1/balances/me` |
+| Performance metrics (all-time, YTD, month, quarter) | 2 hours (cached) | `/hist/v4/performance/timeseries` |
+| Accumulated profit/loss | 2 hours (cached) | `/hist/v3/perf/` |
+| Client/account details | 2 hours (cached) | `/port/v1/clients/me` |
+| Position data (opt-in) | Same as balance | `/port/v1/netpositions/me` |
+
+The integration uses a single coordinator for all data fetching. Balance data is the primary update driver; performance and position data piggyback on balance refreshes but are independently cached to reduce API load.
+
 ## Troubleshooting
 
 ### Common Issues
@@ -275,6 +287,64 @@ pytest tests/
 ruff check .
 ruff format .
 ```
+
+## Uninstallation
+
+1. Go to **Settings → Devices & Services → Saxo Portfolio**
+2. Click the three-dot menu and select **Delete**
+3. If installed via HACS: go to **HACS → Integrations → Saxo Portfolio → Remove**
+4. Restart Home Assistant
+
+## Use Cases
+
+- **Portfolio Dashboard**: Create a dedicated Lovelace dashboard showing cash balance, total portfolio value, and performance metrics at a glance
+- **Market-Hours Notifications**: Trigger automations when the market opens or closes using the Market Status sensor
+- **Performance Tracking**: Use HA's long-term statistics to track investment performance trends over weeks and months
+- **Token Monitoring**: Get alerts before your OAuth token expires so you can re-authenticate proactively
+
+## Automation Examples
+
+### Alert on significant portfolio drop
+```yaml
+automation:
+  - alias: "Portfolio value drop alert"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.saxo_123456_total_value
+        below: 100000
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "Portfolio Alert"
+          message: "Portfolio value dropped below €100,000"
+```
+
+### Notify on token expiry warning
+```yaml
+automation:
+  - alias: "Saxo token expiry warning"
+    trigger:
+      - platform: state
+        entity_id: sensor.saxo_123456_token_expiry
+    condition:
+      - condition: state
+        entity_id: sensor.saxo_123456_token_expiry
+        state: "WARNING"
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "Saxo Token Expiring"
+          message: "Your Saxo OAuth token is expiring soon. Please re-authenticate."
+```
+
+## Known Limitations
+
+- **Production API only**: The integration uses Saxo's production OpenAPI endpoints. Simulation/demo accounts are not supported.
+- **No trading**: This integration is read-only for portfolio monitoring. It cannot place orders or modify positions.
+- **Refresh token lifetime**: Saxo refresh tokens expire after 24 hours. If Home Assistant is offline for longer, you'll need to re-authenticate.
+- **Single account per entry**: Each config entry monitors one Saxo account. Add the integration multiple times for multiple accounts.
+- **Market data subscription**: Real-time position prices require a market data subscription on your Saxo account. Without it, position price data may be delayed or unavailable.
+- **Performance data delay**: Historical performance metrics are cached for 2 hours and may not reflect the most recent trades immediately.
 
 ## Support
 

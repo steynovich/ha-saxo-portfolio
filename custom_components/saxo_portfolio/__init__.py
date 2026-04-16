@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import config_entry_oauth2_flow
 
 from .const import (
@@ -90,7 +90,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: SaxoConfigEntry) -> bool
                             "Refreshing coordinator for entry %s",
                             config_entry.entry_id,
                         )
-                        await coord.async_refresh()
+                        try:
+                            await coord.async_refresh()
+                        except Exception as err:
+                            raise HomeAssistantError(
+                                translation_domain=DOMAIN,
+                                translation_key="refresh_failed",
+                                translation_placeholders={"error": str(err)},
+                            ) from err
 
             hass.services.async_register(
                 DOMAIN,

@@ -8,6 +8,7 @@ from homeassistant.components.button import ButtonDeviceClass, ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -18,6 +19,8 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import SaxoCoordinator
+
+PARALLEL_UPDATES = 0
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -59,7 +62,6 @@ class SaxoRefreshButton(CoordinatorEntity[SaxoCoordinator], ButtonEntity):
         entity_prefix = f"saxo_{client_id}".lower()
 
         self._attr_unique_id = f"{entity_prefix}_refresh"
-        self._attr_icon = "mdi:refresh"
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -79,4 +81,11 @@ class SaxoRefreshButton(CoordinatorEntity[SaxoCoordinator], ButtonEntity):
     async def async_press(self) -> None:
         """Handle the button press."""
         _LOGGER.debug("Refresh button pressed, triggering coordinator update")
-        await self.coordinator.async_refresh()
+        try:
+            await self.coordinator.async_refresh()
+        except Exception as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="refresh_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
