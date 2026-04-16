@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **HA Quality Scale Platinum Compliance**: Full compliance with all 52 Home Assistant Quality Scale rules across Bronze, Silver, Gold, and Platinum tiers
+- **Strict Typing** (`strict-typing`): Enabled `mypy --strict` with zero errors across all 11 source files; added `py.typed` PEP 561 marker
+- **HA Shared Websession** (`inject-websession`): `SaxoApiClient` now uses HA's `async_get_clientsession()` instead of managing its own `aiohttp.ClientSession`; auth headers sent per-request
+- **Runtime Data** (`runtime-data`): Migrated from `hass.data[DOMAIN]` to typed `entry.runtime_data = SaxoRuntimeData(coordinator)` pattern
+- **Entity Translations** (`has-entity-name`, `entity-translations`): All entities use `_attr_has_entity_name = True` with `_attr_translation_key`; full `strings.json` and 11 translation files
+- **Icon Translations** (`icon-translations`): New `icons.json` mapping all entity icons; removed hardcoded `_attr_icon` from Python code
+- **Test-Before-Configure** (`test-before-configure`, `unique-config-entry`): Config flow validates API credentials and sets `unique_id` from `ClientKey` before creating entry
+- **Entity Disabled by Default** (`entity-disabled-by-default`): `SaxoClientIDSensor`, `SaxoAccountIDSensor`, `SaxoNameSensor` disabled by default
+- **Action Exceptions** (`action-exceptions`): Service handler and refresh button wrap errors in `HomeAssistantError` with translation keys
+- **Exception Translations** (`exception-translations`): Added `exceptions` section to `strings.json` for translated error messages
+- **Parallel Updates** (`parallel-updates`): Added `PARALLEL_UPDATES = 0` to `sensor.py` and `button.py`
+- **Comprehensive Test Suite**: 696 tests with 99% code coverage (up from 170 tests at 40%)
+
+### Changed
+- **API Client Architecture**: Removed `session` property (auto-creating sessions), `close()`, `__aenter__`/`__aexit__` from `SaxoApiClient` — HA owns the HTTP session lifecycle
+- **Coordinator Simplified**: Removed `_close_old_client()` and session close logic; token rotation is now a lightweight client wrapper swap
+- **Config Flow Return Types**: Changed `FlowResult` to `ConfigFlowResult` for mypy compatibility
+- **Documentation**: Updated README with Platinum badge, uninstallation instructions, use cases, automation examples, known limitations, and data update strategy
+- **CLAUDE.md**: Updated project structure, commands, and architecture documentation
+
+### Removed
+- `DATA_COORDINATOR` and `DATA_UNSUB` constants (replaced by `entry.runtime_data`)
+- `API_TIMEOUT_CONNECT` and `API_TIMEOUT_READ` imports from `saxo_client.py` (HA session manages timeouts)
+
 ## [2.9.0-beta.1] - 2026-04-15
 
 ### Added

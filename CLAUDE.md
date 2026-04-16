@@ -8,18 +8,25 @@
 ## Project Structure
 ```
 custom_components/saxo_portfolio/
-├── __init__.py           # Integration setup, service registration
+├── __init__.py           # Integration setup, SaxoRuntimeData, service registration
 ├── button.py             # Refresh button entity
-├── config_flow.py        # OAuth configuration flow
+├── config_flow.py        # OAuth configuration flow with test-before-configure
 ├── coordinator.py        # Data update coordinator with market hours logic
-├── sensor.py             # Sensors with shared base classes
+├── sensor.py             # Sensors with shared base classes (has_entity_name)
 ├── const.py              # Constants and configuration
+├── models.py             # Data models and validation utilities
+├── diagnostics.py        # Diagnostics download support
 ├── services.yaml         # Service definitions
+├── strings.json          # Entity translations and UI strings
+├── icons.json            # Entity icon definitions
+├── py.typed              # PEP 561 strict typing marker
 ├── application_credentials.py
-└── api/saxo_client.py    # API client with rate limiting
+└── api/saxo_client.py    # API client (uses HA shared websession)
 tests/
+├── unit/                 # Unit tests (95%+ coverage)
 ├── contract/             # API contract tests
 ├── integration/          # End-to-end tests
+├── conftest.py           # Shared fixtures
 └── test_structure.py     # Repository structure validation
 ```
 
@@ -28,11 +35,13 @@ tests/
 ruff check .              # Linting
 ruff format .             # Formatting
 python -m pytest tests/   # Run tests
+python -m pytest tests/ --cov=custom_components/saxo_portfolio  # Coverage
+python -m mypy custom_components/saxo_portfolio/ --strict --ignore-missing-imports --follow-imports=silent  # Type checking
 ```
 
 ## Code Style
 - Follow Home Assistant integration standards
-- Type hints throughout (Python 3.11+ syntax)
+- Strict mypy typing throughout (Python 3.14+ syntax, `py.typed` marker)
 - Comprehensive error handling with sanitized logging
 
 ## Sensors
@@ -72,12 +81,16 @@ Device: `"Saxo {ClientId} Portfolio"`
 - `SaxoPerformanceSensorBase` - Time period handling, caching, and long-term statistics (`state_class="measurement"`)
 
 ### Key Behaviors
+- **Runtime Data**: Uses `entry.runtime_data = SaxoRuntimeData(coordinator)` (not `hass.data[DOMAIN]`)
+- **Entity Naming**: `_attr_has_entity_name = True` with `_attr_translation_key` for all entities
+- **Shared Session**: `SaxoApiClient` uses HA's `async_get_clientsession(hass)` — no session lifecycle management
 - **Market Hours**: 5 min updates during market hours, 30 min after hours
 - **Performance Caching**: 2-hour cache for performance data
 - **Long-Term Statistics**: Performance sensors support HA statistics for historical tracking
 - **Sticky Availability**: Sensors stay available during updates, unavailable after 15+ min failures
 - **Graceful Degradation**: Performance API failures don't block balance data
 - **GUI Reauthentication**: OAuth reauth without removing integration
+- **Test-Before-Configure**: Validates API credentials during config flow setup
 
 ### Rate Limiting
 - Batched API calls with 0.5s delays
