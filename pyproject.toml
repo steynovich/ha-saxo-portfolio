@@ -98,6 +98,9 @@ max-statements = 50
 [tool.ruff.lint.flake8-pytest-style]
 fixture-parentheses = false
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D100", "D101", "D102", "D103", "D104", "D107"]
+
 [tool.ruff.lint.pyupgrade]
 keep-runtime-typing = true
 
