@@ -107,8 +107,8 @@ class TestPositionSensorDynamicCreation:
         sensors = [SaxoPositionSensor(mock_coordinator, slug) for slug in position_ids]
 
         assert len(sensors) == 2
-        assert any("aapl" in s.entity_id for s in sensors)
-        assert any("msft" in s.entity_id for s in sensors)
+        assert any("aapl" in s.unique_id for s in sensors)
+        assert any("msft" in s.unique_id for s in sensors)
 
     def test_position_sensors_not_created_when_disabled(
         self, mock_hass, mock_config_entry, mock_coordinator
@@ -162,7 +162,7 @@ class TestPositionSensorDynamicCreation:
 
         # Verify new sensor was created
         assert len(added_entities) == 1
-        assert "msft" in added_entities[0].entity_id
+        assert "msft" in added_entities[0].unique_id
 
 
 @pytest.mark.integration

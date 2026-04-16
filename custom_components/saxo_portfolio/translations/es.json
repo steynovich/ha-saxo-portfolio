@@ -57,21 +57,60 @@
   "entity": {
     "button": {
       "refresh": {
-        "name": "Actualizar datos de la cartera"
+        "name": "Refresh"
       }
     },
     "sensor": {
-      "total_value": {
-        "name": "Valor total de la cartera"
-      },
       "cash_balance": {
-        "name": "Saldo en efectivo de la cartera"
+        "name": "Cash Balance"
+      },
+      "total_value": {
+        "name": "Total Value"
       },
       "non_margin_positions_value": {
-        "name": "Valor de posiciones sin margen"
+        "name": "Non-Margin Positions Value"
       },
       "accumulated_profit_loss": {
-        "name": "Ganancia/Pérdida acumulada de la cartera"
+        "name": "Accumulated Profit/Loss"
+      },
+      "investment_performance": {
+        "name": "Investment Performance"
+      },
+      "ytd_investment_performance": {
+        "name": "YTD Investment Performance"
+      },
+      "month_investment_performance": {
+        "name": "Month Investment Performance"
+      },
+      "quarter_investment_performance": {
+        "name": "Quarter Investment Performance"
+      },
+      "cash_transfer_balance": {
+        "name": "Cash Transfer Balance"
+      },
+      "client_id": {
+        "name": "Client ID"
+      },
+      "account_id": {
+        "name": "Account ID"
+      },
+      "name": {
+        "name": "Name"
+      },
+      "token_expiry": {
+        "name": "Token Expiry"
+      },
+      "market_status": {
+        "name": "Market Status"
+      },
+      "last_update": {
+        "name": "Last Update"
+      },
+      "timezone": {
+        "name": "Timezone"
+      },
+      "market_data_access": {
+        "name": "Market Data Access"
       }
     }
   },

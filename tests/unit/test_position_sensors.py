@@ -150,15 +150,17 @@ class TestPositionSensorIntegration:
 
         return coordinator
 
-    def test_position_sensor_entity_id_format(self, mock_coordinator):
-        """Test that position sensor entity ID follows expected format."""
+    def test_position_sensor_unique_id_and_translation(self, mock_coordinator):
+        """Test that position sensor has correct unique_id and has_entity_name."""
         from custom_components.saxo_portfolio.sensor import SaxoPositionSensor
 
         sensor = SaxoPositionSensor(mock_coordinator, "aapl_stock")
 
-        # Entity ID should follow pattern: sensor.saxo_{client_id}_position_{slug}
-        expected_entity_id = "sensor.saxo_123456_position_aapl_stock"
-        assert sensor.entity_id == expected_entity_id
+        # Unique ID should follow pattern: saxo_{client_id}_position_{slug}
+        assert sensor._attr_unique_id == "saxo_123456_position_aapl_stock"
+        # Position sensors use has_entity_name with a dynamic name
+        assert sensor._attr_has_entity_name is True
+        assert sensor._attr_name == "Position AAPL"
 
     def test_position_sensor_state_is_current_price(self, mock_coordinator):
         """Test that position sensor state is the current price."""

@@ -46,6 +46,8 @@ async def async_setup_entry(
 class SaxoRefreshButton(CoordinatorEntity[SaxoCoordinator], ButtonEntity):
     """Button to manually refresh Saxo Portfolio data."""
 
+    _attr_has_entity_name = True
+    _attr_translation_key = "refresh"
     _attr_device_class = ButtonDeviceClass.UPDATE
     _attr_entity_category = EntityCategory.CONFIG
 
@@ -57,8 +59,6 @@ class SaxoRefreshButton(CoordinatorEntity[SaxoCoordinator], ButtonEntity):
         entity_prefix = f"saxo_{client_id}".lower()
 
         self._attr_unique_id = f"{entity_prefix}_refresh"
-        self._attr_name = f"Saxo {client_id} Refresh"
-        self.entity_id = f"button.{entity_prefix}_refresh"
         self._attr_icon = "mdi:refresh"
 
     @property

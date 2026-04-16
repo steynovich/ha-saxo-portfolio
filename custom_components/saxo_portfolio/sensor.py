@@ -65,11 +65,12 @@ def _setup_position_listener(
 class SaxoSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
     """Base class for all Saxo Portfolio sensors."""
 
+    _attr_has_entity_name = True
+
     def __init__(
         self,
         coordinator: SaxoCoordinator,
         sensor_type: str,
-        display_name: str,
         *,
         device_class: SensorDeviceClass | None = None,
         icon: str | None = None,
@@ -84,8 +85,7 @@ class SaxoSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
         entity_prefix = f"saxo_{client_id}".lower()
 
         self._attr_unique_id = f"{entity_prefix}_{sensor_type}"
-        self._attr_name = f"Saxo {client_id} {display_name}"
-        self.entity_id = f"sensor.{entity_prefix}_{sensor_type}"
+        self._attr_translation_key = sensor_type
         self._attr_device_class = device_class
         self._attr_icon = icon
         self._attr_entity_category = entity_category
@@ -177,16 +177,13 @@ class SaxoSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
-        _LOGGER.debug(
-            "%s sensor %s added to Home Assistant", self._attr_name, self.entity_id
-        )
+        _LOGGER.debug("Sensor %s added to Home Assistant", self._attr_unique_id)
 
     async def async_will_remove_from_hass(self) -> None:
         """When entity will be removed from hass."""
         _LOGGER.debug(
-            "%s sensor %s being removed from Home Assistant",
-            self._attr_name,
-            self.entity_id,
+            "Sensor %s being removed from Home Assistant",
+            self._attr_unique_id,
         )
         await super().async_will_remove_from_hass()
 
@@ -198,7 +195,6 @@ class SaxoBalanceSensorBase(SaxoSensorBase):
         self,
         coordinator: SaxoCoordinator,
         sensor_type: str,
-        display_name: str,
         icon: str,
         coordinator_method: str,
     ) -> None:
@@ -206,7 +202,6 @@ class SaxoBalanceSensorBase(SaxoSensorBase):
         super().__init__(
             coordinator,
             sensor_type,
-            display_name,
             device_class=SensorDeviceClass.MONETARY,
             icon=icon,
             unit_of_measurement=coordinator.get_currency(),
@@ -232,7 +227,11 @@ class SaxoBalanceSensorBase(SaxoSensorBase):
                 import math
 
                 if not math.isfinite(balance):
-                    _LOGGER.warning("Invalid %s value: %s", self._attr_name, balance)
+                    _LOGGER.warning(
+                        "Invalid %s value: %s",
+                        self._attr_translation_key,
+                        balance,
+                    )
                     return None
 
                 # Round financial value to 2 decimal places
@@ -243,7 +242,7 @@ class SaxoBalanceSensorBase(SaxoSensorBase):
         except Exception as e:
             _LOGGER.error(
                 "Error getting %s: %s",
-                self._attr_name,
+                self._attr_translation_key,
                 type(e).__name__,
             )
             return None
@@ -268,14 +267,12 @@ class SaxoDiagnosticSensorBase(SaxoSensorBase):
         self,
         coordinator: SaxoCoordinator,
         sensor_type: str,
-        display_name: str,
         icon: str,
     ) -> None:
         """Initialize the diagnostic sensor."""
         super().__init__(
             coordinator,
             sensor_type,
-            display_name,
             icon=icon,
             entity_category=EntityCategory.DIAGNOSTIC,
         )
@@ -372,7 +369,6 @@ class SaxoCashBalanceSensor(SaxoBalanceSensorBase):
         super().__init__(
             coordinator,
             "cash_balance",
-            "Portfolio Cash Balance",
             "mdi:cash",
             "get_cash_balance",
         )
@@ -386,7 +382,6 @@ class SaxoTotalValueSensor(SaxoBalanceSensorBase):
         super().__init__(
             coordinator,
             "total_value",
-            "Portfolio Total Value",
             "mdi:wallet",
             "get_total_value",
         )
@@ -400,7 +395,6 @@ class SaxoNonMarginPositionsValueSensor(SaxoBalanceSensorBase):
         super().__init__(
             coordinator,
             "non_margin_positions_value",
-            "Portfolio Non-Margin Positions Value",
             "mdi:finance",
             "get_non_margin_positions_value",
         )
@@ -414,7 +408,6 @@ class SaxoAccumulatedProfitLossSensor(SaxoSensorBase):
         super().__init__(
             coordinator,
             "accumulated_profit_loss",
-            "Portfolio Accumulated Profit/Loss",
             icon="mdi:trending-up",
             unit_of_measurement=coordinator.get_currency(),
         )
@@ -465,7 +458,6 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
         self,
         coordinator: SaxoCoordinator,
         sensor_type: str,
-        display_name: str,
         data_key: str,
     ) -> None:
         """Initialize the performance sensor.
@@ -473,14 +465,12 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
         Args:
             coordinator: The coordinator instance
             sensor_type: Type identifier for the sensor (e.g., "investment_performance", "ytd_investment_performance")
-            display_name: Human readable name for the sensor
             data_key: Key to fetch data from coordinator data dict
 
         """
         super().__init__(
             coordinator,
             sensor_type,
-            f"Portfolio {display_name}",
             icon="mdi:trending-up",
             unit_of_measurement="%",
         )
@@ -508,7 +498,7 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
                 if not math.isfinite(performance_percentage):
                     _LOGGER.warning(
                         "%s performance percentage is not finite: %s",
-                        self._attr_name,
+                        self._attr_translation_key,
                         performance_percentage,
                     )
                     return None
@@ -518,7 +508,7 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
             else:
                 _LOGGER.warning(
                     "%s performance percentage is not numeric: %s (type: %s)",
-                    self._attr_name,
+                    self._attr_translation_key,
                     performance_percentage,
                     type(performance_percentage),
                 )
@@ -527,7 +517,7 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
         except Exception as e:
             _LOGGER.error(
                 "Error getting %s performance percentage: %s",
-                self._attr_name,
+                self._attr_translation_key,
                 type(e).__name__,
             )
             return None
@@ -632,7 +622,6 @@ class SaxoInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
         super().__init__(
             coordinator,
             "investment_performance",
-            "Investment Performance",
             "investment_performance_percentage",
         )
 
@@ -653,7 +642,6 @@ class SaxoCashTransferBalanceSensor(SaxoBalanceSensorBase):
         super().__init__(
             coordinator,
             "cash_transfer_balance",
-            "Portfolio Cash Transfer Balance",
             "mdi:bank-transfer",
             "get_cash_transfer_balance",
         )
@@ -677,7 +665,6 @@ class SaxoYTDInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
         super().__init__(
             coordinator,
             "ytd_investment_performance",
-            "YTD Investment Performance",
             "ytd_investment_performance_percentage",
         )
 
@@ -698,7 +685,6 @@ class SaxoMonthInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
         super().__init__(
             coordinator,
             "month_investment_performance",
-            "Month Investment Performance",
             "month_investment_performance_percentage",
         )
 
@@ -719,7 +705,6 @@ class SaxoQuarterInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
         super().__init__(
             coordinator,
             "quarter_investment_performance",
-            "Quarter Investment Performance",
             "quarter_investment_performance_percentage",
         )
 
@@ -740,7 +725,6 @@ class SaxoClientIDSensor(SaxoDiagnosticSensorBase):
         super().__init__(
             coordinator,
             "client_id",
-            "Client ID",
             "mdi:identifier",
         )
 
@@ -763,7 +747,6 @@ class SaxoAccountIDSensor(SaxoDiagnosticSensorBase):
         super().__init__(
             coordinator,
             "account_id",
-            "Account ID",
             "mdi:account",
         )
 
@@ -786,14 +769,13 @@ class SaxoNameSensor(SaxoDiagnosticSensorBase):
         super().__init__(
             coordinator,
             "name",
-            "Name",
             "mdi:account-box",
         )
 
         _LOGGER.debug(
-            "Initialized Name sensor - unique_id: %s, name: %s, icon: %s",
+            "Initialized Name sensor - unique_id: %s, translation_key: %s, icon: %s",
             self._attr_unique_id,
-            self._attr_name,
+            self._attr_translation_key,
             self._attr_icon,
         )
 
@@ -822,14 +804,13 @@ class SaxoTokenExpirySensor(SaxoDiagnosticSensorBase):
         super().__init__(
             coordinator,
             "token_expiry",
-            "Token Expiry",
             "mdi:clock-alert-outline",
         )
 
         _LOGGER.debug(
-            "Initialized token expiry sensor with unique_id: %s, name: %s",
+            "Initialized token expiry sensor with unique_id: %s, translation_key: %s",
             self._attr_unique_id,
-            self._attr_name,
+            self._attr_translation_key,
         )
 
     @property
@@ -893,14 +874,13 @@ class SaxoMarketStatusSensor(SaxoDiagnosticSensorBase):
         super().__init__(
             coordinator,
             "market_status",
-            "Market Status",
             "mdi:chart-timeline-variant",
         )
 
         _LOGGER.debug(
-            "Initialized market status sensor with unique_id: %s, name: %s",
+            "Initialized market status sensor with unique_id: %s, translation_key: %s",
             self._attr_unique_id,
-            self._attr_name,
+            self._attr_translation_key,
         )
 
     @property
@@ -979,15 +959,14 @@ class SaxoLastUpdateSensor(SaxoDiagnosticSensorBase):
         super().__init__(
             coordinator,
             "last_update",
-            "Last Update",
             "mdi:update",
         )
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
 
         _LOGGER.debug(
-            "Initialized last update sensor with unique_id: %s, name: %s",
+            "Initialized last update sensor with unique_id: %s, translation_key: %s",
             self._attr_unique_id,
-            self._attr_name,
+            self._attr_translation_key,
         )
 
     @property
@@ -1038,14 +1017,13 @@ class SaxoTimezoneSensor(SaxoDiagnosticSensorBase):
         super().__init__(
             coordinator,
             "timezone",
-            "Timezone",
             "mdi:earth",
         )
 
         _LOGGER.debug(
-            "Initialized timezone sensor with unique_id: %s, name: %s",
+            "Initialized timezone sensor with unique_id: %s, translation_key: %s",
             self._attr_unique_id,
-            self._attr_name,
+            self._attr_translation_key,
         )
 
     @property
@@ -1122,14 +1100,13 @@ class SaxoMarketDataAccessSensor(SaxoDiagnosticSensorBase):
         super().__init__(
             coordinator,
             "market_data_access",
-            "Real-Time Market Data Access",
             "mdi:chart-line",
         )
 
         _LOGGER.debug(
-            "Initialized real-time market data access sensor with unique_id: %s, name: %s",
+            "Initialized real-time market data access sensor with unique_id: %s, translation_key: %s",
             self._attr_unique_id,
-            self._attr_name,
+            self._attr_translation_key,
         )
 
     @property
@@ -1195,10 +1172,12 @@ class SaxoPositionSensor(SaxoSensorBase):
         super().__init__(
             coordinator,
             f"position_{position_slug}",
-            f"Position {symbol}",
             icon="mdi:chart-line",
             unit_of_measurement=position.currency if position else "USD",
         )
+
+        # Position sensors use dynamic names (not translatable)
+        self._attr_name = f"Position {symbol}"
 
         self._attr_state_class = "measurement"
 
