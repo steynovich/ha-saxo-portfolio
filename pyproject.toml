@@ -61,6 +61,8 @@ select = [
     "ICN001", # import concentions; {name} should be imported as {asname}
     "PGH004", # Use specific rule codes when using noqa
     "PLC0414", # Useless import alias. Import alias does not rename original package.
+    "PLR0912", # Too many branches
+    "PLR0915", # Too many statements
     "SIM105", # Use contextlib.suppress({exception}) instead of try-except-pass
     "SIM117", # Combine multiple with statements
     "SIM118", # Use {key} in {dict} instead of {key} in {dict}.keys()
@@ -76,7 +78,6 @@ select = [
 ]
 
 ignore = [
-    "C901", # Complex functions - acceptable for production API clients
     "D202", # No blank lines allowed after function docstring
     "D203", # 1 blank line required before class docstring
     "D213", # Multi-line docstring summary should start at the second line
@@ -86,6 +87,13 @@ ignore = [
     "E731", # do not assign a lambda expression, use a def
     "SIM117", # Nested with statements - acceptable for async timeout patterns
 ]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-branches = 12
+max-statements = 50
 
 [tool.ruff.lint.flake8-pytest-style]
 fixture-parentheses = false

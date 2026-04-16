@@ -1,24 +1,25 @@
 """Integration tests for OAuth authentication flow.
 
-These tests validate the complete OAuth setup and authentication process
-from the user's perspective, following scenarios in quickstart.md.
-
-⚠️  TDD REQUIREMENT: These tests MUST FAIL initially since no implementation exists.
+These tests validate the OAuth setup and authentication process,
+including config entry creation, reauth, and token handling.
 """
 
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
-from homeassistant import data_entry_flow
-from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_entry_oauth2_flow
 
 from custom_components.saxo_portfolio.config_flow import SaxoPortfolioFlowHandler
-from custom_components.saxo_portfolio.const import DOMAIN
+from custom_components.saxo_portfolio.const import CONF_TIMEZONE, DOMAIN
 
 
 @pytest.mark.integration
 class TestOAuthAuthenticationFlow:
-    """Integration tests for complete OAuth authentication flow."""
+    """Integration tests for OAuth authentication flow."""
 
     @pytest.fixture
     def mock_hass(self):
@@ -26,277 +27,203 @@ class TestOAuthAuthenticationFlow:
         hass = Mock(spec=HomeAssistant)
         hass.data = {DOMAIN: {}}
         hass.config_entries = Mock()
-        hass.config_entries.async_entries.return_value = []
+        hass.config_entries.async_entries = Mock(return_value=[])
         return hass
 
     @pytest.fixture
-    def mock_oauth_implementation(self):
-        """Mock OAuth implementation for testing."""
-        implementation = Mock()
-        implementation.domain = DOMAIN
-        implementation.name = "Saxo Portfolio"
-        implementation.client_id = "test_app_key"
-        implementation.client_secret = "test_app_secret"
-        return implementation
+    def config_flow(self, mock_hass):
+        """Create a config flow instance."""
+        flow = SaxoPortfolioFlowHandler()
+        flow.hass = mock_hass
+        return flow
 
     @pytest.mark.asyncio
-    async def test_complete_oauth_setup_flow(self, mock_hass):
-        """Test the complete OAuth setup flow from user perspective.
+    async def test_complete_oauth_setup_flow_no_credentials(self, config_flow):
+        """Test that user step aborts when no OAuth credentials are configured."""
+        with patch(
+            "homeassistant.helpers.config_entry_oauth2_flow.async_get_implementations",
+            return_value={},
+        ):
+            result = await config_flow.async_step_user()
 
-        This follows Step 3 from quickstart.md: Integration Configuration
-        """
-        # This test MUST FAIL initially - no implementation exists
-
-        # Step 1: User initiates integration setup
-        config_flow = SaxoPortfolioFlowHandler()
-        config_flow.hass = mock_hass
-
-        # Step 2: User sees configuration form
-        result = await config_flow.async_step_user()
-
-        # Should present OAuth setup options
-        assert result["type"] == data_entry_flow.RESULT_TYPE_EXTERNAL_STEP
-        assert result["step_id"] == "auth"
-        assert "description_placeholders" in result
-
-        # Step 3: OAuth authorization URL should be provided
-        assert "url" in result
-        oauth_url = result["url"]
-        assert "authorize" in oauth_url
-        assert "saxo" in oauth_url.lower()
+        assert result["type"] == "abort"
+        assert result["reason"] == "missing_credentials"
+        assert "developer_portal_url" in result["description_placeholders"]
 
     @pytest.mark.asyncio
-    async def test_oauth_callback_handling(self, mock_hass):
-        """Test OAuth callback processing after user authorization."""
-        # This test MUST FAIL initially - no implementation exists
-
-        config_flow = SaxoPortfolioFlowHandler()
-        config_flow.hass = mock_hass
-
-        # Mock OAuth callback data
-        callback_data = {"code": "test_auth_code", "state": "test_state"}
-
-        # Process OAuth callback
-        result = await config_flow.async_step_oauth_callback(callback_data)
-
-        # Should exchange code for token
-        assert result["type"] == data_entry_flow.RESULT_TYPE_CREATE_ENTRY
-        assert "data" in result
-
-        # Token data should be stored
-        entry_data = result["data"]
-        assert "token" in entry_data
-        token = entry_data["token"]
-        assert "access_token" in token
-        assert "refresh_token" in token
-
-    @pytest.mark.asyncio
-    async def test_token_exchange_process(self, mock_hass, mock_oauth_implementation):
-        """Test the token exchange process with Saxo API."""
-        # This test MUST FAIL initially - no implementation exists
-
-        with patch("aiohttp.ClientSession.post") as mock_post:
-            # Mock token endpoint response
-            mock_response = AsyncMock()
-            mock_response.status = 200
-            mock_response.json.return_value = {
-                "access_token": "saxo_access_token_123",
-                "refresh_token": "saxo_refresh_token_456",
-                "token_type": "Bearer",
-                "expires_in": 1200,
-            }
-            mock_post.return_value = mock_response
-
-            config_flow = SaxoPortfolioFlowHandler()
-            config_flow.hass = mock_hass
-
-            # Exchange authorization code for tokens
-            token_data = await config_flow._exchange_code_for_token(
-                "test_auth_code", mock_oauth_implementation
-            )
-
-            # Should get valid token response
-            assert token_data["access_token"] == "saxo_access_token_123"
-            assert token_data["refresh_token"] == "saxo_refresh_token_456"
-            assert token_data["token_type"] == "Bearer"
-
-    @pytest.mark.asyncio
-    async def test_config_entry_creation_with_oauth_data(self, mock_hass):
-        """Test config entry creation after successful OAuth."""
-        # This test MUST FAIL initially - no implementation exists
-
+    async def test_oauth_callback_routes_to_timezone(self, config_flow):
+        """Test OAuth callback routes to timezone selection for new entries."""
         oauth_data = {
             "token": {
                 "access_token": "test_token",
                 "refresh_token": "test_refresh",
-                "expires_at": 1640995200,
+                "expires_at": 9999999999,
                 "token_type": "Bearer",
             },
-            "auth_implementation": DOMAIN,
         }
 
-        config_flow = SaxoPortfolioFlowHandler()
-        config_flow.hass = mock_hass
-
-        # Create config entry from OAuth data
         result = await config_flow.async_oauth_create_entry(oauth_data)
 
-        # Should create entry with proper structure
-        assert result["type"] == data_entry_flow.RESULT_TYPE_CREATE_ENTRY
-        assert result["title"] == "Saxo Portfolio"
-
-        # Entry data should match expected format
-        entry_data = result["data"]
-        assert "token" in entry_data
-        assert entry_data["token"]["access_token"] == "test_token"
+        # New entries route to timezone selection
+        assert result["type"] == "form"
+        assert result["step_id"] == "timezone"
 
     @pytest.mark.asyncio
-    async def test_oauth_error_scenarios(self, mock_hass):
-        """Test OAuth error handling scenarios."""
-        # This test MUST FAIL initially - no implementation exists
-
-        config_flow = SaxoPortfolioFlowHandler()
-        config_flow.hass = mock_hass
-
-        # Test invalid authorization code
-        with patch("aiohttp.ClientSession.post") as mock_post:
-            mock_response = AsyncMock()
-            mock_response.status = 400
-            mock_response.json.return_value = {
-                "error": "invalid_grant",
-                "error_description": "Authorization code is invalid",
-            }
-            mock_post.return_value = mock_response
-
-            with pytest.raises(Exception) as exc_info:
-                await config_flow._exchange_code_for_token("invalid_code", Mock())
-
-            assert "invalid" in str(exc_info.value).lower()
-
-    @pytest.mark.asyncio
-    async def test_token_refresh_during_setup(self, mock_hass):
-        """Test token refresh functionality during initial setup."""
-        # This test MUST FAIL initially - no implementation exists
-
-        # Mock expired token scenario
-        expired_token_data = {
-            "access_token": "expired_token",
-            "refresh_token": "valid_refresh_token",
-            "expires_at": 1640000000,  # Past timestamp
-            "token_type": "Bearer",
+    async def test_timezone_step_creates_entry(self, config_flow):
+        """Test that timezone step creates config entry with all data."""
+        # Simulate OAuth data already stored
+        config_flow._oauth_data = {
+            "token": {
+                "access_token": "test_token",
+                "refresh_token": "test_refresh",
+                "expires_at": 9999999999,
+                "token_type": "Bearer",
+            },
         }
 
-        with patch("aiohttp.ClientSession.post") as mock_post:
-            # Mock refresh token response
-            mock_response = AsyncMock()
-            mock_response.status = 200
-            mock_response.json.return_value = {
-                "access_token": "new_access_token",
-                "refresh_token": "new_refresh_token",
-                "expires_in": 1200,
-            }
-            mock_post.return_value = mock_response
-
-            config_flow = SaxoPortfolioFlowHandler()
-            config_flow.hass = mock_hass
-
-            # Should refresh token automatically
-            new_token = await config_flow._refresh_token(expired_token_data)
-
-            assert new_token["access_token"] == "new_access_token"
-            assert new_token["refresh_token"] == "new_refresh_token"
-
-    @pytest.mark.asyncio
-    async def test_integration_already_configured_check(self, mock_hass):
-        """Test behavior when integration is already configured."""
-        # This test MUST FAIL initially - no implementation exists
-
-        # Mock existing config entry
-        existing_entry = Mock(spec=ConfigEntry)
-        existing_entry.domain = DOMAIN
-        existing_entry.data = {"token": {"access_token": "existing_token"}}
-
-        mock_hass.config_entries.async_entries.return_value = [existing_entry]
-
-        config_flow = SaxoPortfolioFlowHandler()
-        config_flow.hass = mock_hass
-
-        # Should abort if single instance integration
-        result = await config_flow.async_step_user()
-
-        if result["type"] == data_entry_flow.RESULT_TYPE_ABORT:
-            assert result["reason"] == "single_instance_allowed"
-
-    @pytest.mark.asyncio
-    async def test_oauth_state_parameter_validation(self, mock_hass):
-        """Test OAuth state parameter validation for security."""
-        # This test MUST FAIL initially - no implementation exists
-
-        config_flow = SaxoPortfolioFlowHandler()
-        config_flow.hass = mock_hass
-        config_flow._oauth_state = "expected_state_123"
-
-        # Valid state should succeed
-        valid_callback = {"code": "auth_code", "state": "expected_state_123"}
-
-        # Should not raise exception for valid state
-        result = await config_flow.async_step_oauth_callback(valid_callback)
-        assert result["type"] in [
-            data_entry_flow.RESULT_TYPE_CREATE_ENTRY,
-            data_entry_flow.RESULT_TYPE_EXTERNAL_STEP,
-        ]
-
-        # Invalid state should fail
-        invalid_callback = {"code": "auth_code", "state": "wrong_state_456"}
-
-        with pytest.raises(Exception) as exc_info:
-            await config_flow.async_step_oauth_callback(invalid_callback)
-
-        assert "state" in str(exc_info.value).lower()
-
-    @pytest.mark.asyncio
-    async def test_network_error_handling_during_oauth(self, mock_hass):
-        """Test network error handling during OAuth process."""
-        # This test MUST FAIL initially - no implementation exists
-
-        config_flow = SaxoPortfolioFlowHandler()
-        config_flow.hass = mock_hass
-
-        # Mock network error during token exchange
         with patch(
-            "aiohttp.ClientSession.post", side_effect=Exception("Network error")
+            "homeassistant.helpers.config_entry_oauth2_flow.async_get_implementations",
+            return_value={},
         ):
-            with pytest.raises(Exception) as exc_info:
-                await config_flow._exchange_code_for_token("test_code", Mock())
-
-            # Should propagate network error appropriately
-            assert (
-                "network" in str(exc_info.value).lower()
-                or "error" in str(exc_info.value).lower()
+            result = await config_flow.async_step_timezone(
+                {CONF_TIMEZONE: "America/New_York"}
             )
+
+        assert result["type"] == "create_entry"
+        assert result["title"] == "Saxo Portfolio"
+        assert result["data"][CONF_TIMEZONE] == "America/New_York"
+        assert "token" in result["data"]
+
+    @pytest.mark.asyncio
+    async def test_config_entry_creation_includes_token(self, config_flow):
+        """Test config entry data includes proper token structure."""
+        config_flow._oauth_data = {
+            "token": {
+                "access_token": "saxo_token_abc",
+                "refresh_token": "saxo_refresh_xyz",
+                "expires_at": 9999999999,
+                "token_type": "Bearer",
+            },
+        }
+
+        with patch(
+            "homeassistant.helpers.config_entry_oauth2_flow.async_get_implementations",
+            return_value={},
+        ):
+            result = await config_flow.async_step_timezone({CONF_TIMEZONE: "any"})
+
+        entry_data = result["data"]
+        assert entry_data["token"]["access_token"] == "saxo_token_abc"
+        assert entry_data["token"]["refresh_token"] == "saxo_refresh_xyz"
+        assert entry_data["token"]["token_type"] == "Bearer"
+
+    @pytest.mark.asyncio
+    async def test_reauth_flow_preserves_settings(self, config_flow):
+        """Test reauth preserves existing timezone and settings."""
+        mock_entry = Mock(spec=ConfigEntry)
+        mock_entry.data = {
+            "token": {"access_token": "old"},
+            "timezone": "Europe/Amsterdam",
+            "redirect_uri": "https://example.com/redirect",
+        }
+        mock_entry.title = "Saxo Portfolio"
+        mock_entry.entry_id = "existing_entry"
+
+        config_flow._reauth_entry = mock_entry
+        config_flow.hass.config_entries.async_update_entry = Mock()
+        config_flow.hass.config_entries.async_reload = AsyncMock()
+
+        new_oauth_data = {
+            "token": {
+                "access_token": "new_token",
+                "refresh_token": "new_refresh",
+                "expires_at": 9999999999,
+                "token_type": "Bearer",
+            },
+        }
+
+        result = await config_flow.async_oauth_create_entry(new_oauth_data)
+
+        assert result["type"] == "abort"
+        assert result["reason"] == "reauth_successful"
+
+        # Check that existing settings were preserved
+        update_call = config_flow.hass.config_entries.async_update_entry.call_args
+        new_data = update_call[1]["data"]
+        assert new_data["timezone"] == "Europe/Amsterdam"
+        assert new_data["token"]["access_token"] == "new_token"
+
+    @pytest.mark.asyncio
+    async def test_reauth_confirm_step_shows_form(self, config_flow):
+        """Test reauth confirm step shows confirmation form."""
+        mock_entry = Mock()
+        mock_entry.title = "Saxo Portfolio"
+        config_flow._reauth_entry = mock_entry
+
+        result = await config_flow.async_step_reauth_confirm()
+
+        assert result["type"] == "form"
+        assert result["step_id"] == "reauth_confirm"
+
+    @pytest.mark.asyncio
+    async def test_reauth_confirm_submit_starts_oauth(self, config_flow):
+        """Test reauth confirm submission starts OAuth flow."""
+        config_flow._reauth_entry = Mock(title="Saxo Portfolio")
+
+        with patch(
+            "homeassistant.helpers.config_entry_oauth2_flow.async_get_implementations",
+            return_value={},
+        ):
+            result = await config_flow.async_step_reauth_confirm(user_input={})
+
+        # With no implementations, aborts with missing_credentials
+        assert result["type"] == "abort"
+        assert result["reason"] == "missing_credentials"
+
+    @pytest.mark.asyncio
+    async def test_token_issued_at_added_to_entry(self, config_flow):
+        """Test that token_issued_at is added when creating entry."""
+        oauth_data = {
+            "token": {
+                "access_token": "test",
+                "refresh_token": "test",
+                "expires_at": 9999999999,
+            },
+        }
+
+        await config_flow.async_oauth_create_entry(oauth_data)
+
+        # token_issued_at should be added
+        assert "token_issued_at" in config_flow._oauth_data["token"]
+        assert isinstance(config_flow._oauth_data["token"]["token_issued_at"], float)
+
+    @pytest.mark.asyncio
+    async def test_reconfigure_step_shows_form(self, config_flow):
+        """Test reconfigure step shows confirmation form."""
+        mock_entry = Mock()
+        mock_entry.title = "Saxo Portfolio"
+        mock_entry.entry_id = "test_entry"
+
+        with patch.object(
+            config_flow, "_get_reconfigure_entry", return_value=mock_entry
+        ):
+            result = await config_flow.async_step_reconfigure()
+
+        assert result["type"] == "form"
+        assert result["step_id"] == "reconfigure"
 
     @pytest.mark.asyncio
     async def test_application_credentials_integration(self, mock_hass):
-        """Test integration with Home Assistant application credentials."""
-        # This test MUST FAIL initially - no implementation exists
+        """Test integration with HA application credentials framework."""
+        from custom_components.saxo_portfolio.application_credentials import (
+            SaxoAuthImplementation,
+            async_get_auth_implementation,
+        )
+        from homeassistant.components.application_credentials import ClientCredential
 
-        from homeassistant.components.application_credentials import (
-            ClientCredential,
-            async_import_client_credential,
+        credential = ClientCredential("test_key", "test_secret")
+        impl = await async_get_auth_implementation(
+            mock_hass, DOMAIN, credential
         )
 
-        # Mock application credentials
-        credentials = ClientCredential("test_app_key", "test_app_secret")
-
-        with patch(
-            "homeassistant.components.application_credentials.async_import_client_credential"
-        ) as mock_import:
-            mock_import.return_value = True
-
-            # Should be able to import credentials
-            result = await async_import_client_credential(
-                mock_hass, DOMAIN, credentials
-            )
-
-            assert result is True
-            mock_import.assert_called_once()
+        assert isinstance(impl, SaxoAuthImplementation)

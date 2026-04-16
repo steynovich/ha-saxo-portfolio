@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
 from typing import Any
 
@@ -31,6 +32,7 @@ from ..const import (
     MAX_RETRIES,
     RETRY_BACKOFF_FACTOR,
 )
+from ..models import mask_url_for_logging
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,6 +53,33 @@ class APIError(Exception):
     """Exception raised for general API errors."""
 
     pass
+
+
+def _validate_balance_response(response: dict[str, Any]) -> None:
+    """Validate the Saxo balance endpoint response shape and values.
+
+    Raises:
+        APIError: If a required field is missing, a value has the wrong type,
+            a numeric value is non-finite, or TotalValue is negative.
+
+    """
+    for field in ("CashBalance", "Currency", "TotalValue"):
+        if field not in response:
+            raise APIError(f"Missing required field: {field}")
+
+    if not isinstance(response["CashBalance"], int | float):
+        raise APIError("CashBalance must be numeric")
+    if not isinstance(response["TotalValue"], int | float):
+        raise APIError("TotalValue must be numeric")
+    if not isinstance(response["Currency"], str):
+        raise APIError("Currency must be string")
+
+    if not math.isfinite(response["CashBalance"]):
+        raise APIError("CashBalance is not finite")
+    if not math.isfinite(response["TotalValue"]):
+        raise APIError("TotalValue is not finite")
+    if response["TotalValue"] < 0:
+        raise APIError("TotalValue cannot be negative")
 
 
 class RateLimiter:
@@ -219,136 +248,152 @@ class SaxoApiClient:
 
         for attempt in range(MAX_RETRIES):
             try:
-                async with asyncio.timeout(API_TIMEOUT_TOTAL):
-                    async with self.session.get(url, params=params) as response:
-                        from ..models import mask_url_for_logging
-
-                        _LOGGER.debug(
-                            "API request: %s %s -> %d",
-                            "GET",
-                            mask_url_for_logging(url),
-                            response.status,
-                        )
-
-                        if response.status == 401:
-                            # Log additional details for 401 errors (without exposing sensitive data)
-                            auth_header = self.session.headers.get("Authorization", "")
-                            has_bearer = auth_header.startswith("Bearer ")
-                            token_length = (
-                                len(auth_header.replace("Bearer ", ""))
-                                if has_bearer
-                                else 0
-                            )
-
-                            _LOGGER.debug(
-                                "401 Unauthorized - has_bearer_token: %s, token_length: %d, user_agent: %s",
-                                has_bearer,
-                                token_length,
-                                self.session.headers.get("User-Agent", "unknown"),
-                            )
-
-                            # Log response headers that might give us clues
-                            www_auth = response.headers.get("WWW-Authenticate", "")
-                            if www_auth:
-                                _LOGGER.debug("WWW-Authenticate header: %s", www_auth)
-
-                        if response.status == 200:
-                            data = await response.json()
-                            return data
-                        elif response.status == 401:
-                            raise AuthenticationError(ERROR_AUTH_FAILED)
-                        elif response.status == 400:
-                            # Log 400 Bad Request details
-                            error_text = await response.text()
-                            _LOGGER.error(
-                                "400 Bad Request for %s: %s",
-                                mask_url_for_logging(url),
-                                error_text[:500] if error_text else "No error details",
-                            )
-                            raise APIError(f"HTTP 400 Bad Request: {error_text}")
-                        elif response.status == 429:
-                            # Handle rate limiting with server-specified retry time
-                            retry_after = int(response.headers.get("Retry-After", 60))
-                            rate_limit_reset = response.headers.get("X-RateLimit-Reset")
-
-                            # Use debug level on first attempt, warning on subsequent attempts
-                            if attempt == 0:
-                                _LOGGER.debug(
-                                    "Rate limited by Saxo API (attempt %d/%d), retry after %d seconds. "
-                                    "This is normal during startup or high API usage periods.",
-                                    attempt + 1,
-                                    MAX_RETRIES,
-                                    retry_after,
-                                )
-                            else:
-                                _LOGGER.warning(
-                                    "Rate limited by Saxo API (attempt %d/%d), retry after %d seconds. "
-                                    "Multiple rate limit hits may indicate network issues or high API load.",
-                                    attempt + 1,
-                                    MAX_RETRIES,
-                                    retry_after,
-                                )
-
-                            # Update rate limiter with server response
-                            self._rate_limiter.set_rate_limited_until(retry_after)
-
-                            if attempt < MAX_RETRIES - 1:
-                                # Use exponential backoff with server retry time as base
-                                backoff_time = min(
-                                    retry_after * (RETRY_BACKOFF_FACTOR**attempt), 300
-                                )
-                                await asyncio.sleep(backoff_time)
-                                continue
-                            else:
-                                error_msg = (
-                                    f"{ERROR_RATE_LIMITED} (reset: {rate_limit_reset})"
-                                )
-                                raise RateLimitError(error_msg)
-                        else:
-                            error_text = await response.text()
-                            raise APIError(f"HTTP {response.status}: {error_text}")
+                async with (
+                    asyncio.timeout(API_TIMEOUT_TOTAL),
+                    self.session.get(url, params=params) as response,
+                ):
+                    result = await self._handle_response_status(response, url, attempt)
+                if isinstance(result, dict):
+                    return result
+                # 429 retry: `result` is the backoff delay in seconds
+                await asyncio.sleep(result)
+                continue
 
             except TimeoutError:
-                if attempt < MAX_RETRIES - 1:
-                    backoff_time = min(
-                        RETRY_BACKOFF_FACTOR**attempt, 30
-                    )  # Cap at 30 seconds
-                    _LOGGER.warning(
-                        "Request timeout (attempt %d/%d), retrying in %d seconds",
-                        attempt + 1,
-                        MAX_RETRIES,
-                        backoff_time,
-                    )
-                    await asyncio.sleep(backoff_time)
-                    continue
-                else:
+                if attempt >= MAX_RETRIES - 1:
                     raise APIError(f"Request timeout after {MAX_RETRIES} attempts")
+                backoff_time = self._compute_timeout_backoff(attempt)
+                _LOGGER.warning(
+                    "Request timeout (attempt %d/%d), retrying in %d seconds",
+                    attempt + 1,
+                    MAX_RETRIES,
+                    backoff_time,
+                )
+                await asyncio.sleep(backoff_time)
 
             except aiohttp.ClientError as e:
-                # Categorize different types of client errors
                 error_type = type(e).__name__
-
-                if attempt < MAX_RETRIES - 1:
-                    # Different backoff for different error types
-                    error_msg = str(e)
-                    if "DNS" in error_msg or "resolve" in error_msg.lower():
-                        backoff_time = min(5 * (RETRY_BACKOFF_FACTOR**attempt), 60)
-                    else:
-                        backoff_time = min(RETRY_BACKOFF_FACTOR**attempt, 30)
-
-                    _LOGGER.warning(
-                        "Network error %s (attempt %d/%d), retrying in %d seconds",
-                        error_type,
-                        attempt + 1,
-                        MAX_RETRIES,
-                        backoff_time,
-                    )
-                    await asyncio.sleep(backoff_time)
-                    continue
-                else:
+                if attempt >= MAX_RETRIES - 1:
                     raise APIError(f"{ERROR_NETWORK_ERROR} ({error_type})")
+                backoff_time = self._compute_client_error_backoff(e, attempt)
+                _LOGGER.warning(
+                    "Network error %s (attempt %d/%d), retrying in %d seconds",
+                    error_type,
+                    attempt + 1,
+                    MAX_RETRIES,
+                    backoff_time,
+                )
+                await asyncio.sleep(backoff_time)
 
         raise APIError(f"Max retries ({MAX_RETRIES}) exceeded for {endpoint}")
+
+    async def _handle_response_status(
+        self, response: aiohttp.ClientResponse, url: str, attempt: int
+    ) -> dict[str, Any] | float:
+        """Route an HTTP response to success/retry/raise.
+
+        Returns:
+            The decoded JSON body on 200, or the backoff delay (seconds) when
+            a 429 should be retried.
+
+        Raises:
+            AuthenticationError: On 401.
+            RateLimitError: On 429 when no retries remain.
+            APIError: On 400 or any other non-200 status.
+
+        """
+        _LOGGER.debug(
+            "API request: %s %s -> %d",
+            "GET",
+            mask_url_for_logging(url),
+            response.status,
+        )
+
+        if response.status == 200:
+            return await response.json()
+
+        if response.status == 401:
+            self._log_unauthorized_details(response)
+            raise AuthenticationError(ERROR_AUTH_FAILED)
+
+        if response.status == 400:
+            error_text = await response.text()
+            _LOGGER.error(
+                "400 Bad Request for %s: %s",
+                mask_url_for_logging(url),
+                error_text[:500] if error_text else "No error details",
+            )
+            raise APIError(f"HTTP 400 Bad Request: {error_text}")
+
+        if response.status == 429:
+            return self._handle_rate_limited(response, attempt)
+
+        error_text = await response.text()
+        raise APIError(f"HTTP {response.status}: {error_text}")
+
+    def _log_unauthorized_details(self, response: aiohttp.ClientResponse) -> None:
+        """Log diagnostic info for a 401 response (no secrets)."""
+        auth_header = self.session.headers.get("Authorization", "")
+        has_bearer = auth_header.startswith("Bearer ")
+        token_length = len(auth_header.replace("Bearer ", "")) if has_bearer else 0
+        _LOGGER.debug(
+            "401 Unauthorized - has_bearer_token: %s, token_length: %d, user_agent: %s",
+            has_bearer,
+            token_length,
+            self.session.headers.get("User-Agent", "unknown"),
+        )
+        www_auth = response.headers.get("WWW-Authenticate", "")
+        if www_auth:
+            _LOGGER.debug("WWW-Authenticate header: %s", www_auth)
+
+    def _handle_rate_limited(
+        self, response: aiohttp.ClientResponse, attempt: int
+    ) -> float:
+        """Handle a 429 response: log, update the limiter, and return backoff seconds.
+
+        Raises RateLimitError when no retries remain.
+        """
+        retry_after = int(response.headers.get("Retry-After", 60))
+        rate_limit_reset = response.headers.get("X-RateLimit-Reset")
+
+        if attempt == 0:
+            _LOGGER.debug(
+                "Rate limited by Saxo API (attempt %d/%d), retry after %d seconds. "
+                "This is normal during startup or high API usage periods.",
+                attempt + 1,
+                MAX_RETRIES,
+                retry_after,
+            )
+        else:
+            _LOGGER.warning(
+                "Rate limited by Saxo API (attempt %d/%d), retry after %d seconds. "
+                "Multiple rate limit hits may indicate network issues or high API load.",
+                attempt + 1,
+                MAX_RETRIES,
+                retry_after,
+            )
+
+        self._rate_limiter.set_rate_limited_until(retry_after)
+
+        if attempt >= MAX_RETRIES - 1:
+            raise RateLimitError(f"{ERROR_RATE_LIMITED} (reset: {rate_limit_reset})")
+
+        return min(retry_after * (RETRY_BACKOFF_FACTOR**attempt), 300)
+
+    @staticmethod
+    def _compute_timeout_backoff(attempt: int) -> float:
+        """Exponential backoff for timeouts, capped at 30 seconds."""
+        return min(RETRY_BACKOFF_FACTOR**attempt, 30)
+
+    @staticmethod
+    def _compute_client_error_backoff(
+        error: aiohttp.ClientError, attempt: int
+    ) -> float:
+        """Exponential backoff for network errors, with DNS-aware widening."""
+        error_msg = str(error)
+        if "DNS" in error_msg or "resolve" in error_msg.lower():
+            return min(5 * (RETRY_BACKOFF_FACTOR**attempt), 60)
+        return min(RETRY_BACKOFF_FACTOR**attempt, 30)
 
     async def get_account_balance(self) -> dict[str, Any]:
         """Get account balance from Saxo API.
@@ -363,31 +408,7 @@ class SaxoApiClient:
         """
         try:
             response = await self._make_request(API_BALANCE_ENDPOINT)
-
-            # Validate required fields from contract
-            required_fields = ["CashBalance", "Currency", "TotalValue"]
-            for field in required_fields:
-                if field not in response:
-                    raise APIError(f"Missing required field: {field}")
-
-            # Validate data types
-            if not isinstance(response["CashBalance"], int | float):
-                raise APIError("CashBalance must be numeric")
-            if not isinstance(response["TotalValue"], int | float):
-                raise APIError("TotalValue must be numeric")
-            if not isinstance(response["Currency"], str):
-                raise APIError("Currency must be string")
-
-            # Validate financial data
-            import math
-
-            if not math.isfinite(response["CashBalance"]):
-                raise APIError("CashBalance is not finite")
-            if not math.isfinite(response["TotalValue"]):
-                raise APIError("TotalValue is not finite")
-            if response["TotalValue"] < 0:
-                raise APIError("TotalValue cannot be negative")
-
+            _validate_balance_response(response)
             return response
 
         except AuthenticationError, RateLimitError:

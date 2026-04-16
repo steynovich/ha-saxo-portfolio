@@ -25,6 +25,29 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def _token_retry_backoff(attempt: int) -> int:
+    """Return the uniform `2^(attempt-1)` backoff delay in seconds."""
+    return 2 ** (attempt - 1)
+
+
+async def _retry_wait_if_not_last(attempt: int, max_attempts: int) -> None:
+    """Sleep for the retry backoff, unless this was the final attempt."""
+    if attempt < max_attempts:
+        await asyncio.sleep(_token_retry_backoff(attempt))
+
+
+async def _log_token_error_response(resp: aiohttp.ClientResponse) -> None:
+    """Log the JSON error body from a failing token response."""
+    error_response = (
+        await resp.json() if resp.content_type == "application/json" else {}
+    )
+    _LOGGER.error(
+        "Token request failed (%s): %s",
+        error_response.get("error", "unknown"),
+        error_response.get("error_description", "unknown"),
+    )
+
+
 class SaxoAuthImplementation(AuthImplementation):
     """Saxo-specific OAuth implementation.
 
@@ -65,16 +88,7 @@ class SaxoAuthImplementation(AuthImplementation):
 
                 if resp.status in (400, 401):
                     # Auth errors — no retry, credentials are bad
-                    error_response = (
-                        await resp.json()
-                        if resp.content_type == "application/json"
-                        else {}
-                    )
-                    _LOGGER.error(
-                        "Token request failed (%s): %s",
-                        error_response.get("error", "unknown"),
-                        error_response.get("error_description", "unknown"),
-                    )
+                    await _log_token_error_response(resp)
                     resp.raise_for_status()
 
                 if resp.status >= 500:
@@ -91,22 +105,13 @@ class SaxoAuthImplementation(AuthImplementation):
                         status=resp.status,
                     )
                     if attempt < max_attempts:
-                        await asyncio.sleep(2 ** (attempt - 1))
+                        await asyncio.sleep(_token_retry_backoff(attempt))
                         continue
                     resp.raise_for_status()
 
                 if resp.status >= 400:
-                    # Other 4xx — log and raise immediately
-                    error_response = (
-                        await resp.json()
-                        if resp.content_type == "application/json"
-                        else {}
-                    )
-                    _LOGGER.error(
-                        "Token request failed (%s): %s",
-                        error_response.get("error", "unknown"),
-                        error_response.get("error_description", "unknown"),
-                    )
+                    # Other 4xx — log and raise; the except handler will retry
+                    await _log_token_error_response(resp)
                     resp.raise_for_status()
 
                 result = await resp.json()
@@ -129,11 +134,13 @@ class SaxoAuthImplementation(AuthImplementation):
                 last_exception = TimeoutError(
                     f"Token refresh timed out after {TOKEN_REFRESH_TIMEOUT}s"
                 )
-                if attempt < max_attempts:
-                    await asyncio.sleep(2 ** (attempt - 1))
+                await _retry_wait_if_not_last(attempt, max_attempts)
 
-            except aiohttp.ClientResponseError as err:
-                if err.status in (400, 401):
+            except aiohttp.ClientError as err:
+                if isinstance(err, aiohttp.ClientResponseError) and err.status in (
+                    400,
+                    401,
+                ):
                     # Auth errors that escaped the status check — don't retry
                     raise
                 _LOGGER.warning(
@@ -143,19 +150,7 @@ class SaxoAuthImplementation(AuthImplementation):
                     max_attempts,
                 )
                 last_exception = err
-                if attempt < max_attempts:
-                    await asyncio.sleep(2 ** (attempt - 1))
-
-            except aiohttp.ClientError as err:
-                _LOGGER.warning(
-                    "Token refresh network error (%s), attempt %d/%d",
-                    type(err).__name__,
-                    attempt,
-                    max_attempts,
-                )
-                last_exception = err
-                if attempt < max_attempts:
-                    await asyncio.sleep(2 ** (attempt - 1))
+                await _retry_wait_if_not_last(attempt, max_attempts)
 
         # All attempts exhausted
         raise last_exception  # type: ignore[misc]

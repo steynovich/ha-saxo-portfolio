@@ -286,35 +286,9 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             Dictionary with performance and client data (fresh or cached/default)
 
         """
-        # Use cached values as defaults - these are used if fetch fails
-        defaults = {
-            "ytd_earnings_percentage": self._performance_data_cache.get(
-                "ytd_earnings_percentage", 0.0
-            ),
-            "investment_performance_percentage": self._performance_data_cache.get(
-                "investment_performance_percentage", 0.0
-            ),
-            "ytd_investment_performance_percentage": self._performance_data_cache.get(
-                "ytd_investment_performance_percentage", 0.0
-            ),
-            "month_investment_performance_percentage": self._performance_data_cache.get(
-                "month_investment_performance_percentage", 0.0
-            ),
-            "quarter_investment_performance_percentage": self._performance_data_cache.get(
-                "quarter_investment_performance_percentage", 0.0
-            ),
-            "cash_transfer_balance": self._performance_data_cache.get(
-                "cash_transfer_balance", 0.0
-            ),
-            "client_id": self._performance_data_cache.get("client_id", "unknown"),
-            "account_id": self._performance_data_cache.get("account_id", "unknown"),
-            "client_name": self._performance_data_cache.get("client_name", "unknown"),
-        }
+        defaults = self._build_performance_defaults()
 
-        # Check if we should update performance data or use cached values
-        should_update_performance = self._should_update_performance_data()
-
-        if not should_update_performance:
+        if not self._should_update_performance_data():
             _LOGGER.debug("Using cached performance data")
             return defaults
 
@@ -322,181 +296,11 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         try:
             async with asyncio.timeout(PERFORMANCE_FETCH_TIMEOUT):
-                # Initialize values from defaults
-                ytd_earnings_percentage = defaults["ytd_earnings_percentage"]
-                investment_performance_percentage = defaults[
-                    "investment_performance_percentage"
-                ]
-                ytd_investment_performance_percentage = defaults[
-                    "ytd_investment_performance_percentage"
-                ]
-                month_investment_performance_percentage = defaults[
-                    "month_investment_performance_percentage"
-                ]
-                quarter_investment_performance_percentage = defaults[
-                    "quarter_investment_performance_percentage"
-                ]
-                cash_transfer_balance = defaults["cash_transfer_balance"]
-                client_id = defaults["client_id"]
-                account_id = defaults["account_id"]
-                client_name = defaults["client_name"]
-
-                # Add delay before client details call to prevent burst
+                result = dict(defaults)
+                # Delay before client details call to prevent burst
                 await asyncio.sleep(0.5)
-
-                # Get client details (ClientKey, ClientId, etc.)
-                client_details = None
-                try:
-                    client_details = await client.get_client_details()
-                    if client_details:
-                        _LOGGER.debug(
-                            "Client details response keys: %s",
-                            list(client_details.keys())
-                            if client_details
-                            else "No data",
-                        )
-
-                        client_key = client_details.get("ClientKey")
-                        client_id = client_details.get("ClientId", "unknown")
-                        account_id = client_details.get("DefaultAccountId", "unknown")
-                        client_name = client_details.get("Name", "unknown")
-
-                        _LOGGER.debug(
-                            "Extracted from client details - ClientId: %s, DefaultAccountId: %s, Name: '%s'",
-                            client_id,
-                            account_id,
-                            client_name,
-                        )
-
-                        if client_key:
-                            _LOGGER.debug(
-                                "Found ClientKey from client details, attempting performance fetch"
-                            )
-                            # Fetch performance v3 data
-                            try:
-                                performance_data = await client.get_performance(
-                                    client_key
-                                )
-                                balance_performance = performance_data.get(
-                                    "BalancePerformance", {}
-                                )
-                                accumulated_profit_loss = balance_performance.get(
-                                    "AccumulatedProfitLoss", 0.0
-                                )
-                                ytd_earnings_percentage = accumulated_profit_loss
-                                _LOGGER.debug(
-                                    "Retrieved performance v3 data, AccumulatedProfitLoss: %s",
-                                    accumulated_profit_loss,
-                                )
-                            except Exception as perf_e:
-                                _LOGGER.debug(
-                                    "Could not fetch performance v3 data: %s",
-                                    type(perf_e).__name__,
-                                )
-
-                            # Fetch all v4 performance data in a batch
-                            try:
-                                await asyncio.sleep(0.5)
-                                performance_v4_batch = (
-                                    await client.get_performance_v4_batch(client_key)
-                                )
-
-                                # Extract AllTime performance data
-                                performance_v4_data = performance_v4_batch.get(
-                                    "alltime", {}
-                                )
-                                key_figures = performance_v4_data.get("KeyFigures", {})
-                                return_fraction = key_figures.get("ReturnFraction", 0.0)
-                                investment_performance_percentage = (
-                                    return_fraction * 100.0
-                                )
-
-                                # Extract latest CashTransfer value
-                                balance = performance_v4_data.get("Balance", {})
-                                cash_transfer_list = balance.get("CashTransfer", [])
-                                if cash_transfer_list:
-                                    latest_cash_transfer = cash_transfer_list[-1]
-                                    cash_transfer_balance = latest_cash_transfer.get(
-                                        "Value", 0.0
-                                    )
-
-                                # Extract YTD performance data
-                                ytd_data = performance_v4_batch.get("ytd", {})
-                                ytd_key_figures = ytd_data.get("KeyFigures", {})
-                                ytd_return_fraction = ytd_key_figures.get(
-                                    "ReturnFraction", 0.0
-                                )
-                                ytd_investment_performance_percentage = (
-                                    ytd_return_fraction * 100.0
-                                )
-
-                                # Extract Month performance data
-                                month_data = performance_v4_batch.get("month", {})
-                                month_key_figures = month_data.get("KeyFigures", {})
-                                month_return_fraction = month_key_figures.get(
-                                    "ReturnFraction", 0.0
-                                )
-                                month_investment_performance_percentage = (
-                                    month_return_fraction * 100.0
-                                )
-
-                                # Extract Quarter performance data
-                                quarter_data = performance_v4_batch.get("quarter", {})
-                                quarter_key_figures = quarter_data.get("KeyFigures", {})
-                                quarter_return_fraction = quarter_key_figures.get(
-                                    "ReturnFraction", 0.0
-                                )
-                                quarter_investment_performance_percentage = (
-                                    quarter_return_fraction * 100.0
-                                )
-
-                                _LOGGER.debug(
-                                    "Retrieved batched performance v4 data - AllTime: %s%%, YTD: %s%%, Month: %s%%, Quarter: %s%%, CashTransfer: %s",
-                                    investment_performance_percentage,
-                                    ytd_investment_performance_percentage,
-                                    month_investment_performance_percentage,
-                                    quarter_investment_performance_percentage,
-                                    cash_transfer_balance,
-                                )
-                            except Exception as perf_v4_e:
-                                _LOGGER.debug(
-                                    "Could not fetch batched performance v4 data: %s",
-                                    type(perf_v4_e).__name__,
-                                )
-                        else:
-                            _LOGGER.debug(
-                                "No ClientKey found from client details endpoint"
-                            )
-                    else:
-                        _LOGGER.debug("No client details available")
-                except Exception as client_e:
-                    _LOGGER.debug(
-                        "Could not fetch client details: %s - %s",
-                        type(client_e).__name__,
-                        str(client_e),
-                    )
-
-                # Update performance data cache with fresh data
-                result = {
-                    "ytd_earnings_percentage": ytd_earnings_percentage,
-                    "investment_performance_percentage": investment_performance_percentage,
-                    "ytd_investment_performance_percentage": ytd_investment_performance_percentage,
-                    "month_investment_performance_percentage": month_investment_performance_percentage,
-                    "quarter_investment_performance_percentage": quarter_investment_performance_percentage,
-                    "cash_transfer_balance": cash_transfer_balance,
-                    "client_id": client_id,
-                    "account_id": account_id,
-                    "client_name": client_name,
-                }
-
-                # Update cache
-                self._performance_data_cache = result.copy()
-                self._performance_last_updated = datetime.now()
-                _LOGGER.debug("Updated performance data cache")
-
-                # Update config entry title with client ID for better identification
-                self._update_config_entry_title_if_needed(client_id)
-
+                await self._populate_performance_result(client, result)
+                self._update_performance_cache(result)
                 return result
 
         except TimeoutError:
@@ -513,6 +317,154 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 type(e).__name__,
             )
             return defaults
+
+    def _build_performance_defaults(self) -> dict[str, Any]:
+        """Build the performance-data defaults dict from the current cache."""
+        cache = self._performance_data_cache
+        return {
+            "ytd_earnings_percentage": cache.get("ytd_earnings_percentage", 0.0),
+            "investment_performance_percentage": cache.get(
+                "investment_performance_percentage", 0.0
+            ),
+            "ytd_investment_performance_percentage": cache.get(
+                "ytd_investment_performance_percentage", 0.0
+            ),
+            "month_investment_performance_percentage": cache.get(
+                "month_investment_performance_percentage", 0.0
+            ),
+            "quarter_investment_performance_percentage": cache.get(
+                "quarter_investment_performance_percentage", 0.0
+            ),
+            "cash_transfer_balance": cache.get("cash_transfer_balance", 0.0),
+            "client_id": cache.get("client_id", "unknown"),
+            "account_id": cache.get("account_id", "unknown"),
+            "client_name": cache.get("client_name", "unknown"),
+        }
+
+    def _update_performance_cache(self, result: dict[str, Any]) -> None:
+        """Persist fresh performance data to cache and update config entry title."""
+        self._performance_data_cache = result.copy()
+        self._performance_last_updated = datetime.now()
+        _LOGGER.debug("Updated performance data cache")
+        self._update_config_entry_title_if_needed(result["client_id"])
+
+    async def _populate_performance_result(
+        self, client: SaxoApiClient, result: dict[str, Any]
+    ) -> None:
+        """Populate ``result`` in-place with client details and performance metrics.
+
+        Any exception in the client-details path is caught so the caller falls
+        back to the ``result`` populated so far (which starts as the defaults).
+        """
+        try:
+            client_details = await client.get_client_details()
+            if not client_details:
+                _LOGGER.debug("No client details available")
+                return
+
+            _LOGGER.debug(
+                "Client details response keys: %s",
+                list(client_details.keys()),
+            )
+            client_key = client_details.get("ClientKey")
+            result["client_id"] = client_details.get("ClientId", "unknown")
+            result["account_id"] = client_details.get("DefaultAccountId", "unknown")
+            result["client_name"] = client_details.get("Name", "unknown")
+            _LOGGER.debug(
+                "Extracted from client details - ClientId: %s, DefaultAccountId: %s, Name: '%s'",
+                result["client_id"],
+                result["account_id"],
+                result["client_name"],
+            )
+
+            if not client_key:
+                _LOGGER.debug("No ClientKey found from client details endpoint")
+                return
+
+            _LOGGER.debug(
+                "Found ClientKey from client details, attempting performance fetch"
+            )
+            await self._fetch_performance_metrics(client, client_key, result)
+        except Exception as client_e:
+            _LOGGER.debug(
+                "Could not fetch client details: %s - %s",
+                type(client_e).__name__,
+                str(client_e),
+            )
+
+    async def _fetch_performance_metrics(
+        self, client: SaxoApiClient, client_key: str, result: dict[str, Any]
+    ) -> None:
+        """Fetch v3 and batched v4 performance metrics into ``result`` in-place.
+
+        Each endpoint is wrapped in its own graceful-degradation try/except, so
+        a failure on one does not prevent the other from updating ``result``.
+        """
+        # v3 performance — AccumulatedProfitLoss only
+        try:
+            performance_data = await client.get_performance(client_key)
+            accumulated_profit_loss = performance_data.get(
+                "BalancePerformance", {}
+            ).get("AccumulatedProfitLoss", 0.0)
+            result["ytd_earnings_percentage"] = accumulated_profit_loss
+            _LOGGER.debug(
+                "Retrieved performance v3 data, AccumulatedProfitLoss: %s",
+                accumulated_profit_loss,
+            )
+        except Exception as perf_e:
+            _LOGGER.debug(
+                "Could not fetch performance v3 data: %s",
+                type(perf_e).__name__,
+            )
+
+        # v4 batch — four periods in one call
+        try:
+            await asyncio.sleep(0.5)
+            v4_batch = await client.get_performance_v4_batch(client_key)
+            result.update(self._extract_v4_batch_metrics(v4_batch))
+            _LOGGER.debug(
+                "Retrieved batched performance v4 data - AllTime: %s%%, YTD: %s%%, "
+                "Month: %s%%, Quarter: %s%%, CashTransfer: %s",
+                result["investment_performance_percentage"],
+                result["ytd_investment_performance_percentage"],
+                result["month_investment_performance_percentage"],
+                result["quarter_investment_performance_percentage"],
+                result["cash_transfer_balance"],
+            )
+        except Exception as perf_v4_e:
+            _LOGGER.debug(
+                "Could not fetch batched performance v4 data: %s",
+                type(perf_v4_e).__name__,
+            )
+
+    @staticmethod
+    def _extract_v4_batch_metrics(
+        v4_batch: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Parse the four-period v4 performance batch into flat metrics."""
+        metrics: dict[str, Any] = {}
+
+        alltime = v4_batch.get("alltime", {})
+        alltime_return = alltime.get("KeyFigures", {}).get("ReturnFraction", 0.0)
+        metrics["investment_performance_percentage"] = alltime_return * 100.0
+
+        cash_transfer_list = alltime.get("Balance", {}).get("CashTransfer", [])
+        if cash_transfer_list:
+            metrics["cash_transfer_balance"] = cash_transfer_list[-1].get("Value", 0.0)
+
+        for period_key, result_key in (
+            ("ytd", "ytd_investment_performance_percentage"),
+            ("month", "month_investment_performance_percentage"),
+            ("quarter", "quarter_investment_performance_percentage"),
+        ):
+            period_return = (
+                v4_batch.get(period_key, {})
+                .get("KeyFigures", {})
+                .get("ReturnFraction", 0.0)
+            )
+            metrics[result_key] = period_return * 100.0
+
+        return metrics
 
     async def _fetch_positions_data_safely(
         self, client: SaxoApiClient
@@ -538,9 +490,6 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await asyncio.sleep(0.5)
 
             positions_response = await client.get_net_positions()
-
-            # Parse positions from API response
-            positions: dict[str, PositionData] = {}
             raw_positions = positions_response.get("Data", [])
 
             _LOGGER.debug(
@@ -549,171 +498,21 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 list(positions_response.keys()),
             )
 
-            # Log first position structure for debugging
             if raw_positions:
-                _LOGGER.debug(
-                    "Processing %d positions for market data access check",
-                    len(raw_positions),
-                )
-                _LOGGER.debug(
-                    "First raw position structure: %s",
-                    raw_positions[0],
-                )
-
-                # Check for market data access by inspecting first position
-                first_view = raw_positions[0].get("NetPositionView", {})
-                current_price_type = first_view.get("CurrentPriceType", "")
-                calc_reliability = first_view.get("CalculationReliability", "")
-
-                _LOGGER.debug(
-                    "Market data access check - CurrentPriceType: %r, CalculationReliability: %r",
-                    current_price_type,
-                    calc_reliability,
-                )
-
-                has_market_access = not (
-                    current_price_type == "None"
-                    or calc_reliability in ("NoMarketAccess", "ApproximatedPrice")
-                )
-                self._has_market_data_access = has_market_access
-
-                _LOGGER.debug(
-                    "Market data access determined: %s",
-                    "Available" if has_market_access else "Unavailable",
-                )
-
-                # Log warning once if no market data access
-                if (
-                    not has_market_access
-                    and not self._position_market_data_warning_logged
-                ):
-                    _LOGGER.warning(
-                        "Market data access not available for positions API. "
-                        "Position prices are calculated from P/L data and may not "
-                        "reflect real-time values. Real-time market data may require "
-                        "a separate market data subscription on your Saxo account. "
-                        "Contact Saxo support for more information"
-                    )
-                    self._position_market_data_warning_logged = True
+                self._check_market_data_access(raw_positions[0])
             else:
                 _LOGGER.debug(
                     "No positions in portfolio - cannot determine market data access status"
                 )
 
+            positions: dict[str, PositionData] = {}
             for raw_position in raw_positions:
-                try:
-                    # Log the raw position structure for debugging
-                    _LOGGER.debug(
-                        "Raw position keys: %s",
-                        list(raw_position.keys()),
-                    )
-
-                    # Extract base position data
-                    net_position_base = raw_position.get("NetPositionBase", {})
-                    net_position_view = raw_position.get("NetPositionView", {})
-                    display_and_format = raw_position.get("DisplayAndFormat", {})
-
-                    # Also check for PositionView (individual position data with prices)
-                    position_view = raw_position.get("PositionView", {})
-
-                    _LOGGER.debug(
-                        "Position data - NetPositionView: %s, PositionView: %s",
-                        net_position_view,
-                        position_view,
-                    )
-
-                    # Extract required fields
-                    position_id = raw_position.get("NetPositionId", "")
-                    uic = net_position_base.get("Uic", 0)
-                    asset_type = net_position_base.get("AssetType", "Unknown")
-                    amount = net_position_base.get("Amount", 0.0)
-
-                    # Extract display info
-                    symbol = display_and_format.get("Symbol", "")
-                    description = display_and_format.get("Description", "")
-                    currency = display_and_format.get("Currency", "USD")
-
-                    # Extract profit/loss first (needed for price calculation)
-                    profit_loss = (
-                        net_position_view.get("ProfitLossOnTrade")
-                        or net_position_view.get("ProfitLossOnTradeInBaseCurrency")
-                        or 0.0
-                    )
-
-                    # MarketValueOpen is the cost basis (negative = money spent)
-                    # Current market value = abs(cost basis) + profit/loss
-                    market_value_open = net_position_view.get("MarketValueOpen", 0.0)
-
-                    # Calculate current market value from cost basis + P/L
-                    if market_value_open != 0.0:
-                        market_value = abs(market_value_open) + profit_loss
-                    else:
-                        # Fallback to Exposure if available
-                        market_value = net_position_view.get("Exposure", 0.0)
-
-                    # Try to get CurrentPrice directly first
-                    current_price = net_position_view.get("CurrentPrice", 0.0)
-
-                    # If CurrentPrice is 0.0, calculate from market value and amount
-                    if current_price == 0.0 and market_value != 0.0 and amount != 0.0:
-                        current_price = market_value / abs(amount)
-                        _LOGGER.debug(
-                            "Calculated price: (cost=%s + pnl=%s) / amount=%s = %s",
-                            abs(market_value_open),
-                            profit_loss,
-                            amount,
-                            current_price,
-                        )
-
-                    # Skip if no symbol
-                    if not symbol:
-                        _LOGGER.debug("Skipping position %s: no symbol", position_id)
-                        continue
-
-                    # Generate a unique slug for this position
-                    slug = PositionData.generate_slug(symbol, asset_type)
-
-                    position_data = PositionData(
-                        position_id=position_id,
-                        symbol=symbol,
-                        description=description,
-                        asset_type=asset_type,
-                        amount=amount,
-                        current_price=current_price,
-                        market_value=market_value,
-                        profit_loss=profit_loss,
-                        uic=uic,
-                        currency=currency,
-                    )
-
+                parsed = self._parse_single_position(raw_position)
+                if parsed is not None:
+                    slug, position_data = parsed
                     positions[slug] = position_data
 
-                    _LOGGER.debug(
-                        "Parsed position: %s (%s) - %s units @ %s",
-                        symbol,
-                        asset_type,
-                        amount,
-                        current_price,
-                    )
-
-                except Exception as pos_error:
-                    _LOGGER.debug(
-                        "Error parsing position: %s",
-                        type(pos_error).__name__,
-                    )
-                    continue
-
-            # Update cache
-            self._positions_cache.positions = positions
-            self._positions_cache.position_ids = list(positions.keys())
-            self._positions_cache.last_updated = datetime.now()
-
-            _LOGGER.debug(
-                "Updated positions cache with %d positions: %s",
-                len(positions),
-                list(positions.keys()),
-            )
-
+            self._update_positions_cache(positions)
             return positions
 
         except Exception as e:
@@ -722,6 +521,156 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 type(e).__name__,
             )
             return self._positions_cache.positions
+
+    def _check_market_data_access(self, first_position: dict[str, Any]) -> None:
+        """Determine market-data access from the first raw position.
+
+        Sets ``self._has_market_data_access`` and logs a one-shot warning when
+        access is unavailable.
+        """
+        _LOGGER.debug(
+            "Processing positions for market data access check",
+        )
+        _LOGGER.debug(
+            "First raw position structure: %s",
+            first_position,
+        )
+
+        first_view = first_position.get("NetPositionView", {})
+        current_price_type = first_view.get("CurrentPriceType", "")
+        calc_reliability = first_view.get("CalculationReliability", "")
+
+        _LOGGER.debug(
+            "Market data access check - CurrentPriceType: %r, CalculationReliability: %r",
+            current_price_type,
+            calc_reliability,
+        )
+
+        has_market_access = not (
+            current_price_type == "None"
+            or calc_reliability in ("NoMarketAccess", "ApproximatedPrice")
+        )
+        self._has_market_data_access = has_market_access
+
+        _LOGGER.debug(
+            "Market data access determined: %s",
+            "Available" if has_market_access else "Unavailable",
+        )
+
+        if not has_market_access and not self._position_market_data_warning_logged:
+            _LOGGER.warning(
+                "Market data access not available for positions API. "
+                "Position prices are calculated from P/L data and may not "
+                "reflect real-time values. Real-time market data may require "
+                "a separate market data subscription on your Saxo account. "
+                "Contact Saxo support for more information"
+            )
+            self._position_market_data_warning_logged = True
+
+    def _parse_single_position(
+        self, raw_position: dict[str, Any]
+    ) -> tuple[str, PositionData] | None:
+        """Parse a single raw position dict into a (slug, PositionData) pair.
+
+        Returns None and logs the error if parsing fails, or if the position
+        has no symbol.
+        """
+        try:
+            _LOGGER.debug(
+                "Raw position keys: %s",
+                list(raw_position.keys()),
+            )
+
+            net_position_base = raw_position.get("NetPositionBase", {})
+            net_position_view = raw_position.get("NetPositionView", {})
+            display_and_format = raw_position.get("DisplayAndFormat", {})
+            position_view = raw_position.get("PositionView", {})
+
+            _LOGGER.debug(
+                "Position data - NetPositionView: %s, PositionView: %s",
+                net_position_view,
+                position_view,
+            )
+
+            position_id = raw_position.get("NetPositionId", "")
+            uic = net_position_base.get("Uic", 0)
+            asset_type = net_position_base.get("AssetType", "Unknown")
+            amount = net_position_base.get("Amount", 0.0)
+
+            symbol = display_and_format.get("Symbol", "")
+            description = display_and_format.get("Description", "")
+            currency = display_and_format.get("Currency", "USD")
+
+            # Skip if no symbol
+            if not symbol:
+                _LOGGER.debug("Skipping position %s: no symbol", position_id)
+                return None
+
+            profit_loss = (
+                net_position_view.get("ProfitLossOnTrade")
+                or net_position_view.get("ProfitLossOnTradeInBaseCurrency")
+                or 0.0
+            )
+
+            # MarketValueOpen is the cost basis (negative = money spent)
+            # Current market value = abs(cost basis) + profit/loss
+            market_value_open = net_position_view.get("MarketValueOpen", 0.0)
+            if market_value_open != 0.0:
+                market_value = abs(market_value_open) + profit_loss
+            else:
+                market_value = net_position_view.get("Exposure", 0.0)
+
+            current_price = net_position_view.get("CurrentPrice", 0.0)
+            if current_price == 0.0 and market_value != 0.0 and amount != 0.0:
+                current_price = market_value / abs(amount)
+                _LOGGER.debug(
+                    "Calculated price: (cost=%s + pnl=%s) / amount=%s = %s",
+                    abs(market_value_open),
+                    profit_loss,
+                    amount,
+                    current_price,
+                )
+
+            slug = PositionData.generate_slug(symbol, asset_type)
+            position_data = PositionData(
+                position_id=position_id,
+                symbol=symbol,
+                description=description,
+                asset_type=asset_type,
+                amount=amount,
+                current_price=current_price,
+                market_value=market_value,
+                profit_loss=profit_loss,
+                uic=uic,
+                currency=currency,
+            )
+
+            _LOGGER.debug(
+                "Parsed position: %s (%s) - %s units @ %s",
+                symbol,
+                asset_type,
+                amount,
+                current_price,
+            )
+            return slug, position_data
+
+        except Exception as pos_error:
+            _LOGGER.debug(
+                "Error parsing position: %s",
+                type(pos_error).__name__,
+            )
+            return None
+
+    def _update_positions_cache(self, positions: dict[str, PositionData]) -> None:
+        """Persist parsed positions to cache and log the summary."""
+        self._positions_cache.positions = positions
+        self._positions_cache.position_ids = list(positions.keys())
+        self._positions_cache.last_updated = datetime.now()
+        _LOGGER.debug(
+            "Updated positions cache with %d positions: %s",
+            len(positions),
+            list(positions.keys()),
+        )
 
     def _is_market_hours(self) -> bool:
         """Check if current time is during market hours.
@@ -937,64 +886,28 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             UpdateFailed: For other errors (balance fetch failures)
 
         """
+        fetch_start_time: datetime | None = None
         try:
-            # Apply staggered update offset on scheduled updates to prevent multiple accounts
-            # from hitting the API simultaneously. Skip during initial setup (called from
-            # async_setup_entry) to avoid exceeding Home Assistant's setup timeout.
-            # Initial setup is detected by _last_successful_update being None.
-            if (
-                self._initial_update_offset > 0
-                and self._last_successful_update is not None
-            ):
-                _LOGGER.debug(
-                    "Applying initial update offset of %.1fs to stagger multiple accounts",
-                    self._initial_update_offset,
-                )
-                await asyncio.sleep(self._initial_update_offset)
-                self._initial_update_offset = 0  # Only apply once
+            await self._apply_initial_stagger_offset()
 
             # Ensure OAuth token is valid (refresh if needed)
             await self._ensure_token_valid()
 
-            # Get API client
             client = self.api_client
-
             _LOGGER.debug(
                 "Starting data fetch with client base_url: %s (production)",
                 client.base_url,
             )
 
-            _LOGGER.debug(
-                "About to fetch balance from: %s%s",
-                client.base_url,
-                "/port/v1/balances/me",
-            )
-
             fetch_start_time = datetime.now()
 
             # STEP 1: Fetch balance data (REQUIRED)
-            # This must succeed for the update to be successful
-            balance_start_time = datetime.now()
-            balance_data = await client.get_account_balance()
-
-            balance_duration = (datetime.now() - balance_start_time).total_seconds()
-            _LOGGER.debug("Balance data fetch completed in %.2fs", balance_duration)
-            _LOGGER.debug(
-                "Balance data keys: %s",
-                list(balance_data.keys()) if balance_data else "No balance data",
-            )
-
-            # Remove detailed margin info to reduce log noise
-            if "MarginCollateralNotAvailableDetail" in balance_data:
-                del balance_data["MarginCollateralNotAvailableDetail"]
+            balance_data = await self._fetch_balance_with_logging(client)
 
             # STEP 2: Fetch performance data (OPTIONAL - graceful degradation)
-            # This has its own timeout and never raises exceptions
-            # If it fails/times out, cached/default values are returned
             performance_data = await self._fetch_performance_data_safely(client)
 
             # STEP 3: Fetch positions data (OPTIONAL - only if enabled)
-            # This also uses graceful degradation
             await self._fetch_positions_data_safely(client)
 
             # STEP 4: Combine balance and performance data
@@ -1009,7 +922,6 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "last_updated": datetime.now().isoformat(),
             }
 
-            # Log total fetch duration
             total_duration = (datetime.now() - fetch_start_time).total_seconds()
             _LOGGER.debug(
                 "Complete portfolio data fetch completed in %.2fs", total_duration
@@ -1029,32 +941,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ) from e
 
         except TimeoutError as e:
-            # Calculate how long the fetch attempt took
-            if "fetch_start_time" in locals():
-                actual_duration = (datetime.now() - fetch_start_time).total_seconds()
-                timeout_msg = (
-                    f"Timeout fetching portfolio data after {actual_duration:.1f}s "
-                    f"(limit: {COORDINATOR_UPDATE_TIMEOUT}s). "
-                    f"This may indicate network connectivity issues or high Saxo API load. "
-                    f"The integration will automatically retry on the next update cycle."
-                )
-            else:
-                timeout_msg = (
-                    f"Timeout fetching portfolio data after {COORDINATOR_UPDATE_TIMEOUT}s. "
-                    f"This may indicate network connectivity issues or high Saxo API load. "
-                    f"The integration will automatically retry on the next update cycle."
-                )
-
-            # First occurrence as warning, subsequent as debug to reduce noise
-            if (
-                not hasattr(self, "_last_timeout_warning")
-                or (datetime.now() - self._last_timeout_warning).total_seconds() > 300
-            ):  # 5 minutes
-                _LOGGER.warning(timeout_msg)
-                self._last_timeout_warning = datetime.now()
-            else:
-                _LOGGER.debug(timeout_msg)
-
+            self._log_portfolio_timeout(fetch_start_time)
             raise UpdateFailed(
                 "Network timeout - check connectivity and try again"
             ) from e
@@ -1085,6 +972,72 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as e:
             _LOGGER.exception("Unexpected error fetching portfolio data")
             raise UpdateFailed("Unexpected error") from e
+
+    async def _apply_initial_stagger_offset(self) -> None:
+        """Sleep the one-shot stagger offset on the first scheduled update.
+
+        Skips during initial setup (detected by ``_last_successful_update is None``)
+        to avoid exceeding Home Assistant's setup timeout.
+        """
+        if self._initial_update_offset > 0 and self._last_successful_update is not None:
+            _LOGGER.debug(
+                "Applying initial update offset of %.1fs to stagger multiple accounts",
+                self._initial_update_offset,
+            )
+            await asyncio.sleep(self._initial_update_offset)
+            self._initial_update_offset = 0  # Only apply once
+
+    async def _fetch_balance_with_logging(
+        self, client: SaxoApiClient
+    ) -> dict[str, Any]:
+        """Fetch the balance endpoint, logging timing and stripping noisy fields."""
+        _LOGGER.debug(
+            "About to fetch balance from: %s%s",
+            client.base_url,
+            "/port/v1/balances/me",
+        )
+        balance_start_time = datetime.now()
+        balance_data = await client.get_account_balance()
+
+        balance_duration = (datetime.now() - balance_start_time).total_seconds()
+        _LOGGER.debug("Balance data fetch completed in %.2fs", balance_duration)
+        _LOGGER.debug(
+            "Balance data keys: %s",
+            list(balance_data.keys()) if balance_data else "No balance data",
+        )
+
+        # Remove detailed margin info to reduce log noise
+        if "MarginCollateralNotAvailableDetail" in balance_data:
+            del balance_data["MarginCollateralNotAvailableDetail"]
+
+        return balance_data
+
+    def _log_portfolio_timeout(self, fetch_start_time: datetime | None) -> None:
+        """Log a portfolio-fetch timeout, rate-limiting repeats to debug level."""
+        if fetch_start_time is not None:
+            actual_duration = (datetime.now() - fetch_start_time).total_seconds()
+            timeout_msg = (
+                f"Timeout fetching portfolio data after {actual_duration:.1f}s "
+                f"(limit: {COORDINATOR_UPDATE_TIMEOUT}s). "
+                f"This may indicate network connectivity issues or high Saxo API load. "
+                f"The integration will automatically retry on the next update cycle."
+            )
+        else:
+            timeout_msg = (
+                f"Timeout fetching portfolio data after {COORDINATOR_UPDATE_TIMEOUT}s. "
+                f"This may indicate network connectivity issues or high Saxo API load. "
+                f"The integration will automatically retry on the next update cycle."
+            )
+
+        # First occurrence as warning, subsequent as debug to reduce noise
+        if (
+            not hasattr(self, "_last_timeout_warning")
+            or (datetime.now() - self._last_timeout_warning).total_seconds() > 300
+        ):  # 5 minutes
+            _LOGGER.warning(timeout_msg)
+            self._last_timeout_warning = datetime.now()
+        else:
+            _LOGGER.debug(timeout_msg)
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data from Saxo API.

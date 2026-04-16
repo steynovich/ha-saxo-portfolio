@@ -184,7 +184,7 @@ class TestTokenRequestServerErrors:
 
     @pytest.mark.asyncio
     async def test_500_exhausts_all_retries(self):
-        """500 error exhausts all 3 attempts then raises."""
+        """500 error exhausts all 5 attempts then raises."""
         impl = _make_auth_impl()
         fail_resp = _make_response(500)
         session = AsyncMock()
@@ -203,11 +203,13 @@ class TestTokenRequestServerErrors:
             with pytest.raises(aiohttp.ClientResponseError):
                 await impl._token_request({"grant_type": "refresh_token"})
 
-        assert session.post.call_count == 3
-        # Backoff: 2^0=1, 2^1=2 (only between attempts, not after last)
-        assert mock_sleep.call_count == 2
+        assert session.post.call_count == 5
+        # Backoff: 2^0=1, 2^1=2, 2^2=4, 2^3=8 (only between attempts, not after last)
+        assert mock_sleep.call_count == 4
         mock_sleep.assert_any_call(1)
         mock_sleep.assert_any_call(2)
+        mock_sleep.assert_any_call(4)
+        mock_sleep.assert_any_call(8)
 
     @pytest.mark.asyncio
     async def test_503_logs_info_on_retry_success(self):
@@ -293,7 +295,7 @@ class TestTokenRequestTimeout:
             with pytest.raises(TimeoutError):
                 await impl._token_request({"grant_type": "refresh_token"})
 
-        assert session.post.call_count == 3
+        assert session.post.call_count == 5
 
 
 class TestTokenRequestNetworkErrors:
@@ -351,7 +353,7 @@ class TestTokenRequestNetworkErrors:
             with pytest.raises(aiohttp.ServerDisconnectedError):
                 await impl._token_request({"grant_type": "refresh_token"})
 
-        assert session.post.call_count == 3
+        assert session.post.call_count == 5
 
 
 class TestTokenRequestBackoffTiming:
@@ -359,7 +361,7 @@ class TestTokenRequestBackoffTiming:
 
     @pytest.mark.asyncio
     async def test_exponential_backoff_delays(self):
-        """Backoff delays follow 2^(attempt-1) pattern: 1s, 2s."""
+        """Backoff delays follow 2^(attempt-1) pattern: 1s, 2s, 4s, 8s."""
         impl = _make_auth_impl()
         fail_resp = _make_response(502)
         session = AsyncMock()
@@ -379,7 +381,7 @@ class TestTokenRequestBackoffTiming:
                 await impl._token_request({"grant_type": "refresh_token"})
 
         delays = [call.args[0] for call in mock_sleep.call_args_list]
-        assert delays == [1, 2]
+        assert delays == [1, 2, 4, 8]
 
 
 class TestTokenRefreshTimeoutConstant:

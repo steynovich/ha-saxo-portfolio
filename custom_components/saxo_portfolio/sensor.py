@@ -17,7 +17,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     ATTRIBUTION,
-    DATA_COORDINATOR,
     DEVICE_MANUFACTURER,
     DEVICE_MODEL,
     DOMAIN,
@@ -296,14 +295,7 @@ async def async_setup_entry(
     """Set up Saxo Portfolio sensors from a config entry."""
     _LOGGER.debug("Setting up sensor platform for entry %s", config_entry.entry_id)
 
-    # Check if coordinator exists
-    if config_entry.entry_id not in hass.data.get(DOMAIN, {}):
-        _LOGGER.error("Coordinator not found for entry %s", config_entry.entry_id)
-        return
-
-    coordinator: SaxoCoordinator = hass.data[DOMAIN][config_entry.entry_id][
-        DATA_COORDINATOR
-    ]
+    coordinator: SaxoCoordinator = config_entry.runtime_data.coordinator
 
     # Check if client name is available - do not create sensors if unknown
     client_name = coordinator.get_client_name()

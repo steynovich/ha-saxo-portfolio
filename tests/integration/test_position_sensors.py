@@ -12,7 +12,6 @@ from homeassistant.config_entries import ConfigEntry
 from custom_components.saxo_portfolio.const import (
     CONF_ENABLE_POSITION_SENSORS,
     CONF_TIMEZONE,
-    DATA_COORDINATOR,
     DOMAIN,
 )
 from custom_components.saxo_portfolio.coordinator import PositionData
@@ -97,10 +96,8 @@ class TestPositionSensorDynamicCreation:
         self, mock_hass, mock_config_entry, mock_coordinator
     ):
         """Test that position sensors are created when enabled."""
-        # Set up hass data
-        mock_hass.data[DOMAIN] = {
-            mock_config_entry.entry_id: {DATA_COORDINATOR: mock_coordinator}
-        }
+        # Set up runtime data
+        mock_config_entry.runtime_data = MagicMock(coordinator=mock_coordinator)
 
         # Import after mocking
         from custom_components.saxo_portfolio.sensor import SaxoPositionSensor

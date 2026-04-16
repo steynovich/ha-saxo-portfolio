@@ -13,7 +13,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
-    DATA_COORDINATOR,
     DEVICE_MANUFACTURER,
     DEVICE_MODEL,
     DOMAIN,
@@ -29,7 +28,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Saxo Portfolio button entities."""
-    coordinator: SaxoCoordinator = hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR]
+    coordinator: SaxoCoordinator = entry.runtime_data.coordinator
 
     # Check if client name is available
     client_name = coordinator.get_client_name()
