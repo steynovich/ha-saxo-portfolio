@@ -9,14 +9,13 @@ description = "Home Assistant integration for Saxo Portfolio monitoring"
 authors = [{name = "Home Assistant Community", email = "hello@home-assistant.io"}]
 license = {text = "MIT"}
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Topic :: Home Automation",
 ]
