@@ -1,111 +1,35 @@
 # ha-saxo Development Guidelines
 
 ## Technologies
-- Home Assistant Custom Integration (HACS compatible)
-- OAuth 2.0 Authentication with Saxo Bank OpenAPI
+- Home Assistant custom integration (HACS compatible)
+- OAuth 2.0 against the Saxo Bank OpenAPI
 - Python 3.14+
-
-## Project Structure
-```
-custom_components/saxo_portfolio/
-├── __init__.py           # Integration setup, SaxoRuntimeData, service registration
-├── button.py             # Refresh button entity
-├── config_flow.py        # OAuth configuration flow with test-before-configure
-├── coordinator.py        # Data update coordinator with market hours logic
-├── sensor.py             # Sensors with shared base classes (has_entity_name)
-├── const.py              # Constants and configuration
-├── models.py             # Data models and validation utilities
-├── diagnostics.py        # Diagnostics download support
-├── services.yaml         # Service definitions
-├── strings.json          # Entity translations and UI strings
-├── icons.json            # Entity icon definitions
-├── py.typed              # PEP 561 strict typing marker
-├── application_credentials.py
-└── api/saxo_client.py    # API client (uses HA shared websession)
-tests/
-├── unit/                 # Unit tests (95%+ coverage)
-├── contract/             # API contract tests
-├── integration/          # End-to-end tests
-├── conftest.py           # Shared fixtures
-└── test_structure.py     # Repository structure validation
-```
-
-## Commands
-```bash
-ruff check .              # Linting
-ruff format .             # Formatting
-python -m pytest tests/   # Run tests
-python -m pytest tests/ --cov=custom_components/saxo_portfolio  # Coverage
-python -m mypy custom_components/saxo_portfolio/ --strict --ignore-missing-imports --follow-imports=silent  # Type checking
-```
 
 ## Code Style
 - Follow Home Assistant integration standards
-- Strict mypy typing throughout (Python 3.14+ syntax, `py.typed` marker)
-- Comprehensive error handling with sanitized logging
+- Strict mypy everywhere (`py.typed` marker, Python 3.14+ syntax)
+- Sanitized logging — never leak tokens, client IDs, or balances
 
-## Sensors
+## Architecture — non-obvious decisions
 
-### Balance Sensors (from `/port/v1/balances/me`)
-- `SaxoCashBalanceSensor`, `SaxoTotalValueSensor`, `SaxoNonMarginPositionsValueSensor`
+### Runtime & data flow
+- Runtime state lives on `entry.runtime_data = SaxoRuntimeData(coordinator)` (not `hass.data[DOMAIN]`); see `__init__.py:65`.
+- `SaxoApiClient` uses HA's shared websession (`async_get_clientsession(hass)`) — no per-integration session lifecycle.
+- Update cadence is market-hours aware: 5 min during market hours, 30 min after (`const.py:44-45`).
+- Performance data is cached for 2 h (`PERFORMANCE_UPDATE_INTERVAL`); performance-API failures must not block balance data (graceful degradation).
 
-### Performance Sensors (from `/hist/v4/performance/timeseries`)
-- `SaxoInvestmentPerformanceSensor` (all-time), `SaxoYTDInvestmentPerformanceSensor`
-- `SaxoMonthInvestmentPerformanceSensor`, `SaxoQuarterInvestmentPerformanceSensor`
-- `SaxoAccumulatedProfitLossSensor` (from `/hist/v3/perf/`)
-- `SaxoCashTransferBalanceSensor`
-- All performance sensors support long-term statistics (`state_class="measurement"`)
+### Availability & resilience
+- Sticky availability: sensors stay available during transient failures and only go unavailable after `max(15 min, 3 × update_interval)` of consecutive failures (`sensor.py:169`).
+- Rate limiting: 0.5 s delay between batched API calls (`saxo_client.py:515`); 0–30 s random stagger across multi-account coordinators (`coordinator.py:146`).
 
-### Diagnostic Sensors
-- `SaxoClientIDSensor`, `SaxoAccountIDSensor`, `SaxoNameSensor`
-- `SaxoTokenExpirySensor`, `SaxoMarketStatusSensor`, `SaxoLastUpdateSensor`, `SaxoTimezoneSensor`
+### Entity conventions
+- All entities use `_attr_has_entity_name = True` with `_attr_translation_key`; user-facing strings live in `strings.json` and icons in `icons.json`.
+- Balance sensors: `state_class="total"`. Performance sensors: `state_class="measurement"` so HA records long-term statistics (`sensor.py:407,470,1167`).
+- Position sensors are opt-in via the options flow.
 
-### Position Sensors (opt-in via options flow)
-- `SaxoPositionSensor` - One per portfolio position with price as state
-- `SaxoMarketDataAccessSensor` - Market data access status
-
-### Other Entities
-- `SaxoRefreshButton` - Manual data refresh
-- `saxo_portfolio.refresh_data` service
-
-## Entity Naming
-Pattern: `sensor.saxo_{client_id}_{sensor_type}`
-Device: `"Saxo {ClientId} Portfolio"`
-
-## Architecture
-
-### Sensor Base Classes
-- `SaxoSensorBase` - Common functionality for all sensors
-- `SaxoBalanceSensorBase` - Monetary sensors with currency handling, `state_class="total"`
-- `SaxoDiagnosticSensorBase` - EntityCategory.DIAGNOSTIC
-- `SaxoPerformanceSensorBase` - Time period handling, caching, and long-term statistics (`state_class="measurement"`)
-
-### Key Behaviors
-- **Runtime Data**: Uses `entry.runtime_data = SaxoRuntimeData(coordinator)` (not `hass.data[DOMAIN]`)
-- **Entity Naming**: `_attr_has_entity_name = True` with `_attr_translation_key` for all entities
-- **Shared Session**: `SaxoApiClient` uses HA's `async_get_clientsession(hass)` — no session lifecycle management
-- **Market Hours**: 5 min updates during market hours, 30 min after hours
-- **Performance Caching**: 2-hour cache for performance data
-- **Long-Term Statistics**: Performance sensors support HA statistics for historical tracking
-- **Sticky Availability**: Sensors stay available during updates, unavailable after 15+ min failures
-- **Graceful Degradation**: Performance API failures don't block balance data
-- **GUI Reauthentication**: OAuth reauth without removing integration
-- **Test-Before-Configure**: Validates API credentials during config flow setup
-
-### Rate Limiting
-- Batched API calls with 0.5s delays
-- Staggered multi-account updates (0-30s random offset)
-- 2-hour performance cache interval
-
-## Key Files Reference
-- `sensor.py`: Base classes (lines 29-228), sensor implementations
-- `coordinator.py`: Data fetching, OAuth token refresh, performance caching
-- `api/saxo_client.py`: API client with `get_performance_v4_batch()`
-
-## Security
-- OAuth 2.0 with CSRF protection (`secrets.token_urlsafe(32)`)
-- Data masking for sensitive information in logs
-- Type-safe cache management with dataclasses
+## OAuth
+- Config flow is test-before-configure: credentials are validated against the API before the entry is created.
+- Reauth is handled in the GUI without removing the integration; token refresh fraction is 0.5 of lifetime (`const.py:179`).
 
 <!-- MANUAL ADDITIONS START -->
 # Important Instructions
