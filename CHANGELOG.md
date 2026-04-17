@@ -7,9 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.0-beta.2] - 2026-04-17
+
 ### Added
 - **HA Quality Scale Platinum Compliance**: Full compliance with all 52 Home Assistant Quality Scale rules across Bronze, Silver, Gold, and Platinum tiers
-- **Strict Typing** (`strict-typing`): Enabled `mypy --strict` with zero errors across all 11 source files; added `py.typed` PEP 561 marker
+- **Strict Typing** (`strict-typing`): Enabled `mypy --strict` with zero errors across all source files; added `py.typed` PEP 561 marker
 - **HA Shared Websession** (`inject-websession`): `SaxoApiClient` now uses HA's `async_get_clientsession()` instead of managing its own `aiohttp.ClientSession`; auth headers sent per-request
 - **Runtime Data** (`runtime-data`): Migrated from `hass.data[DOMAIN]` to typed `entry.runtime_data = SaxoRuntimeData(coordinator)` pattern
 - **Entity Translations** (`has-entity-name`, `entity-translations`): All entities use `_attr_has_entity_name = True` with `_attr_translation_key`; full `strings.json` and 11 translation files
@@ -19,18 +21,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Action Exceptions** (`action-exceptions`): Service handler and refresh button wrap errors in `HomeAssistantError` with translation keys
 - **Exception Translations** (`exception-translations`): Added `exceptions` section to `strings.json` for translated error messages
 - **Parallel Updates** (`parallel-updates`): Added `PARALLEL_UPDATES = 0` to `sensor.py` and `button.py`
-- **Comprehensive Test Suite**: 696 tests with 99% code coverage (up from 170 tests at 40%)
+- **Comprehensive Test Suite**: 634 tests after the post-beta.1 cleanup (was 696 before dead-code removal); still 99% coverage
+
+### Fixed
+- **Exclusive market-close boundary** (`coordinator.py`): Market hours check now uses `market_open <= current_time < market_close` so 17:00:00 on the dot reads as "After Hours" instead of "Open"
+- **DST-safe token-age math** (`coordinator.py`): Proactive refresh math now runs in UTC (`dt_util.utcnow()` + UTC-aware `datetime.fromtimestamp(..., tz=dt_util.UTC)`); previously naive local datetimes could cancel incorrectly across DST transitions
+- **Visible perf-fetch failures** (`coordinator.py`): Non-timeout exceptions inside `_fetch_performance_data_safely` now log at WARNING instead of DEBUG so real bugs surface; graceful-degradation behaviour unchanged
+
+### Security
+- **Diagnostics redaction** (`diagnostics.py`): `REDACT_KEYS` expanded to cover `expires_at`, `expires_at_timestamp`, `expires_at_iso`, `current_time_iso`, `token_issued_at`, and `token_type` so downloaded diagnostics no longer expose exact token-rotation timing
+- **Token-expiry sensor attributes** (`sensor.py`): `SaxoTokenExpirySensor.extra_state_attributes` no longer publishes the absolute `expires_at` ISO timestamp to the HA state machine; `expires_in_seconds`, `is_expired`, and `needs_refresh` remain
 
 ### Changed
 - **API Client Architecture**: Removed `session` property (auto-creating sessions), `close()`, `__aenter__`/`__aexit__` from `SaxoApiClient` — HA owns the HTTP session lifecycle
 - **Coordinator Simplified**: Removed `_close_old_client()` and session close logic; token rotation is now a lightweight client wrapper swap
 - **Config Flow Return Types**: Changed `FlowResult` to `ConfigFlowResult` for mypy compatibility
 - **Documentation**: Updated README with Platinum badge, uninstallation instructions, use cases, automation examples, known limitations, and data update strategy
-- **CLAUDE.md**: Updated project structure, commands, and architecture documentation
+- **CLAUDE.md**: Condensed to ~42 lines of non-obvious architecture (runtime_data, market-hours cadence, sticky availability, rate limits); removed tree/command duplication and stale claims
 
 ### Removed
 - `DATA_COORDINATOR` and `DATA_UNSUB` constants (replaced by `entry.runtime_data`)
 - `API_TIMEOUT_CONNECT` and `API_TIMEOUT_READ` imports from `saxo_client.py` (HA session manages timeouts)
+- **Unused `models.py` dataclasses/helpers**: `PortfolioData`, `AccountData`, `CoordinatorData`, the duplicate `PositionData`, `from_api_responses`, `validate_iso_currency_code`, `sanitize_financial_value`, `calculate_portfolio_totals` — no production callers (the coordinator rolls its own data shapes). ~300 prod LoC + ~830 test LoC removed; `mask_sensitive_data` and `mask_url_for_logging` (the actual consumers) remain
+- **`saxo-openapi` dependency**: Dropped from `manifest.json` and `pyproject.toml`. The package was never imported; end users were installing a 2019-vintage unmaintained package for nothing
+
+### Build / CI
+- **`requires-python` → `>=3.14`**: Matches the `except A, B:` tuple syntax the codebase relies on (a 3.14-only feature); `ruff`'s `target-version` and `mypy`'s `python_version` were already `3.14`, so the old `>=3.13` floor would have crashed at install
+- **CI matrix** (`tests.yml`): Dropped Python 3.13 from the matrix (the package no longer installs on 3.13)
+- **`uv.lock` now tracked**: Reproducible dev environments for contributors; end users still install via HACS and don't see this file
+- **Honest dep floors**: `homeassistant>=2024.1` → `>=2025.1`; `aiohttp>=3.8` → `>=3.11`; dev floors for pytest, ruff, mypy, pre-commit, pytest-asyncio, pytest-homeassistant-custom-component all brought closer to what actually ships in `uv.lock`
 
 ## [2.9.0-beta.1] - 2026-04-15
 
