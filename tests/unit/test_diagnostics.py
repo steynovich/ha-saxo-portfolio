@@ -389,6 +389,12 @@ class TestRedactKeys:
             "ClientKey",
             "AccountId",
             "AccountKey",
+            "expires_at",
+            "expires_at_timestamp",
+            "expires_at_iso",
+            "current_time_iso",
+            "token_issued_at",
+            "token_type",
         }
         assert expected == REDACT_KEYS
 

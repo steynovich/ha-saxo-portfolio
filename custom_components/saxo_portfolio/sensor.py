@@ -819,22 +819,19 @@ class SaxoTokenExpirySensor(SaxoDiagnosticSensorBase):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return additional attributes."""
-        import time
-        from datetime import datetime
+        """Return additional attributes.
 
+        Omits the absolute ``expires_at`` timestamp so the HA state machine
+        doesn't expose exact token-rotation timing to every local consumer.
+        """
         assert self.coordinator.config_entry is not None
         attrs: dict[str, Any] = {}
         token_data = self.coordinator.config_entry.data.get("token", {})
 
         if token_data and "expires_at" in token_data:
             expires_at = token_data["expires_at"]
-            current_time = time.time()
-            time_until_expiry = expires_at - current_time
+            time_until_expiry = expires_at - time.time()
 
-            expiry_datetime = datetime.fromtimestamp(expires_at)
-
-            attrs["expires_at"] = expiry_datetime.isoformat()
             attrs["expires_in_seconds"] = int(time_until_expiry)
             attrs["is_expired"] = time_until_expiry <= 0
             attrs["needs_refresh"] = time_until_expiry <= 300

@@ -590,7 +590,9 @@ class TestTokenExpirySensor:
         sensor = SaxoTokenExpirySensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes
-        assert "expires_at" in attrs
+        # Absolute `expires_at` is intentionally omitted so the state machine
+        # doesn't expose exact token-rotation timing to local consumers.
+        assert "expires_at" not in attrs
         assert "expires_in_seconds" in attrs
         assert "is_expired" in attrs
         assert "needs_refresh" in attrs
