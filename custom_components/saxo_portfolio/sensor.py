@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 import logging
+import math
+import time
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
@@ -223,8 +225,6 @@ class SaxoBalanceSensorBase(SaxoSensorBase):
 
             # Validate and format numeric value
             if isinstance(balance, int | float):
-                import math
-
                 if not math.isfinite(balance):
                     _LOGGER.warning(
                         "Invalid %s value: %s",
@@ -291,7 +291,6 @@ async def async_setup_entry(
 
     coordinator: SaxoCoordinator = config_entry.runtime_data.coordinator
 
-    # Check if client name is available - do not create sensors if unknown
     client_name = coordinator.get_client_name()
     if client_name == "unknown":
         _LOGGER.warning(
@@ -485,8 +484,6 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
 
             # Validate and format numeric value
             if isinstance(performance_percentage, int | float):
-                import math
-
                 if not math.isfinite(performance_percentage):
                     _LOGGER.warning(
                         "%s performance percentage is not finite: %s",
@@ -578,8 +575,6 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
             Dictionary with 'from' and 'thru' date strings in ISO format, or None if not applicable
 
         """
-        from datetime import datetime, date
-
         time_period = self._get_time_period()
         now = datetime.now()
 
@@ -802,8 +797,6 @@ class SaxoTokenExpirySensor(SaxoDiagnosticSensorBase):
     @property
     def native_value(self) -> str | None:
         """Return the token expiry status."""
-        import time
-
         assert self.coordinator.config_entry is not None
         token_data = self.coordinator.config_entry.data.get("token", {})
         if not token_data or "expires_at" not in token_data:
@@ -1174,8 +1167,6 @@ class SaxoPositionSensor(SaxoSensorBase):
             return None
 
         try:
-            import math
-
             if not math.isfinite(position.current_price):
                 return None
 

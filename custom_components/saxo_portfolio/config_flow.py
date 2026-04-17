@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 import logging
 from typing import Any
 
@@ -116,14 +117,9 @@ class SaxoPortfolioFlowHandler(
         """Handle a flow initialized by the user."""
         return await self.async_step_pick_implementation()
 
-    # Remove custom auth step - let parent class handle OAuth2 flow
-
     async def async_oauth_create_entry(self, data: dict[str, Any]) -> ConfigFlowResult:
         """Create an entry for the flow."""
-        # Add token_issued_at timestamp if not present
-        # This helps accurately track refresh token expiry
-        from datetime import datetime
-
+        # token_issued_at anchors refresh-token-age math in the coordinator.
         if "token" in data and "token_issued_at" not in data["token"]:
             data["token"]["token_issued_at"] = datetime.now().timestamp()
 

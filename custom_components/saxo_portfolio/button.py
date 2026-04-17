@@ -33,9 +33,7 @@ async def async_setup_entry(
     """Set up Saxo Portfolio button entities."""
     coordinator: SaxoCoordinator = entry.runtime_data.coordinator
 
-    # Check if client name is available
-    client_name = coordinator.get_client_name()
-    if client_name == "unknown":
+    if coordinator.get_client_name() == "unknown":
         _LOGGER.warning(
             "Skipping button setup - client data not yet available. "
             "Buttons will be created when client data is fetched."
