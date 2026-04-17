@@ -268,8 +268,11 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return defaults
 
         except Exception as e:
-            _LOGGER.debug(
-                "Performance data fetch failed: %s, using cached/default values",
+            # Anything that's NOT a timeout here is unexpected — log at WARNING
+            # so real bugs in performance parsing don't hide behind the
+            # "graceful degradation" curtain.
+            _LOGGER.warning(
+                "Performance data fetch failed with %s, using cached/default values",
                 type(e).__name__,
             )
             return defaults
@@ -683,7 +686,9 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                 current_time = now_local.time()
 
-                is_open = market_open <= current_time <= market_close
+                # Close is exclusive: at exactly the close time, the market is
+                # considered closed (e.g., 17:00:00 reads as "After Hours").
+                is_open = market_open <= current_time < market_close
 
             _LOGGER.debug(
                 "Market hours check for %s: %s, weekday: %s, is_open: %s",
@@ -734,19 +739,22 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             token_issued_at_timestamp = token_data.get("token_issued_at")
             expires_at = token_data.get("expires_at")
 
+            # Token-age math runs in UTC so DST transitions don't distort elapsed.
             if token_issued_at_timestamp:
-                token_issued_at = datetime.fromtimestamp(token_issued_at_timestamp)
-            elif expires_at:
-                token_issued_at = datetime.fromtimestamp(expires_at) - timedelta(
-                    seconds=token_data.get("expires_in", 1200)
+                token_issued_at = datetime.fromtimestamp(
+                    token_issued_at_timestamp, tz=dt_util.UTC
                 )
+            elif expires_at:
+                token_issued_at = datetime.fromtimestamp(
+                    expires_at, tz=dt_util.UTC
+                ) - timedelta(seconds=token_data.get("expires_in", 1200))
             else:
-                token_issued_at = datetime.now()
+                token_issued_at = dt_util.utcnow()
 
             refresh_token_expires_at = token_issued_at + timedelta(
                 seconds=refresh_token_expires_in
             )
-            current_time = datetime.now()
+            current_time = dt_util.utcnow()
             elapsed = current_time - token_issued_at
             half_life = timedelta(
                 seconds=refresh_token_expires_in * REFRESH_TOKEN_REFRESH_AT_FRACTION
