@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.0-beta.3] - 2026-08-04
+
 ### Added
 - **YTD Profit/Loss sensor**: Year-to-date profit/loss in the account's base currency (`sensor.saxo_{clientid}_ytd_profit_loss`)
 - **YTD Net Transfers sensor**: Year-to-date net deposits and withdrawals (`sensor.saxo_{clientid}_ytd_cash_transfer`)
