@@ -379,7 +379,12 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # v4 batch — four periods in one call
         try:
             await asyncio.sleep(0.5)
-            v4_batch = await client.get_performance_v4_batch(client_key)
+            now = dt_util.now()
+            v4_batch = await client.get_performance_v4_batch(
+                client_key,
+                ytd_from=f"{now.year:04d}-01-01",
+                ytd_to=now.date().isoformat(),
+            )
             result.update(self._extract_v4_batch_metrics(v4_batch))
             _LOGGER.debug(
                 "Retrieved batched performance v4 data - AllTime: %s%%, YTD: %s%%, "
