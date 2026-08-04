@@ -672,6 +672,26 @@ class TestFetchPerformanceMetrics:
         assert result["ytd_earnings_percentage"] == 50.0
         assert "investment_performance_percentage" not in result
 
+    async def test_batch_called_with_january_first_anchor(self):
+        """The YTD window must start on 1 January of the current year."""
+        coord = _bare_coordinator()
+        client = AsyncMock()
+        client.get_performance = AsyncMock(return_value={})
+        client.get_performance_v4_batch = AsyncMock(
+            return_value={"alltime": {}, "ytd": {}, "month": {}, "quarter": {}}
+        )
+        result: dict = {}
+
+        with patch(
+            "custom_components.saxo_portfolio.coordinator.dt_util.now"
+        ) as mock_now:
+            mock_now.return_value = datetime(2026, 8, 4, 12, 0)
+            await coord._fetch_performance_metrics(client, "ck1", result)
+
+        kwargs = client.get_performance_v4_batch.call_args.kwargs
+        assert kwargs["ytd_from"] == "2026-01-01"
+        assert kwargs["ytd_to"] == "2026-08-04"
+
 
 # ---------------------------------------------------------------------------
 # _fetch_positions_data_safely
@@ -1867,6 +1887,40 @@ class TestGetters:
         assert coord.is_startup_phase is True
         coord._is_startup_phase = False
         assert coord.is_startup_phase is False
+
+
+class TestYtdGetters:
+    """Tests for the YTD currency getters."""
+
+    def test_get_ytd_profit_loss(self):
+        """YTD profit/loss is returned from data."""
+        coord = _bare_coordinator()
+        coord.data = {"ytd_profit_loss": 1234.56}
+        assert coord.get_ytd_profit_loss() == pytest.approx(1234.56)
+
+    def test_get_ytd_profit_loss_none_when_missing(self):
+        """Missing key returns None, not 0.0."""
+        coord = _bare_coordinator()
+        coord.data = {}
+        assert coord.get_ytd_profit_loss() is None
+
+    def test_get_ytd_profit_loss_none_without_data(self):
+        """No data returns None."""
+        coord = _bare_coordinator()
+        coord.data = None
+        assert coord.get_ytd_profit_loss() is None
+
+    def test_get_ytd_cash_transfer(self):
+        """YTD net transfers is returned from data."""
+        coord = _bare_coordinator()
+        coord.data = {"ytd_cash_transfer": 250.0}
+        assert coord.get_ytd_cash_transfer() == pytest.approx(250.0)
+
+    def test_get_ytd_cash_transfer_none_when_missing(self):
+        """Missing key returns None, not 0.0."""
+        coord = _bare_coordinator()
+        coord.data = {}
+        assert coord.get_ytd_cash_transfer() is None
 
 
 # ---------------------------------------------------------------------------

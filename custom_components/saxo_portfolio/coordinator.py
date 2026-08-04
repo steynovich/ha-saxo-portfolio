@@ -295,6 +295,8 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "quarter_investment_performance_percentage", 0.0
             ),
             "cash_transfer_balance": cache.get("cash_transfer_balance", 0.0),
+            "ytd_profit_loss": cache.get("ytd_profit_loss"),
+            "ytd_cash_transfer": cache.get("ytd_cash_transfer"),
             "client_id": cache.get("client_id", "unknown"),
             "account_id": cache.get("account_id", "unknown"),
             "client_name": cache.get("client_name", "unknown"),
@@ -388,12 +390,12 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             result.update(self._extract_v4_batch_metrics(v4_batch))
             _LOGGER.debug(
                 "Retrieved batched performance v4 data - AllTime: %s%%, YTD: %s%%, "
-                "Month: %s%%, Quarter: %s%%, CashTransfer: %s",
+                "Month: %s%%, Quarter: %s%%, YTD currency metrics present: %s",
                 result["investment_performance_percentage"],
                 result["ytd_investment_performance_percentage"],
                 result["month_investment_performance_percentage"],
                 result["quarter_investment_performance_percentage"],
-                result["cash_transfer_balance"],
+                result.get("ytd_profit_loss") is not None,
             )
         except Exception as perf_v4_e:
             _LOGGER.debug(
@@ -1248,6 +1250,30 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not self.data:
             return 0.0
         return float(self.data.get("cash_transfer_balance", 0.0))
+
+    def get_ytd_profit_loss(self) -> float | None:
+        """Get year-to-date profit/loss in the account's base currency.
+
+        Returns:
+            YTD profit/loss, or None when unavailable
+
+        """
+        if not self.data:
+            return None
+        value = self.data.get("ytd_profit_loss")
+        return float(value) if isinstance(value, int | float) else None
+
+    def get_ytd_cash_transfer(self) -> float | None:
+        """Get year-to-date net deposits/withdrawals.
+
+        Returns:
+            YTD net cash transferred, or None when unavailable
+
+        """
+        if not self.data:
+            return None
+        value = self.data.get("ytd_cash_transfer")
+        return float(value) if isinstance(value, int | float) else None
 
     def get_ytd_investment_performance_percentage(self) -> float:
         """Get YTD investment performance percentage from v4 performance API.
