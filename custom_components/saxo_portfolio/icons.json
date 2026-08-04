@@ -33,6 +33,12 @@
       "cash_transfer_balance": {
         "default": "mdi:bank-transfer"
       },
+      "ytd_profit_loss": {
+        "default": "mdi:trending-up"
+      },
+      "ytd_cash_transfer": {
+        "default": "mdi:bank-transfer"
+      },
       "client_id": {
         "default": "mdi:identifier"
       },

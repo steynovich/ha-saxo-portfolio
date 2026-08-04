@@ -40,6 +40,8 @@ The integration provides **nine comprehensive sensors** that automatically use y
 - **Month Investment Performance**: Month-to-Date portfolio return percentage (`sensor.saxo_{clientid}_month_investment_performance`)
 - **Quarter Investment Performance**: Quarter-to-Date portfolio return percentage (`sensor.saxo_{clientid}_quarter_investment_performance`)
 - **Cash Transfer Balance**: Latest cash transfer value tracking deposits and withdrawals (`sensor.saxo_{clientid}_cash_transfer_balance`)
+- **YTD Profit/Loss**: Year-to-Date profit/loss in your account currency (`sensor.saxo_{clientid}_ytd_profit_loss`)
+- **YTD Net Transfers**: Year-to-Date net deposits and withdrawals (`sensor.saxo_{clientid}_ytd_cash_transfer`)
 
 **Long-Term Statistics**: All performance sensors support Home Assistant's long-term statistics system with `state_class: measurement`, enabling:
 - Historical data retention beyond the default 10-day recorder purge period
@@ -121,7 +123,7 @@ The integration provides **nine comprehensive sensors** that automatically use y
 
 ## Entities Created
 
-The integration automatically creates **sixteen entities** using your Saxo Client ID:
+The integration automatically creates **eighteen entities** using your Saxo Client ID:
 
 ### Portfolio Sensors (Example: Client ID "123456")
 - `sensor.saxo_123456_cash_balance` - Available cash balance
@@ -133,6 +135,8 @@ The integration automatically creates **sixteen entities** using your Saxo Clien
 - `sensor.saxo_123456_month_investment_performance` - Month-to-Date portfolio return percentage
 - `sensor.saxo_123456_quarter_investment_performance` - Quarter-to-Date portfolio return percentage
 - `sensor.saxo_123456_cash_transfer_balance` - Latest cash transfer balance
+- `sensor.saxo_123456_ytd_profit_loss` - Year-to-Date profit/loss
+- `sensor.saxo_123456_ytd_cash_transfer` - Year-to-Date net deposits and withdrawals
 
 ### Diagnostic Sensors (Example: Client ID "123456")
 - `sensor.saxo_123456_client_id` - Saxo Client ID identifier for troubleshooting

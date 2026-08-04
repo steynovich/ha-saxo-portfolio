@@ -210,8 +210,8 @@ class TestSensorCreationAndUpdates:
         call_args = mock_add_entities.call_args
         sensors = call_args[0][0]  # First argument (entities list)
 
-        # Should create 16 sensors total (position sensors disabled)
-        assert len(sensors) == 16
+        # Should create 18 sensors total (position sensors disabled)
+        assert len(sensors) == 18
 
         # Should create expected sensor classes
         sensor_classes = [type(sensor).__name__ for sensor in sensors]
@@ -225,6 +225,8 @@ class TestSensorCreationAndUpdates:
             "SaxoYTDInvestmentPerformanceSensor",
             "SaxoMonthInvestmentPerformanceSensor",
             "SaxoQuarterInvestmentPerformanceSensor",
+            "SaxoYTDProfitLossSensor",
+            "SaxoYTDCashTransferSensor",
             "SaxoClientIDSensor",
             "SaxoAccountIDSensor",
             "SaxoNameSensor",

@@ -32,7 +32,9 @@ from custom_components.saxo_portfolio.sensor import (
     SaxoTimezoneSensor,
     SaxoTokenExpirySensor,
     SaxoTotalValueSensor,
+    SaxoYTDCashTransferSensor,
     SaxoYTDInvestmentPerformanceSensor,
+    SaxoYTDProfitLossSensor,
     _setup_position_listener,
     async_setup_entry,
 )
@@ -54,6 +56,8 @@ def coord():
     c.get_month_investment_performance_percentage.return_value = 2.1
     c.get_quarter_investment_performance_percentage.return_value = 3.45
     c.get_cash_transfer_balance.return_value = 10000.0
+    c.get_ytd_profit_loss.return_value = 1234.56
+    c.get_ytd_cash_transfer.return_value = 250.0
     c.get_account_id.return_value = "ACC456"
     c.last_update_success = True
     c.data = {
@@ -63,6 +67,8 @@ def coord():
         "ytd_earnings_percentage": 5.5,
         "investment_performance_percentage": 12.34,
         "cash_transfer_balance": 10000.0,
+        "ytd_profit_loss": 1234.56,
+        "ytd_cash_transfer": 250.0,
     }
     c.config_entry = MagicMock()
     c.config_entry.entry_id = "test_entry"
@@ -109,8 +115,8 @@ class TestAsyncSetupEntry:
         await async_setup_entry(MagicMock(), entry, add_entities)
         add_entities.assert_called_once()
         entities = add_entities.call_args[0][0]
-        # 16 base + 1 market data + 1 position = 18
-        assert len(entities) >= 17
+        # 18 base + 1 market data + 1 position = 20
+        assert len(entities) >= 19
         coord.mark_sensors_initialized.assert_called_once()
 
     @pytest.mark.asyncio
@@ -131,7 +137,7 @@ class TestAsyncSetupEntry:
         add_entities = MagicMock()
         await async_setup_entry(MagicMock(), entry, add_entities)
         entities = add_entities.call_args[0][0]
-        assert len(entities) == 16  # No position or market data sensors
+        assert len(entities) == 18  # No position or market data sensors
 
 
 class TestSetupPositionListener:
@@ -776,3 +782,42 @@ class TestPositionSensor:
         sensor = SaxoPositionSensor(coord, "aapl_stock")
         assert sensor._attr_name == "Position AAPL"
         assert sensor._attr_has_entity_name is True
+
+
+class TestYTDCurrencySensors:
+    def test_ytd_profit_loss_value(self, coord):
+        sensor = SaxoYTDProfitLossSensor(coord)
+        type(sensor).coordinator = PropertyMock(return_value=coord)
+        assert sensor.native_value == pytest.approx(1234.56)
+
+    def test_ytd_profit_loss_state_class(self, coord):
+        sensor = SaxoYTDProfitLossSensor(coord)
+        assert sensor._attr_state_class == "measurement"
+
+    def test_ytd_profit_loss_unavailable_when_none(self, coord):
+        coord.get_ytd_profit_loss.return_value = None
+        sensor = SaxoYTDProfitLossSensor(coord)
+        type(sensor).coordinator = PropertyMock(return_value=coord)
+        assert sensor.native_value is None
+        assert sensor.available is False
+
+    def test_ytd_profit_loss_currency_attr(self, coord):
+        sensor = SaxoYTDProfitLossSensor(coord)
+        type(sensor).coordinator = PropertyMock(return_value=coord)
+        assert sensor.extra_state_attributes["currency"] == coord.get_currency()
+
+    def test_ytd_cash_transfer_value(self, coord):
+        sensor = SaxoYTDCashTransferSensor(coord)
+        type(sensor).coordinator = PropertyMock(return_value=coord)
+        assert sensor.native_value == pytest.approx(250.0)
+
+    def test_ytd_cash_transfer_state_class(self, coord):
+        sensor = SaxoYTDCashTransferSensor(coord)
+        assert sensor._attr_state_class == "total"
+
+    def test_ytd_cash_transfer_unavailable_when_none(self, coord):
+        coord.get_ytd_cash_transfer.return_value = None
+        sensor = SaxoYTDCashTransferSensor(coord)
+        type(sensor).coordinator = PropertyMock(return_value=coord)
+        assert sensor.native_value is None
+        assert sensor.available is False
