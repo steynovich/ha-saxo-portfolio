@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **YTD Profit/Loss sensor**: Year-to-date profit/loss in the account's base currency (`sensor.saxo_{clientid}_ytd_profit_loss`)
+- **YTD Net Transfers sensor**: Year-to-date net deposits and withdrawals (`sensor.saxo_{clientid}_ytd_cash_transfer`)
+
+### Fixed
+- **YTD Investment Performance now measures year-to-date**: the sensor previously used Saxo's `StandardPeriod=Year`, which is a *trailing 12-month* window rather than year-to-date. It now uses an explicit window anchored to 1 January.
+
+  **This changes the reported value.** On a test account the sensor read 17.83% (trailing 12 months) where true year-to-date was 9.32%. The `from`/`thru` attributes already claimed a 1 January start, so they were previously inaccurate; they are now correct.
+
+  Long-term statistics recorded for this entity before the upgrade are trailing-12-month figures, so historical graphs will show a discontinuity at the upgrade point. The `entity_id` is unchanged — dashboards and automations continue to work.
+
+### Changed
+- Performance data no longer fetches the trailing `Year` window; the January-anchored request takes its place, keeping the refresh at four API calls
+- `Month` and `Quarter` performance requests trimmed to the `KeyFigures` field group
+- Removed unused `get_performance_v4`, `get_performance_v4_ytd`, `get_performance_v4_month` and `get_performance_v4_quarter` client methods
+
+### Known Issues
+- **Month and Quarter Investment Performance are also trailing windows**, not month-to-date and quarter-to-date: `StandardPeriod=Month` returns a rolling ~28 days and `Quarter` a rolling ~90 days. Their `from`/`thru` attributes are therefore inaccurate. Correcting these is deferred; see `docs/superpowers/specs/2026-08-04-ytd-sensors-design.md`.
+
 ## [2.9.0-beta.2] - 2026-04-17
 
 ### Added
