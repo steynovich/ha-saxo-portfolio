@@ -37,8 +37,8 @@ The integration provides **eleven comprehensive sensors** that automatically use
 - **Accumulated Profit/Loss**: All-time performance tracking from Saxo's historical API (`sensor.saxo_{clientid}_accumulated_profit_loss`)
 - **Investment Performance**: Overall portfolio return percentage (all-time) from performance timeseries (`sensor.saxo_{clientid}_investment_performance`)
 - **YTD Investment Performance**: Year-to-Date portfolio return percentage (`sensor.saxo_{clientid}_ytd_investment_performance`)
-- **Month Investment Performance**: Month-to-Date portfolio return percentage (`sensor.saxo_{clientid}_month_investment_performance`)
-- **Quarter Investment Performance**: Quarter-to-Date portfolio return percentage (`sensor.saxo_{clientid}_quarter_investment_performance`)
+- **Month Investment Performance**: Rolling ~28-day portfolio return percentage (despite the name, not aligned to the calendar month — see Known Issues in CHANGELOG.md) (`sensor.saxo_{clientid}_month_investment_performance`)
+- **Quarter Investment Performance**: Rolling ~90-day portfolio return percentage (despite the name, not aligned to the calendar quarter — see Known Issues in CHANGELOG.md) (`sensor.saxo_{clientid}_quarter_investment_performance`)
 - **Cash Transfer Balance**: Latest cash transfer value tracking deposits and withdrawals (`sensor.saxo_{clientid}_cash_transfer_balance`)
 - **YTD Profit/Loss**: Year-to-Date profit/loss in your account currency (`sensor.saxo_{clientid}_ytd_profit_loss`)
 - **YTD Net Transfers**: Year-to-Date net deposits and withdrawals (`sensor.saxo_{clientid}_ytd_cash_transfer`)
@@ -132,8 +132,8 @@ The integration automatically creates **eighteen entities** using your Saxo Clie
 - `sensor.saxo_123456_accumulated_profit_loss` - All-time profit/loss performance
 - `sensor.saxo_123456_investment_performance` - Overall portfolio return percentage (all-time)
 - `sensor.saxo_123456_ytd_investment_performance` - Year-to-Date portfolio return percentage
-- `sensor.saxo_123456_month_investment_performance` - Month-to-Date portfolio return percentage
-- `sensor.saxo_123456_quarter_investment_performance` - Quarter-to-Date portfolio return percentage
+- `sensor.saxo_123456_month_investment_performance` - Rolling ~28-day portfolio return percentage (not calendar month-to-date; see Known Issues in CHANGELOG.md)
+- `sensor.saxo_123456_quarter_investment_performance` - Rolling ~90-day portfolio return percentage (not calendar quarter-to-date; see Known Issues in CHANGELOG.md)
 - `sensor.saxo_123456_cash_transfer_balance` - Latest cash transfer balance
 - `sensor.saxo_123456_ytd_profit_loss` - Year-to-Date profit/loss
 - `sensor.saxo_123456_ytd_cash_transfer` - Year-to-Date net deposits and withdrawals

@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 import pytest
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import EntityCategory
+from homeassistant.util import dt as dt_util
 
 from custom_components.saxo_portfolio.coordinator import PositionData, SaxoCoordinator
 from custom_components.saxo_portfolio.sensor import (
@@ -821,3 +822,37 @@ class TestYTDCurrencySensors:
         type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value is None
         assert sensor.available is False
+
+    def test_ytd_cash_transfer_last_reset_is_jan_1_current_year(self, coord):
+        sensor = SaxoYTDCashTransferSensor(coord)
+        type(sensor).coordinator = PropertyMock(return_value=coord)
+        last_reset = sensor.last_reset
+
+        now = dt_util.now()
+        assert last_reset.year == now.year
+        assert last_reset.month == 1
+        assert last_reset.day == 1
+        assert last_reset.tzinfo is not None
+
+    def test_ytd_cash_transfer_last_reset_is_recomputed_not_frozen(self, coord):
+        """last_reset must be a property re-derived from the current time.
+
+        A value fixed at __init__ would go stale on 1 January until Home
+        Assistant restarts; simulating a year change must shift the
+        reported last_reset accordingly.
+        """
+        sensor = SaxoYTDCashTransferSensor(coord)
+        type(sensor).coordinator = PropertyMock(return_value=coord)
+
+        next_year = dt_util.now().year + 1
+        future = dt_util.now().replace(year=next_year, month=1, day=2)
+        with patch(
+            "custom_components.saxo_portfolio.sensor.dt_util.now",
+            return_value=future,
+        ):
+            last_reset = sensor.last_reset
+
+        assert last_reset.year == next_year
+        assert last_reset.month == 1
+        assert last_reset.day == 1
+        assert last_reset.tzinfo is not None

@@ -16,6 +16,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
     ATTRIBUTION,
@@ -150,8 +151,6 @@ class SaxoSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
             # This handles the case during initial startup when coordinator has data
             # but hasn't recorded a successful update time yet
             return True
-
-        from homeassistant.util import dt as dt_util
 
         # Calculate how long it's been since last successful update
         # Ensure both timestamps are timezone-aware for comparison
@@ -578,7 +577,7 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
 
         """
         time_period = self._get_time_period()
-        now = datetime.now()
+        now = dt_util.now()
 
         if time_period == "Year":
             # Year-to-date: January 1st to today
@@ -702,6 +701,20 @@ class SaxoYTDCashTransferSensor(SaxoBalanceSensorBase):
             return False
 
         return self.coordinator.get_ytd_cash_transfer() is not None
+
+    @property
+    def last_reset(self) -> datetime:
+        """Return the start of the current year.
+
+        Unlike its all-time sibling, this metric's source window (the
+        Jan-1 anchored FromDate/ToDate range) resets to zero every 1
+        January. Recorder only zeroes its long-term-statistics reference
+        point when this attribute *changes*, so it must be recomputed on
+        every access (not cached at __init__ time) to re-anchor at the
+        year boundary without requiring a restart.
+        """
+        now = dt_util.now()
+        return dt_util.start_of_local_day(date(now.year, 1, 1))
 
 
 class SaxoYTDInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
