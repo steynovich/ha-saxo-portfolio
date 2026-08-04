@@ -151,8 +151,8 @@ the `None`-default decision needs no base-class change.
 ### D. Presentation
 
 New `ytd_profit_loss` and `ytd_cash_transfer` keys in `strings.json`, `icons.json`,
-and all 12 translation files. Locale files already carry English names for the
-existing YTD key; new keys follow that pattern rather than inventing translations.
+and the 11 files under `translations/`. Locale files already carry English names for
+the existing YTD key; new keys follow that pattern rather than inventing translations.
 
 ### E. Tests
 
