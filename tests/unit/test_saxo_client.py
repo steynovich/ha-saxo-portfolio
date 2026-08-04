@@ -1155,7 +1155,9 @@ class TestGetPerformanceV4Batch:
                 new_callable=AsyncMock,
             ),
         ):
-            result = await client.get_performance_v4_batch("ck_123")
+            result = await client.get_performance_v4_batch(
+                "ck_123", ytd_from="2026-01-01", ytd_to="2026-08-04"
+            )
 
         assert "alltime" in result
         assert "ytd" in result
@@ -1183,7 +1185,9 @@ class TestGetPerformanceV4Batch:
                 new_callable=AsyncMock,
             ) as mock_sleep,
         ):
-            await client.get_performance_v4_batch("ck")
+            await client.get_performance_v4_batch(
+                "ck", ytd_from="2026-01-01", ytd_to="2026-08-04"
+            )
 
         # Sleep should be called 3 times (between 4 calls)
         assert mock_sleep.call_count == 3
@@ -1203,7 +1207,9 @@ class TestGetPerformanceV4Batch:
             ),
             pytest.raises(AuthenticationError),
         ):
-            await client.get_performance_v4_batch("ck")
+            await client.get_performance_v4_batch(
+                "ck", ytd_from="2026-01-01", ytd_to="2026-08-04"
+            )
 
     @pytest.mark.asyncio
     async def test_rate_limit_error_propagates(self):
@@ -1218,7 +1224,9 @@ class TestGetPerformanceV4Batch:
             ),
             pytest.raises(RateLimitError),
         ):
-            await client.get_performance_v4_batch("ck")
+            await client.get_performance_v4_batch(
+                "ck", ytd_from="2026-01-01", ytd_to="2026-08-04"
+            )
 
     @pytest.mark.asyncio
     async def test_non_dict_response_raises(self):
@@ -1229,10 +1237,12 @@ class TestGetPerformanceV4Batch:
                 client, "_make_request", new_callable=AsyncMock, return_value="not_dict"
             ),
             pytest.raises(
-                APIError, match="Failed to fetch performance v4 AllTime data"
+                APIError, match="Failed to fetch performance v4 alltime data"
             ),
         ):
-            await client.get_performance_v4_batch("ck")
+            await client.get_performance_v4_batch(
+                "ck", ytd_from="2026-01-01", ytd_to="2026-08-04"
+            )
 
     @pytest.mark.asyncio
     async def test_error_on_second_period(self):
@@ -1253,9 +1263,89 @@ class TestGetPerformanceV4Batch:
                 "custom_components.saxo_portfolio.api.saxo_client.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
-            pytest.raises(APIError, match="Failed to fetch performance v4 Year data"),
+            pytest.raises(APIError, match="Failed to fetch performance v4 ytd data"),
         ):
-            await client.get_performance_v4_batch("ck")
+            await client.get_performance_v4_batch(
+                "ck", ytd_from="2026-01-01", ytd_to="2026-08-04"
+            )
+
+    @pytest.mark.asyncio
+    async def test_ytd_spec_uses_date_range(self):
+        """YTD entry must use FromDate/ToDate, not StandardPeriod."""
+        captured: list[dict] = []
+
+        async def mock_make_request(endpoint, params=None):
+            captured.append(dict(params or {}))
+            return {"KeyFigures": {}}
+
+        client = _make_client(session=MagicMock())
+        with (
+            patch.object(client, "_make_request", side_effect=mock_make_request),
+            patch(
+                "custom_components.saxo_portfolio.api.saxo_client.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await client.get_performance_v4_batch(
+                "ck", ytd_from="2026-01-01", ytd_to="2026-08-04"
+            )
+
+        assert len(captured) == 4
+        ytd_params = captured[1]
+        assert ytd_params["FromDate"] == "2026-01-01"
+        assert ytd_params["ToDate"] == "2026-08-04"
+        assert "StandardPeriod" not in ytd_params
+        assert "Balance_YearlyProfitLoss" in ytd_params["FieldGroups"]
+        assert "Balance_CashTransfer" in ytd_params["FieldGroups"]
+
+    @pytest.mark.asyncio
+    async def test_trailing_year_period_not_requested(self):
+        """StandardPeriod=Year is a trailing 12m window and must not be fetched."""
+        captured: list[dict] = []
+
+        async def mock_make_request(endpoint, params=None):
+            captured.append(dict(params or {}))
+            return {"KeyFigures": {}}
+
+        client = _make_client(session=MagicMock())
+        with (
+            patch.object(client, "_make_request", side_effect=mock_make_request),
+            patch(
+                "custom_components.saxo_portfolio.api.saxo_client.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await client.get_performance_v4_batch(
+                "ck", ytd_from="2026-01-01", ytd_to="2026-08-04"
+            )
+
+        periods = [p.get("StandardPeriod") for p in captured]
+        assert "Year" not in periods
+        assert periods == ["AllTime", None, "Month", "Quarter"]
+
+    @pytest.mark.asyncio
+    async def test_month_quarter_request_keyfigures_only(self):
+        """Month/Quarter Balance data has no reader; don't fetch it."""
+        captured: list[dict] = []
+
+        async def mock_make_request(endpoint, params=None):
+            captured.append(dict(params or {}))
+            return {"KeyFigures": {}}
+
+        client = _make_client(session=MagicMock())
+        with (
+            patch.object(client, "_make_request", side_effect=mock_make_request),
+            patch(
+                "custom_components.saxo_portfolio.api.saxo_client.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await client.get_performance_v4_batch(
+                "ck", ytd_from="2026-01-01", ytd_to="2026-08-04"
+            )
+
+        assert captured[2]["FieldGroups"] == "KeyFigures"
+        assert captured[3]["FieldGroups"] == "KeyFigures"
 
 
 # ---------------------------------------------------------------------------
