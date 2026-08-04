@@ -129,8 +129,11 @@ of the v4 endpoint."
 ### Task 2: Batch fetches a January-1 anchored window
 
 Replace the StandardPeriod-only loop with `(key, params)` specs so one entry can be
-date-ranged. The trailing `Year` call is dropped — Task 3 repoints its only consumer.
+date-ranged. The trailing `Year` call is dropped — Task 4 repoints its only consumer.
 The caller supplies the dates so the client stays clock-free and trivially testable.
+
+Making the new arguments required breaks that sole caller, so this task also applies
+Task 4's Step 4 call-site edit; otherwise the branch carries a commit where mypy fails.
 
 **Files:**
 - Modify: `custom_components/saxo_portfolio/api/saxo_client.py:460-527`
