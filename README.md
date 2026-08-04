@@ -6,12 +6,12 @@
 [![HACS Action](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hacs.yml/badge.svg)](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hacs.yml)
 [![Hassfest](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hassfest.yml/badge.svg)](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hassfest.yml)
 
-A **Platinum-grade** Home Assistant integration for monitoring your Saxo Bank portfolio through their OpenAPI. Features OAuth 2.0 authentication, intelligent update scheduling based on market hours, automatic entity naming based on your Saxo Client ID, and comprehensive portfolio monitoring with nine dedicated sensors and seven diagnostic entities.
+A **Platinum-grade** Home Assistant integration for monitoring your Saxo Bank portfolio through their OpenAPI. Features OAuth 2.0 authentication, intelligent update scheduling based on market hours, automatic entity naming based on your Saxo Client ID, and comprehensive portfolio monitoring with eleven dedicated sensors and seven diagnostic entities.
 
 ## Features
 
 - 🔐 **Enterprise-Grade Security**: OAuth 2.0 with Home Assistant credential management, encrypted token storage, and comprehensive data masking
-- 💰 **Nine Portfolio Sensors**: Real-time balance, performance metrics, and cash transfer tracking from multiple Saxo API endpoints
+- 💰 **Eleven Portfolio Sensors**: Real-time balance, performance metrics, and cash transfer tracking from multiple Saxo API endpoints
 - 📊 **Seven Diagnostic Sensors**: Built-in monitoring for integration health, account identification, token expiry, and market status
 - ⚡ **Smart Performance Caching**: Performance data updates hourly while balance data remains real-time for optimal API usage
 - 📈 **Long-Term Statistics**: Performance sensors support Home Assistant statistics for historical tracking and trend analysis
@@ -26,7 +26,7 @@ A **Platinum-grade** Home Assistant integration for monitoring your Saxo Bank po
 
 ## Supported Sensors
 
-The integration provides **nine comprehensive sensors** that automatically use your Saxo Client ID for unique entity naming:
+The integration provides **eleven comprehensive sensors** that automatically use your Saxo Client ID for unique entity naming:
 
 ### Balance & Portfolio Sensors
 - **Cash Balance**: Available cash in your Saxo portfolio (`sensor.saxo_{clientid}_cash_balance`)
