@@ -295,6 +295,8 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "quarter_investment_performance_percentage", 0.0
             ),
             "cash_transfer_balance": cache.get("cash_transfer_balance", 0.0),
+            "ytd_profit_loss": cache.get("ytd_profit_loss"),
+            "ytd_cash_transfer": cache.get("ytd_cash_transfer"),
             "client_id": cache.get("client_id", "unknown"),
             "account_id": cache.get("account_id", "unknown"),
             "client_name": cache.get("client_name", "unknown"),
@@ -379,16 +381,21 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # v4 batch — four periods in one call
         try:
             await asyncio.sleep(0.5)
-            v4_batch = await client.get_performance_v4_batch(client_key)
+            now = dt_util.now()
+            v4_batch = await client.get_performance_v4_batch(
+                client_key,
+                ytd_from=f"{now.year:04d}-01-01",
+                ytd_to=now.date().isoformat(),
+            )
             result.update(self._extract_v4_batch_metrics(v4_batch))
             _LOGGER.debug(
                 "Retrieved batched performance v4 data - AllTime: %s%%, YTD: %s%%, "
-                "Month: %s%%, Quarter: %s%%, CashTransfer: %s",
+                "Month: %s%%, Quarter: %s%%, YTD currency metrics present: %s",
                 result["investment_performance_percentage"],
                 result["ytd_investment_performance_percentage"],
                 result["month_investment_performance_percentage"],
                 result["quarter_investment_performance_percentage"],
-                result["cash_transfer_balance"],
+                result.get("ytd_profit_loss") is not None,
             )
         except Exception as perf_v4_e:
             _LOGGER.debug(
@@ -397,10 +404,35 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
     @staticmethod
+    def _current_year_bucket(series: list[dict[str, Any]]) -> float | None:
+        """Value of the calendar-year bucket matching the current year.
+
+        ``YearlyProfitLoss`` returns one bucket per calendar year. Match on the
+        year rather than assuming a single-element list, so a response spanning
+        a year boundary cannot select the wrong bucket.
+        """
+        current_year = str(dt_util.now().year)
+        for point in series:
+            if str(point.get("Date", "")).startswith(current_year):
+                value = point.get("Value")
+                if isinstance(value, int | float):
+                    return float(value)
+        return None
+
+    @staticmethod
+    def _last_series_value(series: list[dict[str, Any]]) -> float | None:
+        """Last numeric value of a TimeValuePair series, or None."""
+        for point in reversed(series):
+            value = point.get("Value")
+            if isinstance(value, int | float):
+                return float(value)
+        return None
+
+    @staticmethod
     def _extract_v4_batch_metrics(
         v4_batch: dict[str, dict[str, Any]],
     ) -> dict[str, Any]:
-        """Parse the four-period v4 performance batch into flat metrics."""
+        """Parse the v4 performance batch into flat metrics."""
         metrics: dict[str, Any] = {}
 
         alltime = v4_batch.get("alltime", {})
@@ -422,6 +454,17 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 .get("ReturnFraction", 0.0)
             )
             metrics[result_key] = period_return * 100.0
+
+        # Currency-denominated YTD metrics, from the Jan-1 anchored window.
+        # These default to None rather than 0.0: on a money sensor a zero reads
+        # as "you earned nothing this year" rather than "no data".
+        ytd_balance = v4_batch.get("ytd", {}).get("Balance", {})
+        metrics["ytd_profit_loss"] = SaxoCoordinator._current_year_bucket(
+            ytd_balance.get("YearlyProfitLoss", [])
+        )
+        metrics["ytd_cash_transfer"] = SaxoCoordinator._last_series_value(
+            ytd_balance.get("CashTransfer", [])
+        )
 
         return metrics
 
@@ -1207,6 +1250,30 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not self.data:
             return 0.0
         return float(self.data.get("cash_transfer_balance", 0.0))
+
+    def get_ytd_profit_loss(self) -> float | None:
+        """Get year-to-date profit/loss in the account's base currency.
+
+        Returns:
+            YTD profit/loss, or None when unavailable
+
+        """
+        if not self.data:
+            return None
+        value = self.data.get("ytd_profit_loss")
+        return float(value) if isinstance(value, int | float) else None
+
+    def get_ytd_cash_transfer(self) -> float | None:
+        """Get year-to-date net deposits/withdrawals.
+
+        Returns:
+            YTD net cash transferred, or None when unavailable
+
+        """
+        if not self.data:
+            return None
+        value = self.data.get("ytd_cash_transfer")
+        return float(value) if isinstance(value, int | float) else None
 
     def get_ytd_investment_performance_percentage(self) -> float:
         """Get YTD investment performance percentage from v4 performance API.

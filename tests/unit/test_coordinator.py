@@ -388,6 +388,97 @@ class TestExtractV4BatchMetrics:
         metrics = SaxoCoordinator._extract_v4_batch_metrics(v4_batch)
         assert "cash_transfer_balance" not in metrics
 
+    def test_ytd_profit_loss_and_transfers(self):
+        """YTD currency metrics come from the Jan-1 anchored response."""
+        v4_batch = {
+            "alltime": {
+                "KeyFigures": {"ReturnFraction": 0.32},
+                "Balance": {"CashTransfer": [{"Value": 500}, {"Value": 1000}]},
+            },
+            "ytd": {
+                "KeyFigures": {"ReturnFraction": 0.09},
+                "Balance": {
+                    "YearlyProfitLoss": [
+                        {"Date": "2026-12-31", "Value": 1234.56},
+                    ],
+                    "CashTransfer": [
+                        {"Date": "2026-01-02", "Value": 0},
+                        {"Date": "2026-04-01", "Value": 250.0},
+                    ],
+                },
+            },
+            "month": {"KeyFigures": {"ReturnFraction": 0.02}},
+            "quarter": {"KeyFigures": {"ReturnFraction": 0.03}},
+        }
+        with patch(
+            "custom_components.saxo_portfolio.coordinator.dt_util.now"
+        ) as mock_now:
+            mock_now.return_value = datetime(2026, 8, 4, 12, 0)
+            metrics = SaxoCoordinator._extract_v4_batch_metrics(v4_batch)
+
+        assert metrics["ytd_profit_loss"] == pytest.approx(1234.56)
+        assert metrics["ytd_cash_transfer"] == pytest.approx(250.0)
+        assert metrics["ytd_investment_performance_percentage"] == pytest.approx(9.0)
+
+    def test_ytd_profit_loss_picks_current_year_bucket(self):
+        """A multi-year bucket list must select the current calendar year."""
+        v4_batch = {
+            "ytd": {
+                "Balance": {
+                    "YearlyProfitLoss": [
+                        {"Date": "2025-12-31", "Value": 999.0},
+                        {"Date": "2026-12-31", "Value": 111.0},
+                    ]
+                }
+            }
+        }
+        with patch(
+            "custom_components.saxo_portfolio.coordinator.dt_util.now"
+        ) as mock_now:
+            mock_now.return_value = datetime(2026, 8, 4, 12, 0)
+            metrics = SaxoCoordinator._extract_v4_batch_metrics(v4_batch)
+
+        assert metrics["ytd_profit_loss"] == pytest.approx(111.0)
+
+    def test_ytd_metrics_none_when_absent(self):
+        """Missing YTD balance data yields None, not 0.0."""
+        v4_batch = {"ytd": {"KeyFigures": {"ReturnFraction": 0.09}}}
+        metrics = SaxoCoordinator._extract_v4_batch_metrics(v4_batch)
+
+        assert metrics["ytd_profit_loss"] is None
+        assert metrics["ytd_cash_transfer"] is None
+
+    def test_ytd_profit_loss_none_when_no_matching_year(self):
+        """A bucket list without the current year yields None."""
+        v4_batch = {
+            "ytd": {
+                "Balance": {"YearlyProfitLoss": [{"Date": "2024-12-31", "Value": 5.0}]}
+            }
+        }
+        with patch(
+            "custom_components.saxo_portfolio.coordinator.dt_util.now"
+        ) as mock_now:
+            mock_now.return_value = datetime(2026, 8, 4, 12, 0)
+            metrics = SaxoCoordinator._extract_v4_batch_metrics(v4_batch)
+
+        assert metrics["ytd_profit_loss"] is None
+
+    def test_ytd_cash_transfer_skips_non_numeric(self):
+        """Non-numeric trailing entries are skipped, not returned."""
+        v4_batch = {
+            "ytd": {
+                "Balance": {
+                    "CashTransfer": [
+                        {"Date": "2026-01-02", "Value": 100.0},
+                        {"Date": "2026-04-01", "Value": None},
+                    ]
+                }
+            }
+        }
+        metrics = SaxoCoordinator._extract_v4_batch_metrics(v4_batch)
+
+        assert metrics["ytd_cash_transfer"] == pytest.approx(100.0)
+
 
 # ---------------------------------------------------------------------------
 # _fetch_performance_data_safely
@@ -580,6 +671,26 @@ class TestFetchPerformanceMetrics:
         await coord._fetch_performance_metrics(client, "ck1", result)
         assert result["ytd_earnings_percentage"] == 50.0
         assert "investment_performance_percentage" not in result
+
+    async def test_batch_called_with_january_first_anchor(self):
+        """The YTD window must start on 1 January of the current year."""
+        coord = _bare_coordinator()
+        client = AsyncMock()
+        client.get_performance = AsyncMock(return_value={})
+        client.get_performance_v4_batch = AsyncMock(
+            return_value={"alltime": {}, "ytd": {}, "month": {}, "quarter": {}}
+        )
+        result: dict = {}
+
+        with patch(
+            "custom_components.saxo_portfolio.coordinator.dt_util.now"
+        ) as mock_now:
+            mock_now.return_value = datetime(2026, 8, 4, 12, 0)
+            await coord._fetch_performance_metrics(client, "ck1", result)
+
+        kwargs = client.get_performance_v4_batch.call_args.kwargs
+        assert kwargs["ytd_from"] == "2026-01-01"
+        assert kwargs["ytd_to"] == "2026-08-04"
 
 
 # ---------------------------------------------------------------------------
@@ -1776,6 +1887,40 @@ class TestGetters:
         assert coord.is_startup_phase is True
         coord._is_startup_phase = False
         assert coord.is_startup_phase is False
+
+
+class TestYtdGetters:
+    """Tests for the YTD currency getters."""
+
+    def test_get_ytd_profit_loss(self):
+        """YTD profit/loss is returned from data."""
+        coord = _bare_coordinator()
+        coord.data = {"ytd_profit_loss": 1234.56}
+        assert coord.get_ytd_profit_loss() == pytest.approx(1234.56)
+
+    def test_get_ytd_profit_loss_none_when_missing(self):
+        """Missing key returns None, not 0.0."""
+        coord = _bare_coordinator()
+        coord.data = {}
+        assert coord.get_ytd_profit_loss() is None
+
+    def test_get_ytd_profit_loss_none_without_data(self):
+        """No data returns None."""
+        coord = _bare_coordinator()
+        coord.data = None
+        assert coord.get_ytd_profit_loss() is None
+
+    def test_get_ytd_cash_transfer(self):
+        """YTD net transfers is returned from data."""
+        coord = _bare_coordinator()
+        coord.data = {"ytd_cash_transfer": 250.0}
+        assert coord.get_ytd_cash_transfer() == pytest.approx(250.0)
+
+    def test_get_ytd_cash_transfer_none_when_missing(self):
+        """Missing key returns None, not 0.0."""
+        coord = _bare_coordinator()
+        coord.data = {}
+        assert coord.get_ytd_cash_transfer() is None
 
 
 # ---------------------------------------------------------------------------

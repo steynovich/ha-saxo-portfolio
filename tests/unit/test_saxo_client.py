@@ -10,8 +10,7 @@ Tests cover:
 - _handle_rate_limited: retry vs max retries
 - _compute_timeout_backoff and _compute_client_error_backoff
 - All endpoint methods: get_account_balance, get_client_details, get_performance,
-  get_performance_v4_batch, get_performance_v4, get_performance_v4_ytd,
-  get_performance_v4_month, get_performance_v4_quarter, get_net_positions
+  get_performance_v4_batch, get_net_positions
 """
 
 from __future__ import annotations
@@ -1156,7 +1155,9 @@ class TestGetPerformanceV4Batch:
                 new_callable=AsyncMock,
             ),
         ):
-            result = await client.get_performance_v4_batch("ck_123")
+            result = await client.get_performance_v4_batch(
+                "ck_123", ytd_from="2026-01-01", ytd_to="2026-08-04"
+            )
 
         assert "alltime" in result
         assert "ytd" in result
@@ -1184,7 +1185,9 @@ class TestGetPerformanceV4Batch:
                 new_callable=AsyncMock,
             ) as mock_sleep,
         ):
-            await client.get_performance_v4_batch("ck")
+            await client.get_performance_v4_batch(
+                "ck", ytd_from="2026-01-01", ytd_to="2026-08-04"
+            )
 
         # Sleep should be called 3 times (between 4 calls)
         assert mock_sleep.call_count == 3
@@ -1204,7 +1207,9 @@ class TestGetPerformanceV4Batch:
             ),
             pytest.raises(AuthenticationError),
         ):
-            await client.get_performance_v4_batch("ck")
+            await client.get_performance_v4_batch(
+                "ck", ytd_from="2026-01-01", ytd_to="2026-08-04"
+            )
 
     @pytest.mark.asyncio
     async def test_rate_limit_error_propagates(self):
@@ -1219,7 +1224,9 @@ class TestGetPerformanceV4Batch:
             ),
             pytest.raises(RateLimitError),
         ):
-            await client.get_performance_v4_batch("ck")
+            await client.get_performance_v4_batch(
+                "ck", ytd_from="2026-01-01", ytd_to="2026-08-04"
+            )
 
     @pytest.mark.asyncio
     async def test_non_dict_response_raises(self):
@@ -1230,10 +1237,12 @@ class TestGetPerformanceV4Batch:
                 client, "_make_request", new_callable=AsyncMock, return_value="not_dict"
             ),
             pytest.raises(
-                APIError, match="Failed to fetch performance v4 AllTime data"
+                APIError, match="Failed to fetch performance v4 alltime data"
             ),
         ):
-            await client.get_performance_v4_batch("ck")
+            await client.get_performance_v4_batch(
+                "ck", ytd_from="2026-01-01", ytd_to="2026-08-04"
+            )
 
     @pytest.mark.asyncio
     async def test_error_on_second_period(self):
@@ -1254,322 +1263,89 @@ class TestGetPerformanceV4Batch:
                 "custom_components.saxo_portfolio.api.saxo_client.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
-            pytest.raises(APIError, match="Failed to fetch performance v4 Year data"),
+            pytest.raises(APIError, match="Failed to fetch performance v4 ytd data"),
         ):
-            await client.get_performance_v4_batch("ck")
-
-
-# ---------------------------------------------------------------------------
-# Endpoint: get_performance_v4
-# ---------------------------------------------------------------------------
-
-
-class TestGetPerformanceV4:
-    """Tests for get_performance_v4."""
+            await client.get_performance_v4_batch(
+                "ck", ytd_from="2026-01-01", ytd_to="2026-08-04"
+            )
 
     @pytest.mark.asyncio
-    async def test_success(self):
-        """Should return AllTime performance data."""
-        data = {"KeyFigures": {"ReturnFraction": 0.15}}
-        client = _make_client(session=MagicMock())
-        with patch.object(
-            client, "_make_request", new_callable=AsyncMock, return_value=data
-        ):
-            result = await client.get_performance_v4("ck")
-        assert result == data
+    async def test_ytd_spec_uses_date_range(self):
+        """YTD entry must use FromDate/ToDate, not StandardPeriod."""
+        captured: list[dict] = []
 
-    @pytest.mark.asyncio
-    async def test_correct_params(self):
-        """Should call with StandardPeriod=AllTime and correct FieldGroups."""
-        client = _make_client(session=MagicMock())
-        with patch.object(
-            client, "_make_request", new_callable=AsyncMock, return_value={}
-        ) as mock_req:
-            await client.get_performance_v4("ck_123")
-        args, _ = mock_req.call_args
-        # _make_request(endpoint, params) - params is second positional arg
-        params = args[1]
-        assert params["StandardPeriod"] == "AllTime"
-        assert params["ClientKey"] == "ck_123"
-        assert "Balance_CashTransfer" in params["FieldGroups"]
+        async def mock_make_request(endpoint, params=None):
+            captured.append(dict(params or {}))
+            return {"KeyFigures": {}}
 
-    @pytest.mark.asyncio
-    async def test_auth_error_propagates(self):
-        """AuthenticationError should propagate."""
         client = _make_client(session=MagicMock())
         with (
-            patch.object(
-                client,
-                "_make_request",
+            patch.object(client, "_make_request", side_effect=mock_make_request),
+            patch(
+                "custom_components.saxo_portfolio.api.saxo_client.asyncio.sleep",
                 new_callable=AsyncMock,
-                side_effect=AuthenticationError("auth"),
             ),
-            pytest.raises(AuthenticationError),
         ):
-            await client.get_performance_v4("ck")
+            await client.get_performance_v4_batch(
+                "ck", ytd_from="2026-01-01", ytd_to="2026-08-04"
+            )
+
+        assert len(captured) == 4
+        ytd_params = captured[1]
+        assert ytd_params["FromDate"] == "2026-01-01"
+        assert ytd_params["ToDate"] == "2026-08-04"
+        assert "StandardPeriod" not in ytd_params
+        assert "Balance_YearlyProfitLoss" in ytd_params["FieldGroups"]
+        assert "Balance_CashTransfer" in ytd_params["FieldGroups"]
 
     @pytest.mark.asyncio
-    async def test_rate_limit_error_propagates(self):
-        """RateLimitError should propagate."""
+    async def test_trailing_year_period_not_requested(self):
+        """StandardPeriod=Year is a trailing 12m window and must not be fetched."""
+        captured: list[dict] = []
+
+        async def mock_make_request(endpoint, params=None):
+            captured.append(dict(params or {}))
+            return {"KeyFigures": {}}
+
         client = _make_client(session=MagicMock())
         with (
-            patch.object(
-                client,
-                "_make_request",
+            patch.object(client, "_make_request", side_effect=mock_make_request),
+            patch(
+                "custom_components.saxo_portfolio.api.saxo_client.asyncio.sleep",
                 new_callable=AsyncMock,
-                side_effect=RateLimitError("rate"),
             ),
-            pytest.raises(RateLimitError),
         ):
-            await client.get_performance_v4("ck")
+            await client.get_performance_v4_batch(
+                "ck", ytd_from="2026-01-01", ytd_to="2026-08-04"
+            )
+
+        periods = [p.get("StandardPeriod") for p in captured]
+        assert "Year" not in periods
+        assert periods == ["AllTime", None, "Month", "Quarter"]
 
     @pytest.mark.asyncio
-    async def test_non_dict_raises(self):
-        """Non-dict response should raise APIError."""
-        client = _make_client(session=MagicMock())
-        with (
-            patch.object(
-                client, "_make_request", new_callable=AsyncMock, return_value=[1]
-            ),
-            pytest.raises(APIError, match="Failed to fetch performance v4 data"),
-        ):
-            await client.get_performance_v4("ck")
+    async def test_month_quarter_request_keyfigures_only(self):
+        """Month/Quarter Balance data has no reader; don't fetch it."""
+        captured: list[dict] = []
 
-    @pytest.mark.asyncio
-    async def test_unexpected_error_wraps(self):
-        """Unexpected exceptions wrapped in APIError."""
+        async def mock_make_request(endpoint, params=None):
+            captured.append(dict(params or {}))
+            return {"KeyFigures": {}}
+
         client = _make_client(session=MagicMock())
         with (
-            patch.object(
-                client,
-                "_make_request",
+            patch.object(client, "_make_request", side_effect=mock_make_request),
+            patch(
+                "custom_components.saxo_portfolio.api.saxo_client.asyncio.sleep",
                 new_callable=AsyncMock,
-                side_effect=ValueError("x"),
-            ),
-            pytest.raises(APIError, match="Failed to fetch performance v4 data"),
-        ):
-            await client.get_performance_v4("ck")
-
-
-# ---------------------------------------------------------------------------
-# Endpoint: get_performance_v4_ytd
-# ---------------------------------------------------------------------------
-
-
-class TestGetPerformanceV4Ytd:
-    """Tests for get_performance_v4_ytd."""
-
-    @pytest.mark.asyncio
-    async def test_success(self):
-        """Should return YTD performance data."""
-        data = {"KeyFigures": {"ReturnFraction": 0.05}}
-        client = _make_client(session=MagicMock())
-        with patch.object(
-            client, "_make_request", new_callable=AsyncMock, return_value=data
-        ):
-            result = await client.get_performance_v4_ytd("ck")
-        assert result == data
-
-    @pytest.mark.asyncio
-    async def test_correct_params(self):
-        """Should call with StandardPeriod=Year."""
-        client = _make_client(session=MagicMock())
-        with patch.object(
-            client, "_make_request", new_callable=AsyncMock, return_value={}
-        ) as mock_req:
-            await client.get_performance_v4_ytd("ck")
-        args, _ = mock_req.call_args
-        assert args[1]["StandardPeriod"] == "Year"
-
-    @pytest.mark.asyncio
-    async def test_auth_error_propagates(self):
-        """AuthenticationError should propagate."""
-        client = _make_client(session=MagicMock())
-        with (
-            patch.object(
-                client,
-                "_make_request",
-                new_callable=AsyncMock,
-                side_effect=AuthenticationError("a"),
-            ),
-            pytest.raises(AuthenticationError),
-        ):
-            await client.get_performance_v4_ytd("ck")
-
-    @pytest.mark.asyncio
-    async def test_rate_limit_error_propagates(self):
-        """RateLimitError should propagate."""
-        client = _make_client(session=MagicMock())
-        with (
-            patch.object(
-                client,
-                "_make_request",
-                new_callable=AsyncMock,
-                side_effect=RateLimitError("r"),
-            ),
-            pytest.raises(RateLimitError),
-        ):
-            await client.get_performance_v4_ytd("ck")
-
-    @pytest.mark.asyncio
-    async def test_non_dict_raises(self):
-        """Non-dict response should raise APIError."""
-        client = _make_client(session=MagicMock())
-        with (
-            patch.object(
-                client, "_make_request", new_callable=AsyncMock, return_value="str"
-            ),
-            pytest.raises(APIError, match="Failed to fetch performance v4 YTD data"),
-        ):
-            await client.get_performance_v4_ytd("ck")
-
-
-# ---------------------------------------------------------------------------
-# Endpoint: get_performance_v4_month
-# ---------------------------------------------------------------------------
-
-
-class TestGetPerformanceV4Month:
-    """Tests for get_performance_v4_month."""
-
-    @pytest.mark.asyncio
-    async def test_success(self):
-        """Should return Month performance data."""
-        data = {"KeyFigures": {"ReturnFraction": 0.02}}
-        client = _make_client(session=MagicMock())
-        with patch.object(
-            client, "_make_request", new_callable=AsyncMock, return_value=data
-        ):
-            result = await client.get_performance_v4_month("ck")
-        assert result == data
-
-    @pytest.mark.asyncio
-    async def test_correct_params(self):
-        """Should call with StandardPeriod=Month."""
-        client = _make_client(session=MagicMock())
-        with patch.object(
-            client, "_make_request", new_callable=AsyncMock, return_value={}
-        ) as mock_req:
-            await client.get_performance_v4_month("ck")
-        args, _ = mock_req.call_args
-        assert args[1]["StandardPeriod"] == "Month"
-
-    @pytest.mark.asyncio
-    async def test_auth_error_propagates(self):
-        """AuthenticationError should propagate."""
-        client = _make_client(session=MagicMock())
-        with (
-            patch.object(
-                client,
-                "_make_request",
-                new_callable=AsyncMock,
-                side_effect=AuthenticationError("a"),
-            ),
-            pytest.raises(AuthenticationError),
-        ):
-            await client.get_performance_v4_month("ck")
-
-    @pytest.mark.asyncio
-    async def test_rate_limit_error_propagates(self):
-        """RateLimitError should propagate."""
-        client = _make_client(session=MagicMock())
-        with (
-            patch.object(
-                client,
-                "_make_request",
-                new_callable=AsyncMock,
-                side_effect=RateLimitError("r"),
-            ),
-            pytest.raises(RateLimitError),
-        ):
-            await client.get_performance_v4_month("ck")
-
-    @pytest.mark.asyncio
-    async def test_non_dict_raises(self):
-        """Non-dict response should raise APIError."""
-        client = _make_client(session=MagicMock())
-        with (
-            patch.object(
-                client, "_make_request", new_callable=AsyncMock, return_value=42
-            ),
-            pytest.raises(APIError, match="Failed to fetch performance v4 Month data"),
-        ):
-            await client.get_performance_v4_month("ck")
-
-
-# ---------------------------------------------------------------------------
-# Endpoint: get_performance_v4_quarter
-# ---------------------------------------------------------------------------
-
-
-class TestGetPerformanceV4Quarter:
-    """Tests for get_performance_v4_quarter."""
-
-    @pytest.mark.asyncio
-    async def test_success(self):
-        """Should return Quarter performance data."""
-        data = {"KeyFigures": {"ReturnFraction": 0.04}}
-        client = _make_client(session=MagicMock())
-        with patch.object(
-            client, "_make_request", new_callable=AsyncMock, return_value=data
-        ):
-            result = await client.get_performance_v4_quarter("ck")
-        assert result == data
-
-    @pytest.mark.asyncio
-    async def test_correct_params(self):
-        """Should call with StandardPeriod=Quarter."""
-        client = _make_client(session=MagicMock())
-        with patch.object(
-            client, "_make_request", new_callable=AsyncMock, return_value={}
-        ) as mock_req:
-            await client.get_performance_v4_quarter("ck")
-        args, _ = mock_req.call_args
-        assert args[1]["StandardPeriod"] == "Quarter"
-
-    @pytest.mark.asyncio
-    async def test_auth_error_propagates(self):
-        """AuthenticationError should propagate."""
-        client = _make_client(session=MagicMock())
-        with (
-            patch.object(
-                client,
-                "_make_request",
-                new_callable=AsyncMock,
-                side_effect=AuthenticationError("a"),
-            ),
-            pytest.raises(AuthenticationError),
-        ):
-            await client.get_performance_v4_quarter("ck")
-
-    @pytest.mark.asyncio
-    async def test_rate_limit_error_propagates(self):
-        """RateLimitError should propagate."""
-        client = _make_client(session=MagicMock())
-        with (
-            patch.object(
-                client,
-                "_make_request",
-                new_callable=AsyncMock,
-                side_effect=RateLimitError("r"),
-            ),
-            pytest.raises(RateLimitError),
-        ):
-            await client.get_performance_v4_quarter("ck")
-
-    @pytest.mark.asyncio
-    async def test_non_dict_raises(self):
-        """Non-dict response should raise APIError."""
-        client = _make_client(session=MagicMock())
-        with (
-            patch.object(
-                client, "_make_request", new_callable=AsyncMock, return_value=None
-            ),
-            pytest.raises(
-                APIError, match="Failed to fetch performance v4 Quarter data"
             ),
         ):
-            await client.get_performance_v4_quarter("ck")
+            await client.get_performance_v4_batch(
+                "ck", ytd_from="2026-01-01", ytd_to="2026-08-04"
+            )
+
+        assert captured[2]["FieldGroups"] == "KeyFigures"
+        assert captured[3]["FieldGroups"] == "KeyFigures"
 
 
 # ---------------------------------------------------------------------------

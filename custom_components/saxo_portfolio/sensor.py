@@ -16,6 +16,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
     ATTRIBUTION,
@@ -150,8 +151,6 @@ class SaxoSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
             # This handles the case during initial startup when coordinator has data
             # but hasn't recorded a successful update time yet
             return True
-
-        from homeassistant.util import dt as dt_util
 
         # Calculate how long it's been since last successful update
         # Ensure both timestamps are timezone-aware for comparison
@@ -318,6 +317,8 @@ async def async_setup_entry(
         SaxoYTDInvestmentPerformanceSensor(coordinator),
         SaxoMonthInvestmentPerformanceSensor(coordinator),
         SaxoQuarterInvestmentPerformanceSensor(coordinator),
+        SaxoYTDProfitLossSensor(coordinator),
+        SaxoYTDCashTransferSensor(coordinator),
         # Diagnostic sensors
         SaxoClientIDSensor(coordinator),
         SaxoAccountIDSensor(coordinator),
@@ -576,7 +577,7 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
 
         """
         time_period = self._get_time_period()
-        now = datetime.now()
+        now = dt_util.now()
 
         if time_period == "Year":
             # Year-to-date: January 1st to today
@@ -641,6 +642,79 @@ class SaxoCashTransferBalanceSensor(SaxoBalanceSensorBase):
 
         # Additional check: ensure cash_transfer_balance data is present
         return "cash_transfer_balance" in (self.coordinator.data or {})
+
+
+class SaxoYTDProfitLossSensor(SaxoSensorBase):
+    """Representation of a Saxo Portfolio YTD Profit/Loss sensor."""
+
+    def __init__(self, coordinator: SaxoCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(
+            coordinator,
+            "ytd_profit_loss",
+            unit_of_measurement=coordinator.get_currency(),
+        )
+        self._attr_state_class = "measurement"
+        self._attr_suggested_display_precision = 2
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the state of the sensor."""
+        if not self.coordinator.data:
+            return None
+        return self.coordinator.get_ytd_profit_loss()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra attributes for the sensor."""
+        attributes = super().extra_state_attributes
+
+        if self.coordinator.data:
+            attributes["currency"] = self.coordinator.get_currency()
+
+        return attributes
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        if not super().available:
+            return False
+
+        return self.coordinator.get_ytd_profit_loss() is not None
+
+
+class SaxoYTDCashTransferSensor(SaxoBalanceSensorBase):
+    """Representation of a Saxo Portfolio YTD Net Transfers sensor."""
+
+    def __init__(self, coordinator: SaxoCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(
+            coordinator,
+            "ytd_cash_transfer",
+            "get_ytd_cash_transfer",
+        )
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        if not super().available:
+            return False
+
+        return self.coordinator.get_ytd_cash_transfer() is not None
+
+    @property
+    def last_reset(self) -> datetime:
+        """Return the start of the current year.
+
+        Unlike its all-time sibling, this metric's source window (the
+        Jan-1 anchored FromDate/ToDate range) resets to zero every 1
+        January. Recorder only zeroes its long-term-statistics reference
+        point when this attribute *changes*, so it must be recomputed on
+        every access (not cached at __init__ time) to re-anchor at the
+        year boundary without requiring a restart.
+        """
+        now = dt_util.now()
+        return dt_util.start_of_local_day(date(now.year, 1, 1))
 
 
 class SaxoYTDInvestmentPerformanceSensor(SaxoPerformanceSensorBase):

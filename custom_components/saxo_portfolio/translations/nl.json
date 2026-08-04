@@ -79,6 +79,12 @@
       "ytd_investment_performance": {
         "name": "YTD Investment Performance"
       },
+      "ytd_profit_loss": {
+        "name": "YTD Profit/Loss"
+      },
+      "ytd_cash_transfer": {
+        "name": "YTD Net Transfers"
+      },
       "month_investment_performance": {
         "name": "Month Investment Performance"
       },

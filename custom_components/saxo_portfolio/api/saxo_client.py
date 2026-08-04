@@ -458,15 +458,25 @@ class SaxoApiClient:
             raise APIError("Failed to fetch performance data")
 
     async def get_performance_v4_batch(
-        self, client_key: str
+        self,
+        client_key: str,
+        *,
+        ytd_from: str,
+        ytd_to: str,
     ) -> dict[str, dict[str, Any]]:
         """Get all performance timeseries data from Saxo v4 performance API.
 
-        Fetches AllTime, Year, Month, and Quarter performance data with delays
-        between calls to prevent rate limiting.
+        Fetches AllTime, year-to-date, Month and Quarter performance data with
+        delays between calls to prevent rate limiting.
+
+        Note that StandardPeriod=Year is a *trailing 12 month* window, not
+        year-to-date, so the YTD entry uses an explicit FromDate/ToDate range
+        anchored to 1 January. The API rejects FromDate without ToDate.
 
         Args:
             client_key: Client key for the request
+            ytd_from: Start of the year-to-date window, ISO date (YYYY-MM-DD)
+            ytd_to: End of the year-to-date window, ISO date (YYYY-MM-DD)
 
         Returns:
             Dictionary with keys: 'alltime', 'ytd', 'month', 'quarter'
@@ -477,41 +487,64 @@ class SaxoApiClient:
             APIError: For other API errors
 
         """
-        periods = [
-            ("AllTime", "alltime"),
-            ("Year", "ytd"),
-            ("Month", "month"),
-            ("Quarter", "quarter"),
+        specs: list[tuple[str, dict[str, str]]] = [
+            (
+                "alltime",
+                {
+                    "ClientKey": client_key,
+                    "StandardPeriod": "AllTime",
+                    "FieldGroups": "Balance_CashTransfer,KeyFigures",
+                },
+            ),
+            (
+                "ytd",
+                {
+                    "ClientKey": client_key,
+                    "FromDate": ytd_from,
+                    "ToDate": ytd_to,
+                    "FieldGroups": (
+                        "Balance_CashTransfer,Balance_YearlyProfitLoss,KeyFigures"
+                    ),
+                },
+            ),
+            (
+                "month",
+                {
+                    "ClientKey": client_key,
+                    "StandardPeriod": "Month",
+                    "FieldGroups": "KeyFigures",
+                },
+            ),
+            (
+                "quarter",
+                {
+                    "ClientKey": client_key,
+                    "StandardPeriod": "Quarter",
+                    "FieldGroups": "KeyFigures",
+                },
+            ),
         ]
 
         results: dict[str, dict[str, Any]] = {}
 
-        for i, (standard_period, key) in enumerate(periods):
+        for i, (key, params) in enumerate(specs):
             try:
-                params = {
-                    "ClientKey": client_key,
-                    "StandardPeriod": standard_period,
-                    "FieldGroups": "Balance_CashTransfer,KeyFigures",
-                }
-
                 response = await self._make_request(API_PERFORMANCE_V4_ENDPOINT, params)
 
                 # Validate response structure
                 if not isinstance(response, dict):
-                    raise APIError(
-                        f"Invalid performance v4 {standard_period} response format"
-                    )
+                    raise APIError(f"Invalid performance v4 {key} response format")
 
                 _LOGGER.debug(
                     "Performance v4 %s API response structure: %s",
-                    standard_period,
+                    key,
                     list(response.keys()) if response else "empty",
                 )
 
                 results[key] = response
 
                 # Add delay between calls (except after last one) to prevent rate limiting
-                if i < len(periods) - 1:
+                if i < len(specs) - 1:
                     await asyncio.sleep(0.5)
 
             except AuthenticationError, RateLimitError:
@@ -519,178 +552,12 @@ class SaxoApiClient:
             except Exception as e:
                 _LOGGER.error(
                     "Error fetching performance v4 %s data: %s",
-                    standard_period,
+                    key,
                     type(e).__name__,
                 )
-                raise APIError(f"Failed to fetch performance v4 {standard_period} data")
+                raise APIError(f"Failed to fetch performance v4 {key} data")
 
         return results
-
-    async def get_performance_v4(self, client_key: str) -> dict[str, Any]:
-        """Get performance timeseries data from Saxo v4 performance API.
-
-        Args:
-            client_key: Client key for the request
-
-        Returns:
-            Performance timeseries data containing ReturnFraction and CashTransfer
-
-        Raises:
-            AuthenticationError: For authentication failures
-            APIError: For other API errors
-
-        """
-        try:
-            params = {
-                "ClientKey": client_key,
-                "StandardPeriod": "AllTime",
-                "FieldGroups": "Balance_CashTransfer,KeyFigures",
-            }
-
-            response = await self._make_request(API_PERFORMANCE_V4_ENDPOINT, params)
-
-            # Validate response structure
-            if not isinstance(response, dict):
-                raise APIError("Invalid performance v4 response format")
-
-            _LOGGER.debug(
-                "Performance v4 API response structure: %s",
-                list(response.keys()) if response else "empty",
-            )
-
-            return response
-
-        except AuthenticationError, RateLimitError:
-            raise
-        except Exception as e:
-            _LOGGER.error("Error fetching performance v4 data: %s", type(e).__name__)
-            raise APIError("Failed to fetch performance v4 data")
-
-    async def get_performance_v4_ytd(self, client_key: str) -> dict[str, Any]:
-        """Fetch YTD performance timeseries data using v4 API.
-
-        Args:
-            client_key: Client key for the request
-
-        Returns:
-            YTD Performance timeseries data containing ReturnFraction and CashTransfer
-
-        Raises:
-            AuthenticationError: For authentication failures
-            APIError: For other API errors
-
-        """
-        try:
-            params = {
-                "ClientKey": client_key,
-                "StandardPeriod": "Year",
-                "FieldGroups": "Balance_CashTransfer,KeyFigures",
-            }
-
-            response = await self._make_request(API_PERFORMANCE_V4_ENDPOINT, params)
-
-            # Validate response structure
-            if not isinstance(response, dict):
-                raise APIError("Invalid performance v4 YTD response format")
-
-            _LOGGER.debug(
-                "Performance v4 YTD API response structure: %s",
-                list(response.keys()) if response else "empty",
-            )
-
-            return response
-
-        except AuthenticationError, RateLimitError:
-            raise
-        except Exception as e:
-            _LOGGER.error(
-                "Error fetching performance v4 YTD data: %s", type(e).__name__
-            )
-            raise APIError("Failed to fetch performance v4 YTD data")
-
-    async def get_performance_v4_month(self, client_key: str) -> dict[str, Any]:
-        """Fetch Month performance timeseries data using v4 API.
-
-        Args:
-            client_key: Client key for the request
-
-        Returns:
-            Month Performance timeseries data containing ReturnFraction and CashTransfer
-
-        Raises:
-            AuthenticationError: For authentication failures
-            APIError: For other API errors
-
-        """
-        try:
-            params = {
-                "ClientKey": client_key,
-                "StandardPeriod": "Month",
-                "FieldGroups": "Balance_CashTransfer,KeyFigures",
-            }
-
-            response = await self._make_request(API_PERFORMANCE_V4_ENDPOINT, params)
-
-            # Validate response structure
-            if not isinstance(response, dict):
-                raise APIError("Invalid performance v4 Month response format")
-
-            _LOGGER.debug(
-                "Performance v4 Month API response structure: %s",
-                list(response.keys()) if response else "empty",
-            )
-
-            return response
-
-        except AuthenticationError, RateLimitError:
-            raise
-        except Exception as e:
-            _LOGGER.error(
-                "Error fetching performance v4 Month data: %s", type(e).__name__
-            )
-            raise APIError("Failed to fetch performance v4 Month data")
-
-    async def get_performance_v4_quarter(self, client_key: str) -> dict[str, Any]:
-        """Fetch Quarter performance timeseries data using v4 API.
-
-        Args:
-            client_key: Client key for the request
-
-        Returns:
-            Quarter Performance timeseries data containing ReturnFraction and CashTransfer
-
-        Raises:
-            AuthenticationError: For authentication failures
-            APIError: For other API errors
-
-        """
-        try:
-            params = {
-                "ClientKey": client_key,
-                "StandardPeriod": "Quarter",
-                "FieldGroups": "Balance_CashTransfer,KeyFigures",
-            }
-
-            response = await self._make_request(API_PERFORMANCE_V4_ENDPOINT, params)
-
-            # Validate response structure
-            if not isinstance(response, dict):
-                raise APIError("Invalid performance v4 Quarter response format")
-
-            _LOGGER.debug(
-                "Performance v4 Quarter API response structure: %s",
-                list(response.keys()) if response else "empty",
-            )
-
-            return response
-
-        except AuthenticationError, RateLimitError:
-            raise
-        except Exception as e:
-            _LOGGER.error(
-                "Error fetching performance v4 Quarter data: %s", type(e).__name__
-            )
-            raise APIError("Failed to fetch performance v4 Quarter data")
 
     async def get_net_positions(self) -> dict[str, Any]:
         """Get net positions from Saxo API.

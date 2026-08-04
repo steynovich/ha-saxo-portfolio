@@ -47,6 +47,11 @@ include = ["custom_components*"]
 
 [tool.ruff]
 target-version = "py314"
+# Ruff >=0.16 formats Python code blocks inside Markdown. Design docs quote
+# deliberately partial snippets (class methods shown without their class,
+# fragments of larger literals), which formatting would rewrite into code
+# that no longer matches the source it documents.
+extend-exclude = ["docs/"]
 
 [tool.ruff.lint]
 select = [
