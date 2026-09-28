@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.0-beta.6] - 2026-09-28
+
 ### Added
 - **Reauthenticate button** (`button.saxo_{clientid}_reauthenticate`, configuration entity). Pressing it starts Home Assistant's reauthentication flow for the entry, the same flow that runs when Saxo rejects the refresh token, including the same-account check from #16. The current token stays in use until you finish signing in again.
 
