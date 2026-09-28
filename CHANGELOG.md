@@ -8,32 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- **BREAKING: Diagnostic sensor states are now translated enum values.** Market Status, Token Expiry and Market Data Access use `SensorDeviceClass.ENUM` with fixed states that Home Assistant displays in the user's language. Automations or templates matching the old English strings must be updated:
+- **BREAKING: Diagnostic sensor states are now translated enum values.** Market Status, Token Expiry and Market Data Access use `SensorDeviceClass.ENUM` with fixed states, which Home Assistant displays in the user's language. Automations or templates that match the old English strings must be updated:
   - Market Status: `Market Open` → `market_open`, `After Hours` → `after_hours`, `Fixed Schedule` → `fixed_schedule`
-  - Token Expiry: `Expired` → `expired`, `Critical - < 1 minute` → `critical`, `Warning - N minutes` → `warning`, `N minutes` / `N hours` → `valid`; the exact countdown remains available in the `expires_in_seconds` attribute
+  - Token Expiry: `Expired` → `expired`, `Critical - < 1 minute` → `critical`, `Warning - N minutes` → `warning`, `N minutes` / `N hours` → `valid`; the exact countdown is still in the `expires_in_seconds` attribute
   - Market Data Access: `Available` → `available`, `Unavailable` → `not_available`
   - `Unknown` (Token Expiry, Market Data Access) → Home Assistant's standard `unknown` state
-- **Position sensor names are translatable**: position sensors now take their name from the `position` translation key with the symbol as a placeholder (e.g. "Position AAPL", "Positie AAPL" in Dutch) instead of a hard-coded English string. Entity IDs and unique IDs are unchanged.
-- **`saxo_portfolio.refresh_data` is registered once at integration setup** (#19), following the HA quality-scale `action-setup` rule. It stays available while entries are unloaded and reloaded. It now takes an optional `config_entry_id` to refresh a single entry; leave it out to refresh all loaded entries. Calling it when no entry is loaded, or targeting an unknown or unloaded entry, raises a translated validation error. Previously such a call silently did nothing.
+- **Position sensor names are translatable**: the name comes from the `position` translation key with the symbol as a placeholder (e.g. "Position AAPL", or "Positie AAPL" in Dutch) instead of a hard-coded English string. Entity IDs and unique IDs are unchanged.
+- **`saxo_portfolio.refresh_data` is registered once at integration setup** (#19), as the HA quality-scale `action-setup` rule requires, so it stays available while entries are unloaded and reloaded. It takes a new optional `config_entry_id` to refresh a single entry; without it, all loaded entries are refreshed. Calling it when no entry is loaded, or with an unknown or unloaded entry, raises a translated validation error. Previously such a call silently did nothing.
 
 ### Documentation
-- **Recorded why the OAuth flow does not use PKCE** (#23). Saxo documents PKCE as a separate grant type for public clients without a secret, and it requires the `code_verifier` again on every refresh. It does not document combining PKCE with a client secret. The integration keeps the confidential Authorization Code Grant with the App Secret. The original spec's FR-003 ("with PKCE") has been amended, and `SECURITY.md` and the README explain the decision. Config-flow tests now assert that no PKCE parameters are sent. No behaviour change.
+- **Documented why the OAuth flow does not use PKCE** (#23). Saxo describes PKCE as a separate grant type for public clients without a secret, and it requires the `code_verifier` again on every refresh. Saxo does not document combining PKCE with a client secret, so the integration keeps the confidential Authorization Code Grant with the App Secret. FR-003 in the original spec ("with PKCE") has been amended, and `SECURITY.md` and the README explain the decision. Config-flow tests now assert that no PKCE parameters are sent. No behaviour change.
 
 ### Fixed
-- **Minimum Home Assistant version is now 2026.3** in `hacs.json`, the README and the `pyproject.toml` dependency (previously 2025.1). Home Assistant 2026.3 is the first release that runs on Python 3.14 (it requires Python 3.14.2), and older versions fail when importing the integration (#22)
-- README now matches the code (#22):
-  - The options table lists only the real options (Market Timezone, Enable Position Sensors); the configurable update-interval options it described do not exist
-  - Performance data cache is documented as 2 hours everywhere (some places said 1 hour)
-  - The refresh button, the `saxo_portfolio.refresh_data` service and the Reconfigure step are documented
-  - The diagnostic sensor count is now eight, including the Market Data Access sensor, which is only created when position sensors are enabled
-  - Documents that the YTD Net Transfers sensor's `last_reset` is anchored to 1 January
-- **Logs no longer contain identifiers or financial figures** (#14): ClientId, ClientKey, account IDs, the account holder's name, balances, profit/loss, performance values and position details are no longer written to the log at any level, so debug logs can be shared safely. Raw API error bodies are reduced to the HTTP status and Saxo `ErrorCode`, and the ClientKey is masked in logged request URLs
-- **Failed performance fetches are no longer cached for 2 hours** (#15): a failed or partial fetch (client details, v3 or v4 performance) is retried on the next update instead of pinning values until the cache expires. Sensors keep their last known good values; before the first successful fetch the performance sensors report *unknown* instead of 0.0, so no false zeros are recorded in long-term statistics. Balance data still updates when performance calls fail
-- **Diagnostics `coordinator.last_update_time` is filled in** (#26): it read an attribute the coordinator never had, so it was always `null`. It now reports the time of the last successful update
-- **Diagnostics report real data availability** (#17): `has_balance_data`, `has_performance_data` and `has_client_data` are derived from the data the coordinator actually holds (they were always false), a position count is included, and the sensor inventory is taken from the entity registry (including YTD, position and diagnostic sensors) instead of a hard-coded 16. The entry title, which contains the ClientId, is now redacted
-- **Reauthentication must use the same Saxo account** (#16): the new token is validated against the API, and reauth is aborted with a translated "account mismatch" message if the token belongs to a different account than the entry. Previously, signing in with another Saxo login silently repointed the entry, its entities and history at that account. Entries created before unique IDs existed get theirs filled in on the next reauth.
-- **YTD Investment Performance `time_period` attribute** now reads `YearToDate` instead of `Year`. Since 2.9.0-beta.3 the sensor uses a 1 January-anchored window rather than `StandardPeriod=Year` (a trailing 12 months), so `Year` was misleading. Automations or templates matching `time_period == "Year"` need updating.
-- **Month and Quarter Investment Performance `from`/`thru` attributes** now describe the trailing windows Saxo's `StandardPeriod=Month`/`Quarter` actually cover — the 28 and 90 days ending yesterday — instead of calendar month-to-date and quarter-to-date ranges. The sensor values are unchanged. This resolves the Known Issue listed under 2.9.0-beta.3.
+- **Minimum Home Assistant version is now 2026.3** in `hacs.json`, the README and the `pyproject.toml` dependency (previously 2025.1). Home Assistant 2026.3 is the first release that runs on Python 3.14 (it requires Python 3.14.2); older versions fail to import the integration (#22)
+- README corrections so it matches the code (#22):
+  - The options table lists only the options that exist (Market Timezone, Enable Position Sensors). The configurable update-interval options it described do not exist
+  - The performance data cache is documented as 2 hours everywhere (some places said 1 hour)
+  - The refresh button, the `saxo_portfolio.refresh_data` service and the Reconfigure step are now documented
+  - The diagnostic sensor count is now eight. This includes the Market Data Access sensor, which is only created when position sensors are enabled
+  - The YTD Net Transfers sensor's `last_reset` is documented as anchored to 1 January
+- **Logs no longer contain identifiers or financial figures** (#14). ClientId, ClientKey, account IDs, the account holder's name, balances, profit/loss, performance values and position details are not logged at any level, so debug logs can be shared safely. Raw API error bodies are reduced to the HTTP status and Saxo `ErrorCode`, and the ClientKey is masked in logged request URLs
+- **Failed performance fetches are no longer cached for 2 hours** (#15). If a fetch (client details, v3 or v4 performance) fails or is only partly successful, it is retried on the next update instead of pinning values until the cache expires. Sensors keep their last known good values. Before the first successful fetch, performance sensors report *unknown* instead of 0.0, so no false zeros end up in long-term statistics. Balance data still updates when performance calls fail
+- **Diagnostics `coordinator.last_update_time` is filled in** (#26). It read an attribute the coordinator never had, so it was always `null`. It now reports the time of the last successful update
+- **Diagnostics report real data availability** (#17). `has_balance_data`, `has_performance_data` and `has_client_data` now come from the data the coordinator holds (they were always false). A position count is included, and the sensor inventory is read from the entity registry (including YTD, position and diagnostic sensors) instead of being a hard-coded 16. The entry title, which contains the ClientId, is now redacted
+- **Reauthentication must use the same Saxo account** (#16). The new token is validated against the API, and reauth is aborted with a translated "account mismatch" message if the token belongs to a different account than the entry. Previously, signing in with another Saxo login silently pointed the entry, its entities and their history at that account. Entries created before unique IDs existed get one on their next reauth.
+- **YTD Investment Performance `time_period` attribute** now reads `YearToDate` instead of `Year`. Since 2.9.0-beta.3 the sensor has used a window starting on 1 January rather than `StandardPeriod=Year` (a trailing 12 months), so `Year` was misleading. Automations or templates that match `time_period == "Year"` need updating.
+- **Month and Quarter Investment Performance `from`/`thru` attributes** now describe the windows Saxo's `StandardPeriod=Month`/`Quarter` actually cover: the trailing 28 and 90 days ending yesterday. Previously they showed calendar month-to-date and quarter-to-date ranges. The sensor values are unchanged.
 
 ## [2.9.0-beta.4] - 2026-09-28
 
@@ -57,7 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   **This changes the reported value.** On a test account the sensor read 17.83% (trailing 12 months) where true year-to-date was 9.32%. The `from`/`thru` attributes already claimed a 1 January start, so they were previously inaccurate; they are now correct.
 
-  Long-term statistics recorded for this entity before the upgrade are trailing-12-month figures, so historical graphs will show a discontinuity at the upgrade point. The `entity_id` is unchanged — dashboards and automations continue to work.
+  Long-term statistics recorded for this entity before the upgrade are trailing-12-month figures, so historical graphs will show a discontinuity at the upgrade point. The `entity_id` is unchanged, so dashboards and automations keep working.
 
 ### Changed
 - Performance data no longer fetches the trailing `Year` window; the January-anchored request takes its place, keeping the refresh at four API calls
@@ -90,7 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Token-expiry sensor attributes** (`sensor.py`): `SaxoTokenExpirySensor.extra_state_attributes` no longer publishes the absolute `expires_at` ISO timestamp to the HA state machine; `expires_in_seconds`, `is_expired`, and `needs_refresh` remain
 
 ### Changed
-- **API Client Architecture**: Removed `session` property (auto-creating sessions), `close()`, `__aenter__`/`__aexit__` from `SaxoApiClient` — HA owns the HTTP session lifecycle
+- **API Client Architecture**: Removed `session` property (auto-creating sessions), `close()`, `__aenter__`/`__aexit__` from `SaxoApiClient`; HA owns the HTTP session lifecycle
 - **Coordinator Simplified**: Removed `_close_old_client()` and session close logic; token rotation is now a lightweight client wrapper swap
 - **Config Flow Return Types**: Changed `FlowResult` to `ConfigFlowResult` for mypy compatibility
 - **Documentation**: Updated README with Platinum badge, uninstallation instructions, use cases, automation examples, known limitations, and data update strategy
@@ -99,7 +99,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - `DATA_COORDINATOR` and `DATA_UNSUB` constants (replaced by `entry.runtime_data`)
 - `API_TIMEOUT_CONNECT` and `API_TIMEOUT_READ` imports from `saxo_client.py` (HA session manages timeouts)
-- **Unused `models.py` dataclasses/helpers**: `PortfolioData`, `AccountData`, `CoordinatorData`, the duplicate `PositionData`, `from_api_responses`, `validate_iso_currency_code`, `sanitize_financial_value`, `calculate_portfolio_totals` — no production callers (the coordinator rolls its own data shapes). ~300 prod LoC + ~830 test LoC removed; `mask_sensitive_data` and `mask_url_for_logging` (the actual consumers) remain
+- **Unused `models.py` dataclasses/helpers**: `PortfolioData`, `AccountData`, `CoordinatorData`, the duplicate `PositionData`, `from_api_responses`, `validate_iso_currency_code`, `sanitize_financial_value`, `calculate_portfolio_totals`. None had production callers (the coordinator rolls its own data shapes). ~300 prod LoC + ~830 test LoC removed; `mask_sensitive_data` and `mask_url_for_logging` (the actual consumers) remain
 - **`saxo-openapi` dependency**: Dropped from `manifest.json` and `pyproject.toml`. The package was never imported; end users were installing a 2019-vintage unmaintained package for nothing
 
 ### Build / CI
@@ -119,7 +119,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Extended Token Refresh Retries**: Increased from 3 to 5 attempts in `application_credentials.py` with exponential backoff (1s, 2s, 4s, 8s, 16s) to absorb brief Saxo hiccups
 
 ### Changed
-- **`_ensure_token_valid()` strategy**: Replaced hard client-side refresh-token expiry check with half-life proactive refresh; the preemptive `ConfigEntryAuthFailed` is removed — Saxo now decides when a token is truly invalid
+- **`_ensure_token_valid()` strategy**: Replaced hard client-side refresh-token expiry check with half-life proactive refresh; the preemptive `ConfigEntryAuthFailed` is removed, and Saxo now decides when a token is truly invalid
 
 ## [2.8.0] - 2026-03-20
 
@@ -133,7 +133,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Token Refresh Resilience**: Added timeout, retry, and error handling to OAuth token refresh
   - 15-second timeout on token requests (prevents hanging within 60s coordinator timeout)
   - 3-attempt retry with exponential backoff (1s, 2s) for transient failures (5xx, timeouts, network errors)
-  - Immediate failure on 400/401 auth errors (no retry — credentials are bad)
+  - Immediate failure on 400/401 auth errors (no retry, because the credentials are bad)
   - Specific `aiohttp.ClientError` handling in coordinator with actionable log messages
   - New `TOKEN_REFRESH_TIMEOUT` constant in `const.py`
 
