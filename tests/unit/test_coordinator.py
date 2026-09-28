@@ -296,12 +296,12 @@ class TestBuildPerformanceDefaults:
     """Tests for _build_performance_defaults."""
 
     def test_empty_cache(self):
-        """Empty cache returns zero/unknown defaults."""
+        """Empty cache returns unknown (None) defaults."""
         coord = _bare_coordinator()
         defaults = coord._build_performance_defaults()
         assert defaults["client_id"] == "unknown"
-        assert defaults["investment_performance_percentage"] == 0.0
-        assert defaults["cash_transfer_balance"] == 0.0
+        assert defaults["investment_performance_percentage"] is None
+        assert defaults["cash_transfer_balance"] is None
 
     def test_populated_cache(self):
         """Populated cache values are returned in defaults."""
@@ -1701,10 +1701,10 @@ class TestGetters:
         assert coord.get_currency() == "EUR"
 
     def test_get_ytd_earnings_percentage_no_data(self):
-        """No data returns 0.0 for YTD earnings."""
+        """No data returns None for YTD earnings."""
         coord = _bare_coordinator()
         coord.data = None
-        assert coord.get_ytd_earnings_percentage() == 0.0
+        assert coord.get_ytd_earnings_percentage() is None
 
     def test_get_ytd_earnings_percentage_with_data(self):
         """YTD earnings percentage is returned from data."""
@@ -1725,10 +1725,10 @@ class TestGetters:
         assert coord.get_client_id() == "C123"
 
     def test_get_investment_performance_percentage_no_data(self):
-        """No data returns 0.0 for investment performance."""
+        """No data returns None for investment performance."""
         coord = _bare_coordinator()
         coord.data = None
-        assert coord.get_investment_performance_percentage() == 0.0
+        assert coord.get_investment_performance_percentage() is None
 
     def test_get_investment_performance_percentage_with_data(self):
         """Investment performance is returned from data."""
@@ -1737,10 +1737,10 @@ class TestGetters:
         assert coord.get_investment_performance_percentage() == 7.3
 
     def test_get_cash_transfer_balance_no_data(self):
-        """No data returns 0.0 for cash transfer balance."""
+        """No data returns None for cash transfer balance."""
         coord = _bare_coordinator()
         coord.data = None
-        assert coord.get_cash_transfer_balance() == 0.0
+        assert coord.get_cash_transfer_balance() is None
 
     def test_get_cash_transfer_balance_with_data(self):
         """Cash transfer balance is returned from data."""
@@ -1749,10 +1749,10 @@ class TestGetters:
         assert coord.get_cash_transfer_balance() == 50000.0
 
     def test_get_ytd_investment_performance_percentage_no_data(self):
-        """No data returns 0.0 for YTD investment performance."""
+        """No data returns None for YTD investment performance."""
         coord = _bare_coordinator()
         coord.data = None
-        assert coord.get_ytd_investment_performance_percentage() == 0.0
+        assert coord.get_ytd_investment_performance_percentage() is None
 
     def test_get_ytd_investment_performance_percentage_with_data(self):
         """YTD investment performance is returned from data."""
@@ -1761,10 +1761,10 @@ class TestGetters:
         assert coord.get_ytd_investment_performance_percentage() == 3.2
 
     def test_get_month_investment_performance_percentage_no_data(self):
-        """No data returns 0.0 for month investment performance."""
+        """No data returns None for month investment performance."""
         coord = _bare_coordinator()
         coord.data = None
-        assert coord.get_month_investment_performance_percentage() == 0.0
+        assert coord.get_month_investment_performance_percentage() is None
 
     def test_get_month_investment_performance_percentage_with_data(self):
         """Month investment performance is returned from data."""
@@ -1773,10 +1773,10 @@ class TestGetters:
         assert coord.get_month_investment_performance_percentage() == 1.5
 
     def test_get_quarter_investment_performance_percentage_no_data(self):
-        """No data returns 0.0 for quarter investment performance."""
+        """No data returns None for quarter investment performance."""
         coord = _bare_coordinator()
         coord.data = None
-        assert coord.get_quarter_investment_performance_percentage() == 0.0
+        assert coord.get_quarter_investment_performance_percentage() is None
 
     def test_get_quarter_investment_performance_percentage_with_data(self):
         """Quarter investment performance is returned from data."""

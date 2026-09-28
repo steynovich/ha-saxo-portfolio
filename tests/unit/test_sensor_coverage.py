@@ -476,11 +476,13 @@ class TestPerformanceSensors:
         type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is True
 
-    def test_available_false_none_value(self, coord):
+    def test_available_with_unknown_state_when_none(self, coord):
+        """A not-yet-fetched value is reported as unknown, not unavailable."""
         coord.get_investment_performance_percentage.return_value = None
         sensor = SaxoInvestmentPerformanceSensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
-        assert sensor.available is False
+        assert sensor.available is True
+        assert sensor.native_value is None
 
     def test_available_false_exception(self, coord):
         coord.get_investment_performance_percentage.side_effect = RuntimeError

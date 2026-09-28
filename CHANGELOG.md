@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Logs no longer contain identifiers or financial figures** (#14): ClientId, ClientKey, account IDs, the account holder's name, balances, profit/loss, performance values and position details are no longer written to the log at any level, so debug logs can be shared safely. Raw API error bodies are reduced to the HTTP status and Saxo `ErrorCode`, and the ClientKey is masked in logged request URLs
+- **Failed performance fetches are no longer cached for 2 hours** (#15): a failed or partial fetch (client details, v3 or v4 performance) is retried on the next update instead of pinning values until the cache expires. Sensors keep their last known good values; before the first successful fetch the performance sensors report *unknown* instead of 0.0, so no false zeros are recorded in long-term statistics. Balance data still updates when performance calls fail
 
 ## [2.9.0-beta.4] - 2026-09-28
 

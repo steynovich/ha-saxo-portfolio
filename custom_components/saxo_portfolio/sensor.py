@@ -555,12 +555,14 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
         if not super().available:
             return False
 
-        # Additional check: ensure we can get a performance value
+        # Additional check: ensure we can read a performance value. A None
+        # value (not fetched yet) keeps the sensor available with an unknown
+        # state rather than marking it unavailable.
         try:
-            performance_value = self._get_performance_value()
-            return performance_value is not None
+            self._get_performance_value()
         except Exception:
             return False
+        return True
 
     def _get_period_dates(self) -> dict[str, str] | None:
         """Calculate From and Thru dates based on the time period.
