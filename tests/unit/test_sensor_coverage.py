@@ -452,17 +452,58 @@ class TestPerformanceSensors:
         assert attrs["from"] == "2026-01-01"
         assert attrs["thru"] == "2026-08-04"
 
-    def test_month_period_dates(self, coord):
-        sensor = SaxoMonthInvestmentPerformanceSensor(coord)
+    # StandardPeriod=Month/Quarter are trailing windows ending at the last
+    # completed day: probed on 2026-08-04 the API returned 2026-07-06..2026-08-03
+    # (28 days) and 2026-05-05..2026-08-03 (90 days). See
+    # docs/superpowers/specs/2026-08-04-ytd-sensors-design.md.
+    @pytest.mark.parametrize(
+        "cls,period,today,expected_from,expected_thru",
+        [
+            (
+                SaxoMonthInvestmentPerformanceSensor,
+                "Month",
+                datetime(2026, 8, 4, 10, 0),
+                "2026-07-06",
+                "2026-08-03",
+            ),
+            (
+                SaxoQuarterInvestmentPerformanceSensor,
+                "Quarter",
+                datetime(2026, 8, 4, 10, 0),
+                "2026-05-05",
+                "2026-08-03",
+            ),
+            # Not calendar-to-date: on the 1st the window still spans the
+            # previous month / quarter
+            (
+                SaxoMonthInvestmentPerformanceSensor,
+                "Month",
+                datetime(2026, 3, 1, 10, 0),
+                "2026-01-31",
+                "2026-02-28",
+            ),
+            (
+                SaxoQuarterInvestmentPerformanceSensor,
+                "Quarter",
+                datetime(2026, 1, 1, 10, 0),
+                "2025-10-02",
+                "2025-12-31",
+            ),
+        ],
+    )
+    def test_trailing_period_dates(
+        self, coord, cls, period, today, expected_from, expected_thru
+    ):
+        sensor = cls(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
-        attrs = sensor.extra_state_attributes
-        assert attrs["time_period"] == "Month"
-
-    def test_quarter_period_dates(self, coord):
-        sensor = SaxoQuarterInvestmentPerformanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
-        attrs = sensor.extra_state_attributes
-        assert attrs["time_period"] == "Quarter"
+        with patch(
+            "custom_components.saxo_portfolio.sensor.dt_util.now",
+            return_value=today.replace(tzinfo=dt_util.UTC),
+        ):
+            attrs = sensor.extra_state_attributes
+        assert attrs["time_period"] == period
+        assert attrs["from"] == expected_from
+        assert attrs["thru"] == expected_thru
 
     def test_attrs_no_data(self, coord):
         coord.data = None

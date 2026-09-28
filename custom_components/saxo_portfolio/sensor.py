@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import logging
 import math
 import time
@@ -27,6 +27,8 @@ from .const import (
     DEVICE_MANUFACTURER,
     DEVICE_MODEL,
     DOMAIN,
+    STANDARD_PERIOD_MONTH_SPAN,
+    STANDARD_PERIOD_QUARTER_SPAN,
 )
 from .coordinator import SaxoCoordinator
 
@@ -578,15 +580,16 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
             # Year-to-date: January 1st to today (explicit FromDate/ToDate)
             from_date = date(now.year, 1, 1)
             thru_date = now.date()
-        elif time_period == "Month":
-            # Month-to-date: 1st of current month to today
-            from_date = date(now.year, now.month, 1)
-            thru_date = now.date()
-        elif time_period == "Quarter":
-            # Quarter-to-date: 1st day of current quarter to today
-            quarter_start_month = ((now.month - 1) // 3) * 3 + 1
-            from_date = date(now.year, quarter_start_month, 1)
-            thru_date = now.date()
+        elif time_period in ("Month", "Quarter"):
+            # StandardPeriod=Month/Quarter are trailing windows ending at the
+            # last completed day, not calendar month/quarter-to-date
+            span = (
+                STANDARD_PERIOD_MONTH_SPAN
+                if time_period == "Month"
+                else STANDARD_PERIOD_QUARTER_SPAN
+            )
+            thru_date = now.date() - timedelta(days=1)
+            from_date = thru_date - span
         elif time_period == "AllTime":
             # All-time: No specific from date, just indicate it's all-time
             return {"from": "inception", "thru": now.date().isoformat()}

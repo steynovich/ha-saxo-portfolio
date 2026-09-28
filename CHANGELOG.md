@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **YTD Investment Performance `time_period` attribute** now reads `YearToDate` instead of `Year`. Since 2.9.0-beta.3 the sensor uses a 1 January-anchored window rather than `StandardPeriod=Year` (a trailing 12 months), so `Year` was misleading. Automations or templates matching `time_period == "Year"` need updating.
+- **Month and Quarter Investment Performance `from`/`thru` attributes** now describe the trailing windows Saxo's `StandardPeriod=Month`/`Quarter` actually cover — the 28 and 90 days ending yesterday — instead of calendar month-to-date and quarter-to-date ranges. The sensor values are unchanged. This resolves the Known Issue listed under 2.9.0-beta.3.
 
 ## [2.9.0-beta.4] - 2026-09-28
 
@@ -41,9 +42,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Performance data no longer fetches the trailing `Year` window; the January-anchored request takes its place, keeping the refresh at four API calls
 - `Month` and `Quarter` performance requests trimmed to the `KeyFigures` field group
 - Removed unused `get_performance_v4`, `get_performance_v4_ytd`, `get_performance_v4_month` and `get_performance_v4_quarter` client methods
-
-### Known Issues
-- **Month and Quarter Investment Performance are also trailing windows**, not month-to-date and quarter-to-date: `StandardPeriod=Month` returns a rolling ~28 days and `Quarter` a rolling ~90 days. Their `from`/`thru` attributes are therefore inaccurate. Correcting these is deferred; see `docs/superpowers/specs/2026-08-04-ytd-sensors-design.md`.
 
 ## [2.9.0-beta.2] - 2026-04-17
 

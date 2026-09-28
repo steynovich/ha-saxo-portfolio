@@ -141,6 +141,13 @@ DEFAULT_UPDATE_INTERVAL_ANY: Final = timedelta(minutes=15)
 # Increased to 2 hours to reduce API calls and prevent rate limiting
 PERFORMANCE_UPDATE_INTERVAL: Final = timedelta(hours=2)
 
+# Spans of Saxo's trailing StandardPeriod windows. These are rolling windows
+# ending at the last completed day, not calendar month/quarter-to-date
+# (observed against /hist/v4/performance/timeseries; Saxo does not document
+# the exact span). See docs/superpowers/specs/2026-08-04-ytd-sensors-design.md.
+STANDARD_PERIOD_MONTH_SPAN: Final = timedelta(days=28)
+STANDARD_PERIOD_QUARTER_SPAN: Final = timedelta(days=90)
+
 
 # Configuration flow
 CONF_ENTITY_PREFIX: Final = "entity_prefix"
