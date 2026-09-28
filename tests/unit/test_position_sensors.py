@@ -5,7 +5,7 @@ These tests cover slug generation, sensor state/attributes, and availability log
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, PropertyMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -185,8 +185,6 @@ class TestPositionSensorIntegration:
 
         sensor = SaxoPositionSensor(mock_coordinator, "aapl_stock")
 
-        # Override coordinator property for testing
-        type(sensor).coordinator = PropertyMock(return_value=mock_coordinator)
 
         assert sensor.native_value == 150.25
 
@@ -195,7 +193,6 @@ class TestPositionSensorIntegration:
         from custom_components.saxo_portfolio.sensor import SaxoPositionSensor
 
         sensor = SaxoPositionSensor(mock_coordinator, "aapl_stock")
-        type(sensor).coordinator = PropertyMock(return_value=mock_coordinator)
 
         attrs = sensor.extra_state_attributes
 
@@ -217,7 +214,6 @@ class TestPositionSensorIntegration:
         mock_coordinator.get_position.return_value = None
 
         sensor = SaxoPositionSensor(mock_coordinator, "nonexistent_stock")
-        type(sensor).coordinator = PropertyMock(return_value=mock_coordinator)
 
         # Sensor should be unavailable if position doesn't exist
         assert sensor.available is False
@@ -229,7 +225,6 @@ class TestPositionSensorIntegration:
         mock_coordinator.get_position.return_value = None
 
         sensor = SaxoPositionSensor(mock_coordinator, "closed_stock")
-        type(sensor).coordinator = PropertyMock(return_value=mock_coordinator)
 
         assert sensor.native_value is None
 

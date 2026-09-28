@@ -233,7 +233,6 @@ class TestPositionSensorAvailability:
     def test_position_sensor_available_when_position_exists(self, mock_coordinator):
         """Test sensor is available when position exists in cache."""
         from custom_components.saxo_portfolio.sensor import SaxoPositionSensor
-        from unittest.mock import PropertyMock
 
         position = PositionData(
             position_id="pos_1",
@@ -249,31 +248,26 @@ class TestPositionSensorAvailability:
         mock_coordinator.get_position.return_value = position
 
         sensor = SaxoPositionSensor(mock_coordinator, "aapl_stock")
-        type(sensor).coordinator = PropertyMock(return_value=mock_coordinator)
 
         assert sensor.available is True
 
     def test_position_sensor_unavailable_when_position_closed(self, mock_coordinator):
         """Test sensor becomes unavailable when position is closed."""
         from custom_components.saxo_portfolio.sensor import SaxoPositionSensor
-        from unittest.mock import PropertyMock
 
         # Position no longer in cache (closed)
         mock_coordinator.get_position.return_value = None
 
         sensor = SaxoPositionSensor(mock_coordinator, "aapl_stock")
-        type(sensor).coordinator = PropertyMock(return_value=mock_coordinator)
 
         assert sensor.available is False
 
     def test_position_sensor_unavailable_when_coordinator_fails(self, mock_coordinator):
         """Test sensor unavailable when coordinator data is None."""
         from custom_components.saxo_portfolio.sensor import SaxoPositionSensor
-        from unittest.mock import PropertyMock
 
         mock_coordinator.data = None
 
         sensor = SaxoPositionSensor(mock_coordinator, "aapl_stock")
-        type(sensor).coordinator = PropertyMock(return_value=mock_coordinator)
 
         assert sensor.available is False
