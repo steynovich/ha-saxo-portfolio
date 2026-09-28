@@ -212,9 +212,9 @@ class TestFullUpdateLogSanitization:
             data = await coordinator._async_update_data()
 
         # Sanity: the update really did go through every step with fixture data.
-        assert data["client_id"] == CLIENT_ID
-        assert data["cash_balance"] == 12345.67
-        assert data["ytd_profit_loss"] == pytest.approx(2468.13)
+        assert data.client.client_id == CLIENT_ID
+        assert data.balance.cash_balance == 12345.67
+        assert data.performance.ytd_profit_loss == pytest.approx(2468.13)
         assert len(coordinator.get_positions()) == 1
 
         log_text = _all_log_text(debug_caplog)

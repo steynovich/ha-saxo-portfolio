@@ -19,6 +19,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import SaxoCoordinator
+from .data import UNKNOWN
 
 PARALLEL_UPDATES = 0
 
@@ -33,7 +34,7 @@ async def async_setup_entry(
     """Set up Saxo Portfolio button entities."""
     coordinator: SaxoCoordinator = entry.runtime_data.coordinator
 
-    if coordinator.get_client_name() == "unknown":
+    if coordinator.client_info.client_name == UNKNOWN:
         _LOGGER.warning(
             "Skipping button setup - client data not yet available. "
             "Buttons will be created when client data is fetched."
@@ -56,7 +57,7 @@ class SaxoRefreshButton(CoordinatorEntity[SaxoCoordinator], ButtonEntity):
         """Initialize the refresh button."""
         super().__init__(coordinator)
 
-        client_id = coordinator.get_client_id()
+        client_id = coordinator.client_info.client_id
         entity_prefix = f"saxo_{client_id}".lower()
 
         self._attr_unique_id = f"{entity_prefix}_refresh"
@@ -65,7 +66,7 @@ class SaxoRefreshButton(CoordinatorEntity[SaxoCoordinator], ButtonEntity):
     def device_info(self) -> DeviceInfo:
         """Return device information."""
         assert self.coordinator.config_entry is not None
-        client_id = self.coordinator.get_client_id()
+        client_id = self.coordinator.client_info.client_id
         device_name = f"Saxo {client_id} Portfolio"
 
         return DeviceInfo(

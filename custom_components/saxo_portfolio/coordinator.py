@@ -27,6 +27,14 @@ import aiohttp
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api.saxo_client import SaxoApiClient, AuthenticationError, APIError
+from .data import (
+    BalanceData,
+    ClientInfo,
+    PerformanceData,
+    SaxoPortfolioData,
+    UNKNOWN,
+    numeric_or_none,
+)
 from .const import (
     API_REQUEST_DELAY,
     CONF_ENABLE_POSITION_SENSORS,
@@ -96,7 +104,7 @@ class PositionsCache:
     position_ids: list[str] = field(default_factory=list)
 
 
-class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
     """Saxo Portfolio data coordinator."""
 
     def __init__(
@@ -887,7 +895,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         _LOGGER.debug("Proactive token refresh succeeded, new token persisted")
 
-    async def _fetch_portfolio_data(self) -> dict[str, Any]:
+    async def _fetch_portfolio_data(self) -> SaxoPortfolioData:
         """Fetch portfolio data from Saxo API.
 
         This method implements graceful degradation:
@@ -896,7 +904,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         - If performance fetch fails/times out, balance data is still returned
 
         Returns:
-            Portfolio data dictionary
+            Typed portfolio data
 
         Raises:
             ConfigEntryAuthFailed: For authentication errors
@@ -928,16 +936,16 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._fetch_positions_data_safely(client)
 
             # STEP 4: Combine balance and performance data
-            result = {
-                "cash_balance": balance_data.get("CashBalance", 0.0),
-                "currency": balance_data.get("Currency", "USD"),
-                "total_value": balance_data.get("TotalValue", 0.0),
-                "non_margin_positions_value": balance_data.get(
-                    "NonMarginPositionsValue", 0.0
+            result = SaxoPortfolioData(
+                balance=BalanceData.from_api(balance_data),
+                performance=self._to_performance_data(performance_data),
+                client=ClientInfo(
+                    client_id=str(performance_data.get("client_id", UNKNOWN)),
+                    account_id=str(performance_data.get("account_id", UNKNOWN)),
+                    client_name=str(performance_data.get("client_name", UNKNOWN)),
                 ),
-                **performance_data,
-                "last_updated": datetime.now().isoformat(),
-            }
+                last_updated=datetime.now(),
+            )
 
             total_duration = (datetime.now() - fetch_start_time).total_seconds()
             _LOGGER.debug(
@@ -989,6 +997,30 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as e:
             _LOGGER.exception("Unexpected error fetching portfolio data")
             raise UpdateFailed("Unexpected error") from e
+
+    @staticmethod
+    def _to_performance_data(values: dict[str, Any]) -> PerformanceData:
+        """Build typed performance data from the cached performance values."""
+        return PerformanceData(
+            ytd_earnings_percentage=numeric_or_none(
+                values.get("ytd_earnings_percentage")
+            ),
+            investment_performance_percentage=numeric_or_none(
+                values.get("investment_performance_percentage")
+            ),
+            ytd_investment_performance_percentage=numeric_or_none(
+                values.get("ytd_investment_performance_percentage")
+            ),
+            month_investment_performance_percentage=numeric_or_none(
+                values.get("month_investment_performance_percentage")
+            ),
+            quarter_investment_performance_percentage=numeric_or_none(
+                values.get("quarter_investment_performance_percentage")
+            ),
+            cash_transfer_balance=numeric_or_none(values.get("cash_transfer_balance")),
+            ytd_profit_loss=numeric_or_none(values.get("ytd_profit_loss")),
+            ytd_cash_transfer=numeric_or_none(values.get("ytd_cash_transfer")),
+        )
 
     async def _apply_initial_stagger_offset(self) -> None:
         """Sleep the one-shot stagger offset on the first scheduled update.
@@ -1056,7 +1088,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         else:
             _LOGGER.debug(timeout_msg)
 
-    async def _async_update_data(self) -> dict[str, Any]:
+    async def _async_update_data(self) -> SaxoPortfolioData:
         """Update data from Saxo API.
 
         This is called by the DataUpdateCoordinator on the configured interval.
@@ -1120,7 +1152,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # This indicates that sensor setup should be attempted again
             # BUT: Only trigger reload if this is NOT the initial setup (where coordinator.last_update_success would be None)
             # and sensors haven't been initialized yet
-            current_client_name = data.get("client_name", "unknown")
+            current_client_name = data.client.client_name
 
             # Debug logging to understand reload trigger
             _LOGGER.debug(
@@ -1188,167 +1220,10 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Return when performance data was last fetched, if ever."""
         return self._performance_last_updated
 
-    def get_cash_balance(self) -> float:
-        """Get cash balance from data.
-
-        Returns:
-            Cash balance value or 0.0 if not available
-
-        """
-        if not self.data:
-            return 0.0
-        return float(self.data.get("cash_balance", 0.0))
-
-    def get_total_value(self) -> float:
-        """Get total portfolio value from data.
-
-        Returns:
-            Total value or 0.0 if not available
-
-        """
-        if not self.data:
-            return 0.0
-        return float(self.data.get("total_value", 0.0))
-
-    def get_non_margin_positions_value(self) -> float:
-        """Get non-margin positions value from data.
-
-        Returns:
-            Non-margin positions value or 0.0 if not available
-
-        """
-        if not self.data:
-            return 0.0
-        return float(self.data.get("non_margin_positions_value", 0.0))
-
-    def get_currency(self) -> str:
-        """Get the portfolio base currency.
-
-        Returns:
-            Currency code or USD as default
-
-        """
-        if self.data:
-            return str(self.data.get("currency", "USD"))
-        return "USD"
-
-    def _optional_float(self, key: str) -> float | None:
-        """Return a numeric data value as float, or None when unknown."""
-        if not self.data:
-            return None
-        value = self.data.get(key)
-        return float(value) if isinstance(value, int | float) else None
-
-    def get_ytd_earnings_percentage(self) -> float | None:
-        """Get YTD earnings percentage from performance data.
-
-        Returns:
-            YTD earnings percentage or None if not (yet) available
-
-        """
-        return self._optional_float("ytd_earnings_percentage")
-
-    def get_client_id(self) -> str:
-        """Get ClientId from client details.
-
-        Returns:
-            ClientId or 'unknown' if not available
-
-        """
-        if not self.data:
-            return "unknown"
-        return str(self.data.get("client_id", "unknown"))
-
-    def get_investment_performance_percentage(self) -> float | None:
-        """Get investment performance percentage from v4 performance API.
-
-        Returns:
-            Investment performance percentage (ReturnFraction * 100) or None if not available
-
-        """
-        return self._optional_float("investment_performance_percentage")
-
-    def get_cash_transfer_balance(self) -> float | None:
-        """Get latest cash transfer balance from v4 performance API.
-
-        Returns:
-            Latest cash transfer balance value or None if not available
-
-        """
-        return self._optional_float("cash_transfer_balance")
-
-    def get_ytd_profit_loss(self) -> float | None:
-        """Get year-to-date profit/loss in the account's base currency.
-
-        Returns:
-            YTD profit/loss, or None when unavailable
-
-        """
-        if not self.data:
-            return None
-        value = self.data.get("ytd_profit_loss")
-        return float(value) if isinstance(value, int | float) else None
-
-    def get_ytd_cash_transfer(self) -> float | None:
-        """Get year-to-date net deposits/withdrawals.
-
-        Returns:
-            YTD net cash transferred, or None when unavailable
-
-        """
-        if not self.data:
-            return None
-        value = self.data.get("ytd_cash_transfer")
-        return float(value) if isinstance(value, int | float) else None
-
-    def get_ytd_investment_performance_percentage(self) -> float | None:
-        """Get YTD investment performance percentage from v4 performance API.
-
-        Returns:
-            YTD investment performance percentage (ReturnFraction * 100) or None if not available
-
-        """
-        return self._optional_float("ytd_investment_performance_percentage")
-
-    def get_month_investment_performance_percentage(self) -> float | None:
-        """Get Month investment performance percentage from v4 performance API.
-
-        Returns:
-            Month investment performance percentage (ReturnFraction * 100) or None if not available
-
-        """
-        return self._optional_float("month_investment_performance_percentage")
-
-    def get_quarter_investment_performance_percentage(self) -> float | None:
-        """Get Quarter investment performance percentage from v4 performance API.
-
-        Returns:
-            Quarter investment performance percentage (ReturnFraction * 100) or None if not available
-
-        """
-        return self._optional_float("quarter_investment_performance_percentage")
-
-    def get_account_id(self) -> str:
-        """Get AccountId from account data.
-
-        Returns:
-            AccountId or 'unknown' if not available
-
-        """
-        if not self.data:
-            return "unknown"
-        return str(self.data.get("account_id", "unknown"))
-
-    def get_client_name(self) -> str:
-        """Get client Name from client data.
-
-        Returns:
-            Client Name or 'unknown' if not available
-
-        """
-        if not self.data:
-            return "unknown"
-        return str(self.data.get("client_name", "unknown"))
+    @property
+    def client_info(self) -> ClientInfo:
+        """Return the client identity, "unknown" fields before the first update."""
+        return self.data.client if self.data is not None else ClientInfo()
 
     def get_positions(self) -> dict[str, PositionData]:
         """Get all cached positions.

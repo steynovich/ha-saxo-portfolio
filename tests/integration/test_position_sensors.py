@@ -3,6 +3,8 @@
 These tests verify dynamic sensor creation, options flow, and sensor lifecycle.
 """
 
+from datetime import datetime
+
 import pytest
 from unittest.mock import MagicMock
 
@@ -43,13 +45,16 @@ class TestPositionSensorDynamicCreation:
         return entry
 
     @pytest.fixture
-    def mock_coordinator(self):
+    def mock_coordinator(self, set_portfolio_data):
         """Create a mock coordinator with positions."""
         coordinator = MagicMock()
-        coordinator.get_client_id.return_value = "123456"
-        coordinator.get_client_name.return_value = "Test User"
+        set_portfolio_data(
+            coordinator,
+            client_id="123456",
+            client_name="Test User",
+            last_updated=datetime(2024, 1, 1, 12, 0),
+        )
         coordinator.last_update_success = True
-        coordinator.data = {"last_updated": "2024-01-01T12:00:00"}
         coordinator.position_sensors_enabled = True
         coordinator.update_interval = MagicMock()
         coordinator.update_interval.total_seconds.return_value = 300
@@ -219,12 +224,13 @@ class TestPositionSensorAvailability:
     """Tests for position sensor availability behavior."""
 
     @pytest.fixture
-    def mock_coordinator(self):
+    def mock_coordinator(self, set_portfolio_data):
         """Create a mock coordinator."""
         coordinator = MagicMock()
-        coordinator.get_client_id.return_value = "123456"
+        set_portfolio_data(
+            coordinator, client_id="123456", last_updated=datetime(2024, 1, 1, 12, 0)
+        )
         coordinator.last_update_success = True
-        coordinator.data = {"last_updated": "2024-01-01T12:00:00"}
         coordinator.update_interval = MagicMock()
         coordinator.update_interval.total_seconds.return_value = 300
 

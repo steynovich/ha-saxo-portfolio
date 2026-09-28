@@ -23,6 +23,7 @@ from .const import (
     MARKET_HOURS,
 )
 from .coordinator import SaxoCoordinator
+from .data import SaxoPortfolioData
 
 REDACT_KEYS = {
     "access_token",
@@ -46,27 +47,17 @@ REDACT_KEYS = {
 
 
 def _get_coordinator_status(coordinator: SaxoCoordinator) -> dict[str, Any]:
-    """Return a defensive snapshot of coordinator runtime state."""
-    _sentinel = object()
-    last_update_time_utc: datetime | None = getattr(
-        coordinator, "last_update_time_utc", None
-    )
-    update_interval = getattr(coordinator, "update_interval", _sentinel)
-    data_attr = getattr(coordinator, "data", _sentinel)
-    last_exception = getattr(coordinator, "last_exception", None)
-    is_market_hours = getattr(coordinator, "_is_market_hours", None)
+    """Return a snapshot of coordinator runtime state."""
+    last_update = coordinator.last_successful_update_time
+    last_exception = coordinator.last_exception
 
     return {
-        "last_update_success": getattr(coordinator, "last_update_success", None),
-        "last_update_time": last_update_time_utc.isoformat()
-        if last_update_time_utc
-        else None,
-        "update_interval": str(update_interval)
-        if update_interval is not _sentinel
-        else None,
-        "configured_timezone": getattr(coordinator, "_timezone", "Unknown"),
-        "is_market_hours": is_market_hours() if callable(is_market_hours) else None,
-        "has_data": data_attr is not None if data_attr is not _sentinel else False,
+        "last_update_success": coordinator.last_update_success,
+        "last_update_time": last_update.isoformat() if last_update else None,
+        "update_interval": str(coordinator.update_interval),
+        "configured_timezone": coordinator.timezone,
+        "is_market_hours": coordinator.is_market_hours,
+        "has_data": coordinator.data is not None,
         "last_exception": str(last_exception) if last_exception else None,
     }
 
@@ -144,46 +135,20 @@ def _format_token_status(token_data: dict[str, Any]) -> dict[str, Any]:
     return token_status
 
 
-# Flat keys the coordinator populates (see SaxoCoordinator._fetch_portfolio_data)
-_BALANCE_KEYS = ("cash_balance", "total_value", "non_margin_positions_value")
-_PERFORMANCE_KEYS = (
-    "ytd_earnings_percentage",
-    "investment_performance_percentage",
-    "ytd_investment_performance_percentage",
-    "month_investment_performance_percentage",
-    "quarter_investment_performance_percentage",
-    "cash_transfer_balance",
-    "ytd_profit_loss",
-    "ytd_cash_transfer",
-)
-_CLIENT_KEYS = ("client_id", "account_id", "client_name")
-
-
-def _has_numeric(data: dict[str, Any], keys: tuple[str, ...]) -> bool:
-    """Return True if any of ``keys`` holds a number (None means not fetched)."""
-    return any(
-        isinstance(data.get(key), int | float) and not isinstance(data.get(key), bool)
-        for key in keys
-    )
-
-
-def _get_data_snapshot(coordinator_data: dict[str, Any] | None) -> dict[str, Any]:
+def _get_data_snapshot(coordinator_data: SaxoPortfolioData | None) -> dict[str, Any]:
     """Return a non-sensitive snapshot of the coordinator's latest data.
 
-    Only key names and presence flags are reported, never values.
+    Only field names and presence flags are reported, never values.
     """
-    if not coordinator_data:
+    if coordinator_data is None:
         return {}
 
     return {
-        "has_balance_data": _has_numeric(coordinator_data, _BALANCE_KEYS),
-        "has_performance_data": _has_numeric(coordinator_data, _PERFORMANCE_KEYS),
-        "has_client_data": any(
-            coordinator_data.get(key) not in (None, "", "unknown")
-            for key in _CLIENT_KEYS
-        ),
-        "currency": coordinator_data.get("currency", "Unknown"),
-        "data_keys": list(coordinator_data.keys()),
+        "has_balance_data": coordinator_data.balance.has_any_value,
+        "has_performance_data": coordinator_data.performance.has_any_value,
+        "has_client_data": coordinator_data.client.has_any_value,
+        "currency": coordinator_data.balance.currency,
+        "data_keys": coordinator_data.field_names,
     }
 
 
@@ -248,12 +213,9 @@ async def async_get_config_entry_diagnostics(
         _format_token_status(entry.data["token"]) if "token" in entry.data else {}
     )
 
-    data_snapshot = _get_data_snapshot(
-        coordinator.data if hasattr(coordinator, "data") else None
-    )
-    get_positions = getattr(coordinator, "get_positions", None)
-    if data_snapshot and callable(get_positions):
-        data_snapshot["position_count"] = len(get_positions())
+    data_snapshot = _get_data_snapshot(coordinator.data)
+    if data_snapshot:
+        data_snapshot["position_count"] = len(coordinator.get_positions())
 
     diagnostics = {
         "config": config_data,

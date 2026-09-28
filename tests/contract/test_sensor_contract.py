@@ -23,21 +23,18 @@ class TestSaxoSensorContract:
     """Contract tests for Saxo Portfolio sensor entities."""
 
     @pytest.fixture
-    def mock_coordinator(self):
+    def mock_coordinator(self, set_portfolio_data):
         """Create a mock coordinator with sample data."""
         coordinator = Mock(spec=SaxoCoordinator)
-        coordinator.data = {
-            "cash_balance": 5000.00,
-            "total_value": 125000.00,
-            "currency": "USD",
-            "client_id": "123456",
-            "last_updated": datetime.now().isoformat(),
-        }
+        set_portfolio_data(
+            coordinator,
+            cash_balance=5000.00,
+            total_value=125000.00,
+            currency="USD",
+            client_id="123456",
+            last_updated=datetime.now(),
+        )
         coordinator.last_update_success = True
-        coordinator.get_client_id = Mock(return_value="123456")
-        coordinator.get_cash_balance = Mock(return_value=5000.00)
-        coordinator.get_total_value = Mock(return_value=125000.00)
-        coordinator.get_currency = Mock(return_value="USD")
         return coordinator
 
     @pytest.fixture
@@ -234,7 +231,7 @@ class TestSaxoSensorContract:
             enabled_default = portfolio_sensor.entity_registry_enabled_default
             assert isinstance(enabled_default, bool)
 
-    def test_improved_availability_logic(self, mock_coordinator):
+    def test_improved_availability_logic(self, mock_coordinator, make_portfolio_data):
         """Test the improved sticky availability logic."""
         from datetime import timedelta
         from homeassistant.util import dt as dt_util
@@ -244,7 +241,7 @@ class TestSaxoSensorContract:
 
         # Test 1: Normal operation - should be available
         mock_coordinator.last_update_success = True
-        mock_coordinator.data = {"total_value": 100000.00}
+        mock_coordinator.data = make_portfolio_data(total_value=100000.00)
         mock_coordinator.last_successful_update_time = dt_util.utcnow() - timedelta(
             minutes=1
         )
@@ -279,21 +276,23 @@ class TestSaxoSensorContract:
         # Test 5: First startup (no successful updates yet but data exists) - should stay available
         # The implementation keeps sensors available when data exists but no
         # successful update time has been recorded, to handle initial startup gracefully.
-        mock_coordinator.data = {"total_value": 100000.00}
+        mock_coordinator.data = make_portfolio_data(total_value=100000.00)
         mock_coordinator.last_update_success = False
         mock_coordinator.last_successful_update_time = None
         assert sensor.available is True, (
             "Should stay available on first startup when data exists but no update time recorded"
         )
 
-    def test_availability_respects_update_intervals(self, mock_coordinator):
+    def test_availability_respects_update_intervals(
+        self, mock_coordinator, make_portfolio_data
+    ):
         """Test that availability thresholds adapt to different update intervals."""
         from homeassistant.util import dt as dt_util
 
         sensor = SaxoTotalValueSensor(mock_coordinator)
 
         # Setup basic state
-        mock_coordinator.data = {"total_value": 100000.00}
+        mock_coordinator.data = make_portfolio_data(total_value=100000.00)
         mock_coordinator.last_update_success = False
         current_time = dt_util.utcnow()
 

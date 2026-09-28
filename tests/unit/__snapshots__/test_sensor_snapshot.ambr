@@ -2825,7 +2825,7 @@
       'is_market_hours': True,
       'last_exception': None,
       'last_update_success': True,
-      'last_update_time': None,
+      'last_update_time': '2026-03-18T10:00:00+00:00',
       'update_interval': '0:05:00',
     }),
     'data_snapshot': dict({
@@ -3538,7 +3538,7 @@
       'is_market_hours': True,
       'last_exception': None,
       'last_update_success': False,
-      'last_update_time': None,
+      'last_update_time': '2026-03-18T10:00:00+00:00',
       'update_interval': '0:05:00',
     }),
     'data_snapshot': dict({
@@ -4971,7 +4971,7 @@
       'is_market_hours': True,
       'last_exception': None,
       'last_update_success': True,
-      'last_update_time': None,
+      'last_update_time': '2026-03-18T10:00:00+00:00',
       'update_interval': '0:05:00',
     }),
     'data_snapshot': dict({

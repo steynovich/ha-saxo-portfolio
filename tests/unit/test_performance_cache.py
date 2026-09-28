@@ -9,12 +9,18 @@ good values, must leave never-fetched values unknown (None) rather than
 from __future__ import annotations
 
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from custom_components.saxo_portfolio.api.saxo_client import APIError
 from custom_components.saxo_portfolio.const import PERFORMANCE_UPDATE_INTERVAL
+from custom_components.saxo_portfolio.data import (
+    BalanceData,
+    ClientInfo,
+    PerformanceData,
+    SaxoPortfolioData,
+)
 from custom_components.saxo_portfolio.sensor import (
     SaxoAccumulatedProfitLossSensor,
     SaxoInvestmentPerformanceSensor,
@@ -121,22 +127,22 @@ class TestNeverFetched:
             assert result[key] is None, key
         assert coord._performance_last_updated is None
 
-    def test_getters_return_none_without_values(self):
+    def test_typed_data_is_none_without_values(self):
         coord = _bare_coordinator()
-        coord.data = {"cash_balance": 1.0, **coord._build_performance_defaults()}
-        assert coord.get_ytd_earnings_percentage() is None
-        assert coord.get_investment_performance_percentage() is None
-        assert coord.get_ytd_investment_performance_percentage() is None
-        assert coord.get_month_investment_performance_percentage() is None
-        assert coord.get_quarter_investment_performance_percentage() is None
-        assert coord.get_cash_transfer_balance() is None
+        performance = coord._to_performance_data(coord._build_performance_defaults())
+        assert performance == PerformanceData()
+        for key in PERF_KEYS:
+            assert getattr(performance, key) is None, key
 
     def test_sensors_unknown_without_values(self):
         coord = _bare_coordinator()
-        coord.get_client_id = MagicMock(return_value="C1")
-        coord.get_currency = MagicMock(return_value="EUR")
         coord.last_update_success = True
-        coord.data = {"cash_balance": 1.0, **coord._build_performance_defaults()}
+        coord.data = SaxoPortfolioData(
+            balance=BalanceData(cash_balance=1.0, currency="EUR"),
+            performance=coord._to_performance_data(coord._build_performance_defaults()),
+            client=ClientInfo(client_id="C1"),
+            last_updated=datetime.now(),
+        )
 
         coord.last_update_success = True
         for sensor in (
@@ -304,7 +310,7 @@ class TestBalanceUnaffected:
         ):
             result = await coord._fetch_portfolio_data()
 
-        assert result["cash_balance"] == 1000.0
-        assert result["total_value"] == 5000.0
-        assert result["investment_performance_percentage"] is None
+        assert result.balance.cash_balance == 1000.0
+        assert result.balance.total_value == 5000.0
+        assert result.performance == PerformanceData()
         assert coord._performance_last_updated is None

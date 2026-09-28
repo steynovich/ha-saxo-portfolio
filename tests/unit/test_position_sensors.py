@@ -4,6 +4,7 @@ These tests cover slug generation, sensor state/attributes, and availability log
 """
 
 import json
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -126,12 +127,13 @@ class TestPositionSensorIntegration:
     """Tests for position sensor behavior."""
 
     @pytest.fixture
-    def mock_coordinator(self):
+    def mock_coordinator(self, set_portfolio_data):
         """Create a mock coordinator."""
         coordinator = MagicMock()
-        coordinator.get_client_id.return_value = "123456"
+        set_portfolio_data(
+            coordinator, client_id="123456", last_updated=datetime(2024, 1, 1, 12, 0)
+        )
         coordinator.last_update_success = True
-        coordinator.data = {"last_updated": "2024-01-01T12:00:00"}
         coordinator.update_interval = MagicMock()
         coordinator.update_interval.total_seconds.return_value = 300
 
@@ -184,7 +186,6 @@ class TestPositionSensorIntegration:
         from custom_components.saxo_portfolio.sensor import SaxoPositionSensor
 
         sensor = SaxoPositionSensor(mock_coordinator, "aapl_stock")
-
 
         assert sensor.native_value == 150.25
 

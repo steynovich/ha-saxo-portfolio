@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -14,6 +15,12 @@ from homeassistant.const import EntityCategory
 from homeassistant.util import dt as dt_util
 
 from custom_components.saxo_portfolio.coordinator import PositionData, SaxoCoordinator
+from custom_components.saxo_portfolio.data import (
+    BalanceData,
+    ClientInfo,
+    PerformanceData,
+    SaxoPortfolioData,
+)
 from custom_components.saxo_portfolio.sensor import (
     PARALLEL_UPDATES,
     SaxoAccumulatedProfitLossSensor,
@@ -47,33 +54,31 @@ from custom_components.saxo_portfolio.sensor import (
 def coord():
     """Create a mock coordinator."""
     c = MagicMock(spec=SaxoCoordinator)
-    c.get_client_id.return_value = "TEST123"
-    c.get_currency.return_value = "EUR"
-    c.get_client_name.return_value = "Test User"
-    c.get_cash_balance.return_value = 1000.50
-    c.get_total_value.return_value = 50000.0
-    c.get_non_margin_positions_value.return_value = 48000.0
-    c.get_ytd_earnings_percentage.return_value = 5.5
-    c.get_investment_performance_percentage.return_value = 12.34
-    c.get_ytd_investment_performance_percentage.return_value = 8.76
-    c.get_month_investment_performance_percentage.return_value = 2.1
-    c.get_quarter_investment_performance_percentage.return_value = 3.45
-    c.get_cash_transfer_balance.return_value = 10000.0
-    c.get_ytd_profit_loss.return_value = 1234.56
-    c.get_ytd_cash_transfer.return_value = 250.0
-    c.get_account_id.return_value = "ACC456"
+    c.client_info = ClientInfo(
+        client_id="TEST123", account_id="ACC456", client_name="Test User"
+    )
     c.last_update_success = True
     c.last_exception = None
-    c.data = {
-        "cash_balance": 1000.50,
-        "total_value": 50000.0,
-        "last_updated": "2026-01-01T12:00:00",
-        "ytd_earnings_percentage": 5.5,
-        "investment_performance_percentage": 12.34,
-        "cash_transfer_balance": 10000.0,
-        "ytd_profit_loss": 1234.56,
-        "ytd_cash_transfer": 250.0,
-    }
+    c.data = SaxoPortfolioData(
+        balance=BalanceData(
+            cash_balance=1000.50,
+            currency="EUR",
+            total_value=50000.0,
+            non_margin_positions_value=48000.0,
+        ),
+        performance=PerformanceData(
+            ytd_earnings_percentage=5.5,
+            investment_performance_percentage=12.34,
+            ytd_investment_performance_percentage=8.76,
+            month_investment_performance_percentage=2.1,
+            quarter_investment_performance_percentage=3.45,
+            cash_transfer_balance=10000.0,
+            ytd_profit_loss=1234.56,
+            ytd_cash_transfer=250.0,
+        ),
+        client=c.client_info,
+        last_updated=datetime(2026, 1, 1, 12, 0),
+    )
     c.config_entry = MagicMock()
     c.config_entry.entry_id = "test_entry"
     c.config_entry.data = {
@@ -104,6 +109,21 @@ def coord():
     return c
 
 
+def _set_balance(coord, **values):
+    coord.data = replace(coord.data, balance=replace(coord.data.balance, **values))
+
+
+def _set_performance(coord, **values):
+    coord.data = replace(
+        coord.data, performance=replace(coord.data.performance, **values)
+    )
+
+
+def _set_client(coord, **values):
+    coord.client_info = replace(coord.client_info, **values)
+    coord.data = replace(coord.data, client=coord.client_info)
+
+
 class TestModuleLevel:
     def test_parallel_updates(self):
         assert PARALLEL_UPDATES == 0
@@ -125,7 +145,7 @@ class TestAsyncSetupEntry:
 
     @pytest.mark.asyncio
     async def test_setup_skips_unknown_client(self, coord):
-        coord.get_client_name.return_value = "unknown"
+        _set_client(coord, client_name="unknown")
         entry = MagicMock()
         entry.runtime_data.coordinator = coord
         add_entities = MagicMock()
@@ -253,29 +273,31 @@ class TestBalanceSensors:
         assert sensor.native_value is None
 
     def test_balance_none_when_value_is_nan(self, coord):
-        coord.get_cash_balance.return_value = float("nan")
+        _set_balance(coord, cash_balance=float("nan"))
         sensor = SaxoCashBalanceSensor(coord)
         assert sensor.native_value is None
 
     def test_balance_none_when_value_is_inf(self, coord):
-        coord.get_cash_balance.return_value = float("inf")
+        _set_balance(coord, cash_balance=float("inf"))
         sensor = SaxoCashBalanceSensor(coord)
         assert sensor.native_value is None
 
-    def test_balance_none_when_exception(self, coord):
-        coord.get_cash_balance.side_effect = RuntimeError("fail")
+    def test_balance_none_when_api_value_not_numeric(self, coord):
+        coord.data = replace(
+            coord.data, balance=BalanceData.from_api({"CashBalance": "garbage"})
+        )
         sensor = SaxoCashBalanceSensor(coord)
         assert sensor.native_value is None
 
-    def test_balance_none_when_method_returns_none(self, coord):
-        coord.get_cash_balance.return_value = None
+    def test_balance_none_when_value_is_none(self, coord):
+        _set_balance(coord, cash_balance=None)
         sensor = SaxoCashBalanceSensor(coord)
         assert sensor.native_value is None
 
-    def test_balance_non_numeric_passthrough(self, coord):
-        coord.get_cash_balance.return_value = "string_value"
+    def test_balance_value_is_rounded(self, coord):
+        _set_balance(coord, cash_balance=1000.5049)
         sensor = SaxoCashBalanceSensor(coord)
-        assert sensor.native_value == "string_value"
+        assert sensor.native_value == 1000.5
 
     def test_balance_extra_attrs_include_currency(self, coord):
         sensor = SaxoCashBalanceSensor(coord)
@@ -299,9 +321,15 @@ class TestBalanceSensors:
         assert sensor.available is True
 
     def test_cash_transfer_unavailable(self, coord):
-        coord.data = {"other_key": 1}
+        coord.data = None
         sensor = SaxoCashTransferBalanceSensor(coord)
         assert sensor.available is False
+
+    def test_cash_transfer_unknown_before_first_fetch(self, coord):
+        _set_performance(coord, cash_transfer_balance=None)
+        sensor = SaxoCashTransferBalanceSensor(coord)
+        assert sensor.available is True
+        assert sensor.native_value is None
 
 
 class TestAccumulatedProfitLossSensor:
@@ -323,10 +351,16 @@ class TestAccumulatedProfitLossSensor:
         sensor = SaxoAccumulatedProfitLossSensor(coord)
         assert sensor.available is True
 
-    def test_unavailable_no_data_key(self, coord):
-        coord.data = {"other": 1}
+    def test_unavailable_no_data(self, coord):
+        coord.data = None
         sensor = SaxoAccumulatedProfitLossSensor(coord)
         assert sensor.available is False
+
+    def test_unknown_before_first_fetch(self, coord):
+        _set_performance(coord, ytd_earnings_percentage=None)
+        sensor = SaxoAccumulatedProfitLossSensor(coord)
+        assert sensor.available is True
+        assert sensor.native_value is None
 
     def test_state_class(self, coord):
         sensor = SaxoAccumulatedProfitLossSensor(coord)
@@ -335,38 +369,41 @@ class TestAccumulatedProfitLossSensor:
 
 class TestPerformanceSensors:
     @pytest.mark.parametrize(
-        "cls,method,expected,period",
+        "cls,field,expected,period",
         [
             (
                 SaxoInvestmentPerformanceSensor,
-                "get_investment_performance_percentage",
+                "investment_performance_percentage",
                 12.34,
                 "AllTime",
             ),
             (
                 SaxoYTDInvestmentPerformanceSensor,
-                "get_ytd_investment_performance_percentage",
+                "ytd_investment_performance_percentage",
                 8.76,
                 "YearToDate",
             ),
             (
                 SaxoMonthInvestmentPerformanceSensor,
-                "get_month_investment_performance_percentage",
+                "month_investment_performance_percentage",
                 2.1,
                 "Month",
             ),
             (
                 SaxoQuarterInvestmentPerformanceSensor,
-                "get_quarter_investment_performance_percentage",
+                "quarter_investment_performance_percentage",
                 3.45,
                 "Quarter",
             ),
         ],
     )
-    def test_performance_value(self, coord, cls, method, expected, period):
+    def test_performance_value(self, coord, cls, field, expected, period):
         sensor = cls(coord)
         assert sensor.native_value == expected
-        assert sensor._get_time_period() == period
+        assert sensor.extra_state_attributes["time_period"] == period
+
+        _set_performance(coord, **{field: 1.23456})
+        assert sensor.native_value == 1.23
 
     def test_performance_none_no_data(self, coord):
         coord.data = None
@@ -379,22 +416,17 @@ class TestPerformanceSensors:
         assert sensor.native_value is None
 
     def test_performance_nan_returns_none(self, coord):
-        coord.get_investment_performance_percentage.return_value = float("nan")
+        _set_performance(coord, investment_performance_percentage=float("nan"))
         sensor = SaxoInvestmentPerformanceSensor(coord)
         assert sensor.native_value is None
 
-    def test_performance_non_numeric_returns_none(self, coord):
-        coord.get_investment_performance_percentage.return_value = "not_a_number"
-        sensor = SaxoInvestmentPerformanceSensor(coord)
-        assert sensor.native_value is None
-
-    def test_performance_exception_returns_none(self, coord):
-        coord.get_investment_performance_percentage.side_effect = RuntimeError
+    def test_performance_inf_returns_none(self, coord):
+        _set_performance(coord, investment_performance_percentage=float("-inf"))
         sensor = SaxoInvestmentPerformanceSensor(coord)
         assert sensor.native_value is None
 
     def test_performance_none_value(self, coord):
-        coord.get_investment_performance_percentage.return_value = None
+        _set_performance(coord, investment_performance_percentage=None)
         sensor = SaxoInvestmentPerformanceSensor(coord)
         assert sensor.native_value is None
 
@@ -482,25 +514,30 @@ class TestPerformanceSensors:
 
     def test_available_with_unknown_state_when_none(self, coord):
         """A not-yet-fetched value is reported as unknown, not unavailable."""
-        coord.get_investment_performance_percentage.return_value = None
+        _set_performance(coord, investment_performance_percentage=None)
         sensor = SaxoInvestmentPerformanceSensor(coord)
         assert sensor.available is True
         assert sensor.native_value is None
 
-    def test_available_false_exception(self, coord):
-        coord.get_investment_performance_percentage.side_effect = RuntimeError
+    def test_available_false_without_data(self, coord):
+        coord.data = None
         sensor = SaxoInvestmentPerformanceSensor(coord)
         assert sensor.available is False
 
-    def test_performance_base_get_value_not_implemented(self, coord):
-        sensor = SaxoPerformanceSensorBase(coord, "test", "test_key")
-        with pytest.raises(NotImplementedError):
-            sensor._get_performance_value()
+    def test_performance_base_uses_value_fn_and_period(self, coord):
+        sensor = SaxoPerformanceSensorBase(
+            coord, "test", lambda data: data.performance.ytd_profit_loss, "Month"
+        )
+        assert sensor.native_value == 1234.56
+        assert sensor.extra_state_attributes["time_period"] == "Month"
 
-    def test_performance_base_get_period_not_implemented(self, coord):
-        sensor = SaxoPerformanceSensorBase(coord, "test", "test_key")
-        with pytest.raises(NotImplementedError):
-            sensor._get_time_period()
+    def test_performance_base_unknown_period_has_no_dates(self, coord):
+        sensor = SaxoPerformanceSensorBase(
+            coord, "test", lambda data: None, "SomethingElse"
+        )
+        attrs = sensor.extra_state_attributes
+        assert "from" not in attrs
+        assert "thru" not in attrs
 
     def test_state_class(self, coord):
         sensor = SaxoInvestmentPerformanceSensor(coord)
@@ -518,7 +555,7 @@ class TestDiagnosticSensors:
         assert sensor.available is True
 
     def test_client_id_unavailable(self, coord):
-        coord.get_client_id.return_value = "unknown"
+        _set_client(coord, client_id="unknown")
         sensor = SaxoClientIDSensor(coord)
         assert sensor.available is False
 
@@ -528,7 +565,7 @@ class TestDiagnosticSensors:
         assert sensor._attr_entity_registry_enabled_default is False
 
     def test_account_id_unavailable(self, coord):
-        coord.get_account_id.return_value = "unknown"
+        _set_client(coord, account_id="unknown")
         sensor = SaxoAccountIDSensor(coord)
         assert sensor.available is False
 
@@ -538,7 +575,7 @@ class TestDiagnosticSensors:
         assert sensor._attr_entity_registry_enabled_default is False
 
     def test_name_unavailable(self, coord):
-        coord.get_client_name.return_value = "unknown"
+        _set_client(coord, client_name="unknown")
         sensor = SaxoNameSensor(coord)
         assert sensor.available is False
 
@@ -777,14 +814,14 @@ class TestYTDCurrencySensors:
         assert sensor._attr_state_class == "measurement"
 
     def test_ytd_profit_loss_unavailable_when_none(self, coord):
-        coord.get_ytd_profit_loss.return_value = None
+        _set_performance(coord, ytd_profit_loss=None)
         sensor = SaxoYTDProfitLossSensor(coord)
         assert sensor.native_value is None
         assert sensor.available is False
 
     def test_ytd_profit_loss_currency_attr(self, coord):
         sensor = SaxoYTDProfitLossSensor(coord)
-        assert sensor.extra_state_attributes["currency"] == coord.get_currency()
+        assert sensor.extra_state_attributes["currency"] == "EUR"
 
     def test_ytd_cash_transfer_value(self, coord):
         sensor = SaxoYTDCashTransferSensor(coord)
@@ -795,7 +832,7 @@ class TestYTDCurrencySensors:
         assert sensor._attr_state_class == "total"
 
     def test_ytd_cash_transfer_unavailable_when_none(self, coord):
-        coord.get_ytd_cash_transfer.return_value = None
+        _set_performance(coord, ytd_cash_transfer=None)
         sensor = SaxoYTDCashTransferSensor(coord)
         assert sensor.native_value is None
         assert sensor.available is False

@@ -15,6 +15,12 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.saxo_portfolio.const import DOMAIN
 from custom_components.saxo_portfolio.coordinator import SaxoCoordinator
+from custom_components.saxo_portfolio.data import (
+    BalanceData,
+    ClientInfo,
+    PerformanceData,
+    SaxoPortfolioData,
+)
 
 
 @pytest.mark.contract
@@ -76,28 +82,36 @@ class TestSaxoCoordinatorContract:
         assert hasattr(coordinator, "update_interval")
 
         # Validate initial state
-        assert coordinator.data is None or isinstance(coordinator.data, dict)
+        assert coordinator.data is None or isinstance(
+            coordinator.data, SaxoPortfolioData
+        )
         assert isinstance(coordinator.last_update_success, bool)
 
     @pytest.fixture
     def mock_portfolio_data(self):
-        """Return a complete portfolio data dict matching the coordinator schema."""
-        return {
-            "cash_balance": 5000.00,
-            "currency": "USD",
-            "total_value": 125000.00,
-            "non_margin_positions_value": 120000.00,
-            "ytd_earnings_percentage": 5.2,
-            "investment_performance_percentage": 12.3,
-            "ytd_investment_performance_percentage": 4.5,
-            "month_investment_performance_percentage": 1.1,
-            "quarter_investment_performance_percentage": 3.2,
-            "cash_transfer_balance": 50000.00,
-            "client_id": "client_123",
-            "client_name": "Test User",
-            "account_id": "acc_001",
-            "last_updated": datetime.now().isoformat(),
-        }
+        """Return complete typed portfolio data matching the coordinator schema."""
+        return SaxoPortfolioData(
+            balance=BalanceData(
+                cash_balance=5000.00,
+                currency="USD",
+                total_value=125000.00,
+                non_margin_positions_value=120000.00,
+            ),
+            performance=PerformanceData(
+                ytd_earnings_percentage=5.2,
+                investment_performance_percentage=12.3,
+                ytd_investment_performance_percentage=4.5,
+                month_investment_performance_percentage=1.1,
+                quarter_investment_performance_percentage=3.2,
+                cash_transfer_balance=50000.00,
+            ),
+            client=ClientInfo(
+                client_id="client_123",
+                client_name="Test User",
+                account_id="acc_001",
+            ),
+            last_updated=datetime.now(),
+        )
 
     @pytest.mark.asyncio
     async def test_coordinator_data_structure(self, coordinator, mock_portfolio_data):
@@ -109,9 +123,9 @@ class TestSaxoCoordinatorContract:
 
         # Validate data structure matches current implementation
         data = coordinator.data
-        assert isinstance(data, dict)
+        assert isinstance(data, SaxoPortfolioData)
 
-        # Required top-level fields for current implementation
+        # Required fields for current implementation
         expected_fields = {
             "cash_balance",
             "currency",
@@ -128,42 +142,36 @@ class TestSaxoCoordinatorContract:
         }
 
         for field in expected_fields:
-            assert field in data
+            assert field in data.field_names
 
         # Validate field types
-        assert isinstance(data["cash_balance"], int | float)
-        assert isinstance(data["currency"], str)
-        assert isinstance(data["total_value"], int | float)
-        assert isinstance(data["client_id"], str)
-        assert isinstance(data["account_id"], str)
-        assert isinstance(data["client_name"], str)
+        assert isinstance(data.balance.cash_balance, float)
+        assert isinstance(data.balance.currency, str)
+        assert isinstance(data.balance.total_value, float)
+        assert isinstance(data.client.client_id, str)
+        assert isinstance(data.client.account_id, str)
+        assert isinstance(data.client.client_name, str)
+        assert isinstance(data.last_updated, datetime)
 
     @pytest.mark.asyncio
-    async def test_coordinator_getter_methods(self, coordinator, mock_portfolio_data):
-        """Test that coordinator provides required getter methods."""
+    async def test_coordinator_typed_accessors(self, coordinator, mock_portfolio_data):
+        """Test that coordinator exposes typed data for sensors."""
+        # Before the first refresh the client identity is unknown
+        assert coordinator.client_info == ClientInfo()
+
         with patch.object(
             coordinator, "_fetch_portfolio_data", return_value=mock_portfolio_data
         ):
             await coordinator.async_config_entry_first_refresh()
 
-        # Should have getter methods for sensor data
-        assert hasattr(coordinator, "get_cash_balance")
-        assert hasattr(coordinator, "get_currency")
-        assert hasattr(coordinator, "get_total_value")
-        assert hasattr(coordinator, "get_client_id")
-        assert hasattr(coordinator, "get_account_id")
-        assert hasattr(coordinator, "get_client_name")
+        assert coordinator.data is mock_portfolio_data
+        assert coordinator.client_info.client_id == "client_123"
+        assert coordinator.client_info.account_id == "acc_001"
+        assert coordinator.client_info.client_name == "Test User"
 
-        # Methods should be callable and return expected types
-        assert callable(coordinator.get_cash_balance)
-        assert callable(coordinator.get_currency)
-        assert callable(coordinator.get_total_value)
-
-        # Test return values when data is available
-        if coordinator.data:
-            currency = coordinator.get_currency()
-            assert isinstance(currency, str)
-            assert len(currency) == 3  # ISO currency code
+        currency = coordinator.data.balance.currency
+        assert isinstance(currency, str)
+        assert len(currency) == 3  # ISO currency code
 
     @pytest.mark.asyncio
     async def test_coordinator_update_interval(self, coordinator, mock_portfolio_data):
@@ -246,20 +254,21 @@ class TestSaxoCoordinatorContract:
             coordinator, "_fetch_portfolio_data", return_value=mock_portfolio_data
         ):
             await coordinator.async_config_entry_first_refresh()
-            first_data = coordinator.data.copy()
+            first_data = coordinator.data
 
             # Second update should maintain data structure
             await coordinator.async_refresh()
             second_data = coordinator.data
 
         # Structure should be consistent
-        assert set(first_data.keys()) == set(second_data.keys())
+        assert first_data.field_names == second_data.field_names
+        assert first_data == second_data
 
         # Core fields should remain consistent
-        assert "cash_balance" in second_data
-        assert "currency" in second_data
-        assert "total_value" in second_data
-        assert "client_id" in second_data
+        assert "cash_balance" in second_data.field_names
+        assert "currency" in second_data.field_names
+        assert "total_value" in second_data.field_names
+        assert "client_id" in second_data.field_names
 
     def test_coordinator_implements_interface(self, coordinator):
         """Test that coordinator implements required DataUpdateCoordinator interface."""
