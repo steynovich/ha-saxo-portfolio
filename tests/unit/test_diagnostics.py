@@ -21,6 +21,13 @@ import pytest
 
 from homeassistant.const import EntityCategory
 
+from custom_components.saxo_portfolio.coordinator import SaxoCoordinator
+from custom_components.saxo_portfolio.data import (
+    BalanceData,
+    ClientInfo,
+    PerformanceData,
+    SaxoPortfolioData,
+)
 from custom_components.saxo_portfolio.const import (
     DEFAULT_TIMEZONE,
     DEFAULT_UPDATE_INTERVAL_AFTER_HOURS,
@@ -57,33 +64,59 @@ def _mock_entity_registry():
 # ---------------------------------------------------------------------------
 
 
+def _mock_coordinator(**attrs) -> MagicMock:
+    """Build a coordinator mock limited to SaxoCoordinator's real interface."""
+    coordinator = MagicMock(spec=SaxoCoordinator)
+    coordinator.last_successful_update_time = None
+    coordinator.last_update_success = True
+    coordinator.update_interval = timedelta(minutes=5)
+    coordinator.data = None
+    coordinator.last_exception = None
+    coordinator.timezone = "any"
+    coordinator.is_market_hours = False
+    coordinator.get_positions.return_value = {}
+    for name, value in attrs.items():
+        setattr(coordinator, name, value)
+    return coordinator
+
+
+def _data(
+    balance: BalanceData | None = None,
+    performance: PerformanceData | None = None,
+    client: ClientInfo | None = None,
+) -> SaxoPortfolioData:
+    return SaxoPortfolioData(
+        balance=balance or BalanceData(),
+        performance=performance or PerformanceData(),
+        client=client or ClientInfo(),
+        last_updated=datetime(2026, 1, 1, 12, 0),
+    )
+
+
 class TestGetCoordinatorStatus:
     """Tests for _get_coordinator_status."""
 
-    def test_minimal_coordinator(self):
-        """A bare object with no attributes should produce safe defaults."""
-        coordinator = object()
-        result = _get_coordinator_status(coordinator)
+    def test_no_data_yet(self):
+        """A coordinator before its first update reports safe values."""
+        result = _get_coordinator_status(_mock_coordinator())
 
-        assert result["last_update_success"] is None
+        assert result["last_update_success"] is True
         assert result["last_update_time"] is None
-        assert result["update_interval"] is None
-        assert result["configured_timezone"] == "Unknown"
-        assert result["is_market_hours"] is None
+        assert result["update_interval"] == str(timedelta(minutes=5))
+        assert result["configured_timezone"] == "any"
+        assert result["is_market_hours"] is False
         assert result["has_data"] is False
         assert result["last_exception"] is None
 
     def test_with_last_update_time(self):
-        """last_update_time should be formatted as ISO when set."""
-        coordinator = MagicMock()
+        """last_update_time is the last successful update, as ISO."""
         dt = datetime(2026, 1, 15, 10, 30, 0)
-        coordinator.last_update_time_utc = dt
-        coordinator.last_update_success = True
-        coordinator.update_interval = timedelta(minutes=5)
-        coordinator.data = {"balance": {}}
-        coordinator.last_exception = None
-        coordinator._timezone = "Europe/Amsterdam"
-        coordinator._is_market_hours.return_value = True
+        coordinator = _mock_coordinator(
+            last_successful_update_time=dt,
+            data=_data(),
+            timezone="Europe/Amsterdam",
+            is_market_hours=True,
+        )
 
         result = _get_coordinator_status(coordinator)
 
@@ -94,43 +127,20 @@ class TestGetCoordinatorStatus:
         assert result["is_market_hours"] is True
         assert result["has_data"] is True
 
-    def test_last_update_time_none(self):
-        """When last_update_time_utc is None, output should be None."""
-        coordinator = MagicMock()
-        coordinator.last_update_time_utc = None
-        coordinator.last_exception = None
-        coordinator.data = None
-
+    def test_uses_public_properties(self):
+        """Timezone and market status come from the public coordinator API."""
+        coordinator = _mock_coordinator(timezone="America/New_York")
+        coordinator.is_market_hours = True
         result = _get_coordinator_status(coordinator)
-        assert result["last_update_time"] is None
-        assert result["has_data"] is False
+        assert result["configured_timezone"] == "America/New_York"
+        assert result["is_market_hours"] is True
 
     def test_last_exception_formatted(self):
         """last_exception should be stringified when present."""
-        coordinator = MagicMock()
-        coordinator.last_update_time_utc = None
-        coordinator.last_exception = ValueError("test error")
-        coordinator.data = None
+        coordinator = _mock_coordinator(last_exception=ValueError("test error"))
 
         result = _get_coordinator_status(coordinator)
         assert result["last_exception"] == "test error"
-
-    def test_is_market_hours_not_callable(self):
-        """When _is_market_hours is not callable, result should be None."""
-        coordinator = MagicMock()
-        coordinator._is_market_hours = "not_callable"
-        coordinator.last_update_time_utc = None
-        coordinator.last_exception = None
-        coordinator.data = None
-
-        result = _get_coordinator_status(coordinator)
-        assert result["is_market_hours"] is None
-
-    def test_data_is_sentinel_when_missing(self):
-        """When coordinator has no data attr at all, has_data should be False."""
-        coordinator = MagicMock(spec=[])  # empty spec = no attributes
-        result = _get_coordinator_status(coordinator)
-        assert result["has_data"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -301,36 +311,47 @@ class TestGetDataSnapshot:
         """None data should return an empty dict."""
         assert _get_data_snapshot(None) == {}
 
-    def test_empty_dict(self):
-        """Empty dict should return an empty dict (falsy)."""
-        assert _get_data_snapshot({}) == {}
-
     def test_full_data(self):
-        """Flat coordinator data populates all snapshot fields."""
-        data = {
-            "cash_balance": 1000.0,
-            "total_value": 5000.0,
-            "non_margin_positions_value": 4000.0,
-            "currency": "EUR",
-            "investment_performance_percentage": 5.0,
-            "client_id": "12345",
-            "account_id": "A1",
-            "client_name": "Someone",
-        }
+        """Typed coordinator data populates all snapshot fields."""
+        data = _data(
+            balance=BalanceData(
+                cash_balance=1000.0,
+                currency="EUR",
+                total_value=5000.0,
+                non_margin_positions_value=4000.0,
+            ),
+            performance=PerformanceData(investment_performance_percentage=5.0),
+            client=ClientInfo(
+                client_id="12345", account_id="A1", client_name="Someone"
+            ),
+        )
         result = _get_data_snapshot(data)
 
         assert result["has_balance_data"] is True
         assert result["has_performance_data"] is True
         assert result["has_client_data"] is True
         assert result["currency"] == "EUR"
-        assert set(result["data_keys"]) == set(data)
+        assert result["data_keys"] == data.field_names
+        assert "cash_balance" in result["data_keys"]
+        assert "client_id" in result["data_keys"]
         # Only key names and flags - never the values
         assert "12345" not in str(result)
         assert "5000.0" not in str(result)
+        assert "Someone" not in str(result)
 
     def test_partial_data_no_balance(self):
-        """Data without balance keys reports has_balance_data as False."""
-        data = {"investment_performance_percentage": 1.5, "currency": "USD"}
+        """Non-numeric balance values report has_balance_data as False."""
+        data = _data(
+            balance=BalanceData.from_api(
+                {
+                    "CashBalance": None,
+                    "TotalValue": None,
+                    "NonMarginPositionsValue": None,
+                    "Currency": "USD",
+                }
+            ),
+            performance=PerformanceData(investment_performance_percentage=1.5),
+        )
         result = _get_data_snapshot(data)
 
         assert result["has_balance_data"] is False
@@ -339,17 +360,25 @@ class TestGetDataSnapshot:
 
     def test_non_numeric_balance_is_not_balance_data(self):
         """Non-numeric balance values do not count as balance data."""
-        data = {"cash_balance": "unexpected_string", "total_value": None}
+        data = _data(
+            balance=BalanceData.from_api(
+                {
+                    "CashBalance": "unexpected_string",
+                    "TotalValue": None,
+                    "NonMarginPositionsValue": {},
+                }
+            )
+        )
         result = _get_data_snapshot(data)
 
         assert result["has_balance_data"] is False
 
     def test_default_currency(self):
-        """Missing currency key should default to 'Unknown'."""
-        data = {"cash_balance": 1.0}
+        """A balance without a currency reports the USD default."""
+        data = _data(balance=BalanceData.from_api({"CashBalance": 1.0}))
         result = _get_data_snapshot(data)
 
-        assert result["currency"] == "Unknown"
+        assert result["currency"] == "USD"
 
 
 # ---------------------------------------------------------------------------
@@ -425,18 +454,14 @@ class TestAsyncGetConfigEntryDiagnostics:
     @pytest.mark.asyncio
     async def test_full_diagnostics(self, mock_hass, mock_config_entry):
         """Full diagnostics should contain all top-level sections."""
-        coordinator = MagicMock()
-        coordinator.last_update_time_utc = datetime(2026, 4, 1, 12, 0, 0)
-        coordinator.last_update_success = True
-        coordinator.update_interval = timedelta(minutes=15)
-        coordinator.data = {
-            "balance": {"CashAvailableForTrading": 5000},
-            "client": {"ClientId": "SECRET"},
-            "currency": "EUR",
-        }
-        coordinator.last_exception = None
-        coordinator._timezone = "any"
-        coordinator._is_market_hours.return_value = False
+        coordinator = _mock_coordinator(
+            last_successful_update_time=datetime(2026, 4, 1, 12, 0, 0),
+            update_interval=timedelta(minutes=15),
+            data=_data(
+                balance=BalanceData(cash_balance=5000.0, currency="EUR"),
+                client=ClientInfo(client_id="SECRET"),
+            ),
+        )
 
         mock_config_entry.runtime_data = MagicMock()
         mock_config_entry.runtime_data.coordinator = coordinator
@@ -450,14 +475,14 @@ class TestAsyncGetConfigEntryDiagnostics:
         assert "market_configuration" in result
         assert "token_status" in result
         assert "integration" in result
+        assert result["data_snapshot"]["position_count"] == 0
+        assert "SECRET" not in str(result)
+        assert "5000.0" not in str(result)
 
     @pytest.mark.asyncio
     async def test_config_section_fields(self, mock_hass, mock_config_entry):
         """Config section should have the expected fields."""
-        coordinator = MagicMock()
-        coordinator.data = None
-        coordinator.last_update_time_utc = None
-        coordinator.last_exception = None
+        coordinator = _mock_coordinator()
 
         mock_config_entry.runtime_data = MagicMock()
         mock_config_entry.runtime_data.coordinator = coordinator
@@ -475,18 +500,9 @@ class TestAsyncGetConfigEntryDiagnostics:
     @pytest.mark.asyncio
     async def test_sensitive_data_redacted(self, mock_hass, mock_config_entry):
         """Sensitive fields should be redacted in the output."""
-        coordinator = MagicMock()
-        coordinator.data = {
-            "balance": {},
-            "client": {"ClientId": "secret_id", "Name": "visible"},
-            "currency": "USD",
-        }
-        coordinator.last_update_time_utc = None
-        coordinator.last_update_success = True
-        coordinator.update_interval = timedelta(minutes=5)
-        coordinator.last_exception = None
-        coordinator._timezone = "any"
-        coordinator._is_market_hours.return_value = False
+        coordinator = _mock_coordinator(
+            data=_data(client=ClientInfo(client_id="secret_id", client_name="visible"))
+        )
 
         mock_config_entry.runtime_data = MagicMock()
         mock_config_entry.runtime_data.coordinator = coordinator
@@ -499,14 +515,12 @@ class TestAsyncGetConfigEntryDiagnostics:
         result_str = str(result)
         assert "test_access_token" not in result_str
         assert "test_refresh_token" not in result_str
+        assert "secret_id" not in result_str
 
     @pytest.mark.asyncio
     async def test_no_token_in_entry_data(self, mock_hass, mock_config_entry):
         """When no token is in entry data, token_status should be empty."""
-        coordinator = MagicMock()
-        coordinator.data = None
-        coordinator.last_update_time_utc = None
-        coordinator.last_exception = None
+        coordinator = _mock_coordinator()
 
         # Remove token from data
         mock_config_entry.data = {"timezone": "any"}
@@ -520,10 +534,7 @@ class TestAsyncGetConfigEntryDiagnostics:
     @pytest.mark.asyncio
     async def test_integration_section_has_version(self, mock_hass, mock_config_entry):
         """Integration section should include version and sensor info."""
-        coordinator = MagicMock()
-        coordinator.data = None
-        coordinator.last_update_time_utc = None
-        coordinator.last_exception = None
+        coordinator = _mock_coordinator()
 
         mock_config_entry.runtime_data = MagicMock()
         mock_config_entry.runtime_data.coordinator = coordinator
@@ -539,10 +550,7 @@ class TestAsyncGetConfigEntryDiagnostics:
     @pytest.mark.asyncio
     async def test_market_config_for_known_timezone(self, mock_hass, mock_config_entry):
         """When timezone is a known market, diagnostics should include market hours."""
-        coordinator = MagicMock()
-        coordinator.data = None
-        coordinator.last_update_time_utc = None
-        coordinator.last_exception = None
+        coordinator = _mock_coordinator()
 
         mock_config_entry.data = {
             "timezone": "Europe/Amsterdam",
@@ -563,17 +571,16 @@ class TestAsyncGetConfigEntryDiagnostics:
         assert "market_open" in market
 
     @pytest.mark.asyncio
-    async def test_coordinator_without_data_attr(self, mock_hass, mock_config_entry):
-        """When coordinator has no data attribute, diagnostics should not crash."""
-        coordinator = MagicMock(spec=[])  # No attributes at all
-        # But we need runtime_data.coordinator to work
+    async def test_coordinator_without_data(self, mock_hass, mock_config_entry):
+        """Before the first update there is no data snapshot."""
+        coordinator = _mock_coordinator()
         mock_config_entry.runtime_data = MagicMock()
         mock_config_entry.runtime_data.coordinator = coordinator
 
-        # hasattr(coordinator, "data") will be False for spec=[]
         result = await async_get_config_entry_diagnostics(mock_hass, mock_config_entry)
 
         assert result["data_snapshot"] == {}
+        assert result["coordinator"]["has_data"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -659,7 +666,9 @@ class TestRealDataAvailability:
         entities = await _created_sensor_entities(
             mock_hass, mock_config_entry, coordinator
         )
-        mock_config_entry.title = f"Saxo Portfolio ({coordinator.get_client_id()})"
+        mock_config_entry.title = (
+            f"Saxo Portfolio ({coordinator.client_info.client_id})"
+        )
 
         with patch(
             "custom_components.saxo_portfolio.diagnostics.er.async_entries_for_config_entry",
@@ -699,17 +708,14 @@ class TestRealDataAvailability:
 
     def test_flags_false_without_performance_or_client_data(self):
         """Balance-only data (performance never fetched) is reported honestly."""
-        data = {
-            "cash_balance": 1.0,
-            "currency": "EUR",
-            "total_value": 2.0,
-            "non_margin_positions_value": 1.0,
-            "investment_performance_percentage": None,
-            "ytd_earnings_percentage": None,
-            "client_id": "unknown",
-            "account_id": "unknown",
-            "client_name": "unknown",
-        }
+        data = _data(
+            balance=BalanceData(
+                cash_balance=1.0,
+                currency="EUR",
+                total_value=2.0,
+                non_margin_positions_value=1.0,
+            )
+        )
         result = _get_data_snapshot(data)
         assert result["has_balance_data"] is True
         assert result["has_performance_data"] is False
@@ -717,6 +723,16 @@ class TestRealDataAvailability:
 
     def test_flags_false_without_balance(self):
         """Data without balance keys reports has_balance_data False."""
-        result = _get_data_snapshot({"client_id": "C1", "currency": "EUR"})
+        result = _get_data_snapshot(
+            _data(
+                balance=BalanceData(
+                    cash_balance=None,
+                    currency="EUR",
+                    total_value=None,
+                    non_margin_positions_value=None,
+                ),
+                client=ClientInfo(client_id="C1"),
+            )
+        )
         assert result["has_balance_data"] is False
         assert result["has_client_data"] is True

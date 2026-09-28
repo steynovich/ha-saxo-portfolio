@@ -4,16 +4,24 @@ from __future__ import annotations
 
 import json
 import time
+from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import EntityCategory
 from homeassistant.util import dt as dt_util
 
-from custom_components.saxo_portfolio.coordinator import PositionData, SaxoCoordinator
+from custom_components.saxo_portfolio.coordinator import SaxoCoordinator
+from custom_components.saxo_portfolio.positions import PositionData
+from custom_components.saxo_portfolio.data import (
+    BalanceData,
+    ClientInfo,
+    PerformanceData,
+    SaxoPortfolioData,
+)
 from custom_components.saxo_portfolio.sensor import (
     PARALLEL_UPDATES,
     SaxoAccumulatedProfitLossSensor,
@@ -47,33 +55,31 @@ from custom_components.saxo_portfolio.sensor import (
 def coord():
     """Create a mock coordinator."""
     c = MagicMock(spec=SaxoCoordinator)
-    c.get_client_id.return_value = "TEST123"
-    c.get_currency.return_value = "EUR"
-    c.get_client_name.return_value = "Test User"
-    c.get_cash_balance.return_value = 1000.50
-    c.get_total_value.return_value = 50000.0
-    c.get_non_margin_positions_value.return_value = 48000.0
-    c.get_ytd_earnings_percentage.return_value = 5.5
-    c.get_investment_performance_percentage.return_value = 12.34
-    c.get_ytd_investment_performance_percentage.return_value = 8.76
-    c.get_month_investment_performance_percentage.return_value = 2.1
-    c.get_quarter_investment_performance_percentage.return_value = 3.45
-    c.get_cash_transfer_balance.return_value = 10000.0
-    c.get_ytd_profit_loss.return_value = 1234.56
-    c.get_ytd_cash_transfer.return_value = 250.0
-    c.get_account_id.return_value = "ACC456"
+    c.client_info = ClientInfo(
+        client_id="TEST123", account_id="ACC456", client_name="Test User"
+    )
     c.last_update_success = True
     c.last_exception = None
-    c.data = {
-        "cash_balance": 1000.50,
-        "total_value": 50000.0,
-        "last_updated": "2026-01-01T12:00:00",
-        "ytd_earnings_percentage": 5.5,
-        "investment_performance_percentage": 12.34,
-        "cash_transfer_balance": 10000.0,
-        "ytd_profit_loss": 1234.56,
-        "ytd_cash_transfer": 250.0,
-    }
+    c.data = SaxoPortfolioData(
+        balance=BalanceData(
+            cash_balance=1000.50,
+            currency="EUR",
+            total_value=50000.0,
+            non_margin_positions_value=48000.0,
+        ),
+        performance=PerformanceData(
+            ytd_earnings_percentage=5.5,
+            investment_performance_percentage=12.34,
+            ytd_investment_performance_percentage=8.76,
+            month_investment_performance_percentage=2.1,
+            quarter_investment_performance_percentage=3.45,
+            cash_transfer_balance=10000.0,
+            ytd_profit_loss=1234.56,
+            ytd_cash_transfer=250.0,
+        ),
+        client=c.client_info,
+        last_updated=datetime(2026, 1, 1, 12, 0),
+    )
     c.config_entry = MagicMock()
     c.config_entry.entry_id = "test_entry"
     c.config_entry.data = {
@@ -104,6 +110,21 @@ def coord():
     return c
 
 
+def _set_balance(coord, **values):
+    coord.data = replace(coord.data, balance=replace(coord.data.balance, **values))
+
+
+def _set_performance(coord, **values):
+    coord.data = replace(
+        coord.data, performance=replace(coord.data.performance, **values)
+    )
+
+
+def _set_client(coord, **values):
+    coord.client_info = replace(coord.client_info, **values)
+    coord.data = replace(coord.data, client=coord.client_info)
+
+
 class TestModuleLevel:
     def test_parallel_updates(self):
         assert PARALLEL_UPDATES == 0
@@ -125,7 +146,7 @@ class TestAsyncSetupEntry:
 
     @pytest.mark.asyncio
     async def test_setup_skips_unknown_client(self, coord):
-        coord.get_client_name.return_value = "unknown"
+        _set_client(coord, client_name="unknown")
         entry = MagicMock()
         entry.runtime_data.coordinator = coord
         add_entities = MagicMock()
@@ -166,13 +187,11 @@ class TestSaxoSensorBase:
 
     def test_device_info(self, coord):
         sensor = SaxoCashBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         info = sensor.device_info
         assert info["name"] == "Saxo TEST123 Portfolio"
 
     def test_extra_state_attributes(self, coord):
         sensor = SaxoCashBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes
         assert "attribution" in attrs
         assert attrs["last_updated"] == "2026-01-01T12:00:00"
@@ -180,33 +199,28 @@ class TestSaxoSensorBase:
     def test_extra_state_attributes_no_data(self, coord):
         coord.data = None
         sensor = SaxoCashBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes
         assert "last_updated" not in attrs
 
     def test_available_with_data(self, coord):
         sensor = SaxoCashBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is True
 
     def test_unavailable_no_data(self, coord):
         coord.data = None
         sensor = SaxoCashBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is False
 
     def test_available_update_failing_but_recent(self, coord):
         coord.last_update_success = False
         coord.last_successful_update_time = datetime.now()
         sensor = SaxoCashBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is True
 
     def test_unavailable_sustained_failure(self, coord):
         coord.last_update_success = False
         coord.last_successful_update_time = datetime.now() - timedelta(hours=1)
         sensor = SaxoCashBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         with patch("homeassistant.util.dt.utcnow", return_value=datetime.now()):
             with patch("homeassistant.util.dt.as_utc", side_effect=lambda x: x):
                 assert sensor.available is False
@@ -215,7 +229,6 @@ class TestSaxoSensorBase:
         coord.last_update_success = False
         coord.last_successful_update_time = None
         sensor = SaxoCashBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is True
 
     @pytest.mark.asyncio
@@ -240,64 +253,55 @@ class TestSaxoSensorBase:
 class TestBalanceSensors:
     def test_cash_balance_value(self, coord):
         sensor = SaxoCashBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == 1000.50
 
     def test_total_value(self, coord):
         sensor = SaxoTotalValueSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == 50000.0
 
     def test_non_margin_value(self, coord):
         sensor = SaxoNonMarginPositionsValueSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == 48000.0
 
     def test_balance_none_when_no_data(self, coord):
         coord.data = None
         sensor = SaxoCashBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value is None
 
     def test_balance_none_when_update_failed(self, coord):
         coord.last_update_success = False
         sensor = SaxoCashBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value is None
 
     def test_balance_none_when_value_is_nan(self, coord):
-        coord.get_cash_balance.return_value = float("nan")
+        _set_balance(coord, cash_balance=float("nan"))
         sensor = SaxoCashBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value is None
 
     def test_balance_none_when_value_is_inf(self, coord):
-        coord.get_cash_balance.return_value = float("inf")
+        _set_balance(coord, cash_balance=float("inf"))
         sensor = SaxoCashBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value is None
 
-    def test_balance_none_when_exception(self, coord):
-        coord.get_cash_balance.side_effect = RuntimeError("fail")
+    def test_balance_none_when_api_value_not_numeric(self, coord):
+        coord.data = replace(
+            coord.data, balance=BalanceData.from_api({"CashBalance": "garbage"})
+        )
         sensor = SaxoCashBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value is None
 
-    def test_balance_none_when_method_returns_none(self, coord):
-        coord.get_cash_balance.return_value = None
+    def test_balance_none_when_value_is_none(self, coord):
+        _set_balance(coord, cash_balance=None)
         sensor = SaxoCashBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value is None
 
-    def test_balance_non_numeric_passthrough(self, coord):
-        coord.get_cash_balance.return_value = "string_value"
+    def test_balance_value_is_rounded(self, coord):
+        _set_balance(coord, cash_balance=1000.5049)
         sensor = SaxoCashBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
-        assert sensor.native_value == "string_value"
+        assert sensor.native_value == 1000.5
 
     def test_balance_extra_attrs_include_currency(self, coord):
         sensor = SaxoCashBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes
         assert attrs["currency"] == "EUR"
 
@@ -311,49 +315,53 @@ class TestBalanceSensors:
 
     def test_cash_transfer_balance(self, coord):
         sensor = SaxoCashTransferBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == 10000.0
 
     def test_cash_transfer_available(self, coord):
         sensor = SaxoCashTransferBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is True
 
     def test_cash_transfer_unavailable(self, coord):
-        coord.data = {"other_key": 1}
+        coord.data = None
         sensor = SaxoCashTransferBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is False
+
+    def test_cash_transfer_unknown_before_first_fetch(self, coord):
+        _set_performance(coord, cash_transfer_balance=None)
+        sensor = SaxoCashTransferBalanceSensor(coord)
+        assert sensor.available is True
+        assert sensor.native_value is None
 
 
 class TestAccumulatedProfitLossSensor:
     def test_value(self, coord):
         sensor = SaxoAccumulatedProfitLossSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == 5.5
 
     def test_none_without_data(self, coord):
         coord.data = None
         sensor = SaxoAccumulatedProfitLossSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value is None
 
     def test_attrs_include_currency(self, coord):
         sensor = SaxoAccumulatedProfitLossSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes
         assert attrs["currency"] == "EUR"
 
     def test_available(self, coord):
         sensor = SaxoAccumulatedProfitLossSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is True
 
-    def test_unavailable_no_data_key(self, coord):
-        coord.data = {"other": 1}
+    def test_unavailable_no_data(self, coord):
+        coord.data = None
         sensor = SaxoAccumulatedProfitLossSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is False
+
+    def test_unknown_before_first_fetch(self, coord):
+        _set_performance(coord, ytd_earnings_percentage=None)
+        sensor = SaxoAccumulatedProfitLossSensor(coord)
+        assert sensor.available is True
+        assert sensor.native_value is None
 
     def test_state_class(self, coord):
         sensor = SaxoAccumulatedProfitLossSensor(coord)
@@ -362,79 +370,69 @@ class TestAccumulatedProfitLossSensor:
 
 class TestPerformanceSensors:
     @pytest.mark.parametrize(
-        "cls,method,expected,period",
+        "cls,field,expected,period",
         [
             (
                 SaxoInvestmentPerformanceSensor,
-                "get_investment_performance_percentage",
+                "investment_performance_percentage",
                 12.34,
                 "AllTime",
             ),
             (
                 SaxoYTDInvestmentPerformanceSensor,
-                "get_ytd_investment_performance_percentage",
+                "ytd_investment_performance_percentage",
                 8.76,
                 "YearToDate",
             ),
             (
                 SaxoMonthInvestmentPerformanceSensor,
-                "get_month_investment_performance_percentage",
+                "month_investment_performance_percentage",
                 2.1,
                 "Month",
             ),
             (
                 SaxoQuarterInvestmentPerformanceSensor,
-                "get_quarter_investment_performance_percentage",
+                "quarter_investment_performance_percentage",
                 3.45,
                 "Quarter",
             ),
         ],
     )
-    def test_performance_value(self, coord, cls, method, expected, period):
+    def test_performance_value(self, coord, cls, field, expected, period):
         sensor = cls(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == expected
-        assert sensor._get_time_period() == period
+        assert sensor.extra_state_attributes["time_period"] == period
+
+        _set_performance(coord, **{field: 1.23456})
+        assert sensor.native_value == 1.23
 
     def test_performance_none_no_data(self, coord):
         coord.data = None
         sensor = SaxoInvestmentPerformanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value is None
 
     def test_performance_none_update_failed(self, coord):
         coord.last_update_success = False
         sensor = SaxoInvestmentPerformanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value is None
 
     def test_performance_nan_returns_none(self, coord):
-        coord.get_investment_performance_percentage.return_value = float("nan")
+        _set_performance(coord, investment_performance_percentage=float("nan"))
         sensor = SaxoInvestmentPerformanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value is None
 
-    def test_performance_non_numeric_returns_none(self, coord):
-        coord.get_investment_performance_percentage.return_value = "not_a_number"
+    def test_performance_inf_returns_none(self, coord):
+        _set_performance(coord, investment_performance_percentage=float("-inf"))
         sensor = SaxoInvestmentPerformanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
-        assert sensor.native_value is None
-
-    def test_performance_exception_returns_none(self, coord):
-        coord.get_investment_performance_percentage.side_effect = RuntimeError
-        sensor = SaxoInvestmentPerformanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value is None
 
     def test_performance_none_value(self, coord):
-        coord.get_investment_performance_percentage.return_value = None
+        _set_performance(coord, investment_performance_percentage=None)
         sensor = SaxoInvestmentPerformanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value is None
 
     def test_performance_extra_attrs(self, coord):
         sensor = SaxoInvestmentPerformanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes
         assert attrs["time_period"] == "AllTime"
         assert "from" in attrs
@@ -443,7 +441,6 @@ class TestPerformanceSensors:
     def test_ytd_period_dates(self, coord):
         """YTD reports the 1 January-anchored window, not StandardPeriod=Year."""
         sensor = SaxoYTDInvestmentPerformanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         fixed_now = datetime(2026, 8, 4, 10, 0, tzinfo=dt_util.UTC)
         with patch(
             "custom_components.saxo_portfolio.sensor.dt_util.now",
@@ -497,7 +494,6 @@ class TestPerformanceSensors:
         self, coord, cls, period, today, expected_from, expected_thru
     ):
         sensor = cls(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         with patch(
             "custom_components.saxo_portfolio.sensor.dt_util.now",
             return_value=today.replace(tzinfo=dt_util.UTC),
@@ -510,38 +506,39 @@ class TestPerformanceSensors:
     def test_attrs_no_data(self, coord):
         coord.data = None
         sensor = SaxoInvestmentPerformanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes
         assert "time_period" not in attrs
 
     def test_available_true(self, coord):
         sensor = SaxoInvestmentPerformanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is True
 
     def test_available_with_unknown_state_when_none(self, coord):
         """A not-yet-fetched value is reported as unknown, not unavailable."""
-        coord.get_investment_performance_percentage.return_value = None
+        _set_performance(coord, investment_performance_percentage=None)
         sensor = SaxoInvestmentPerformanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is True
         assert sensor.native_value is None
 
-    def test_available_false_exception(self, coord):
-        coord.get_investment_performance_percentage.side_effect = RuntimeError
+    def test_available_false_without_data(self, coord):
+        coord.data = None
         sensor = SaxoInvestmentPerformanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is False
 
-    def test_performance_base_get_value_not_implemented(self, coord):
-        sensor = SaxoPerformanceSensorBase(coord, "test", "test_key")
-        with pytest.raises(NotImplementedError):
-            sensor._get_performance_value()
+    def test_performance_base_uses_value_fn_and_period(self, coord):
+        sensor = SaxoPerformanceSensorBase(
+            coord, "test", lambda data: data.performance.ytd_profit_loss, "Month"
+        )
+        assert sensor.native_value == 1234.56
+        assert sensor.extra_state_attributes["time_period"] == "Month"
 
-    def test_performance_base_get_period_not_implemented(self, coord):
-        sensor = SaxoPerformanceSensorBase(coord, "test", "test_key")
-        with pytest.raises(NotImplementedError):
-            sensor._get_time_period()
+    def test_performance_base_unknown_period_has_no_dates(self, coord):
+        sensor = SaxoPerformanceSensorBase(
+            coord, "test", lambda data: None, "SomethingElse"
+        )
+        attrs = sensor.extra_state_attributes
+        assert "from" not in attrs
+        assert "thru" not in attrs
 
     def test_state_class(self, coord):
         sensor = SaxoInvestmentPerformanceSensor(coord)
@@ -551,43 +548,36 @@ class TestPerformanceSensors:
 class TestDiagnosticSensors:
     def test_client_id_value(self, coord):
         sensor = SaxoClientIDSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == "TEST123"
         assert sensor._attr_entity_registry_enabled_default is False
 
     def test_client_id_available(self, coord):
         sensor = SaxoClientIDSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is True
 
     def test_client_id_unavailable(self, coord):
-        coord.get_client_id.return_value = "unknown"
+        _set_client(coord, client_id="unknown")
         sensor = SaxoClientIDSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is False
 
     def test_account_id_value(self, coord):
         sensor = SaxoAccountIDSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == "ACC456"
         assert sensor._attr_entity_registry_enabled_default is False
 
     def test_account_id_unavailable(self, coord):
-        coord.get_account_id.return_value = "unknown"
+        _set_client(coord, account_id="unknown")
         sensor = SaxoAccountIDSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is False
 
     def test_name_value(self, coord):
         sensor = SaxoNameSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == "Test User"
         assert sensor._attr_entity_registry_enabled_default is False
 
     def test_name_unavailable(self, coord):
-        coord.get_client_name.return_value = "unknown"
+        _set_client(coord, client_name="unknown")
         sensor = SaxoNameSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is False
 
     def test_diagnostic_base_always_available(self, coord):
@@ -623,7 +613,6 @@ class TestTokenExpirySensor:
         now = 1_800_000_000.0
         coord.config_entry.data = {"token": {"expires_at": now + offset}}
         sensor = SaxoTokenExpirySensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         with patch(
             "custom_components.saxo_portfolio.sensor.time.time", return_value=now
         ):
@@ -633,14 +622,12 @@ class TestTokenExpirySensor:
     def test_unknown_no_token(self, coord):
         coord.config_entry.data = {}
         sensor = SaxoTokenExpirySensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         # None renders as HA's own (translated) "unknown" state
         assert sensor.native_value is None
 
     def test_extra_attrs(self, coord):
         coord.config_entry.data = {"token": {"expires_at": time.time() + 3600}}
         sensor = SaxoTokenExpirySensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes
         # Absolute `expires_at` is intentionally omitted so the state machine
         # doesn't expose exact token-rotation timing to local consumers.
@@ -652,19 +639,16 @@ class TestTokenExpirySensor:
     def test_extra_attrs_no_token(self, coord):
         coord.config_entry.data = {}
         sensor = SaxoTokenExpirySensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes
         assert len(attrs) == 0
 
     def test_available_with_token(self, coord):
         sensor = SaxoTokenExpirySensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is True
 
     def test_unavailable_no_token(self, coord):
         coord.config_entry.data = {}
         sensor = SaxoTokenExpirySensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is False
 
 
@@ -677,24 +661,20 @@ class TestMarketStatusSensor:
     def test_open(self, coord):
         coord.is_market_hours = True
         sensor = SaxoMarketStatusSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == "market_open"
 
     def test_closed(self, coord):
         coord.is_market_hours = False
         sensor = SaxoMarketStatusSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == "after_hours"
 
     def test_fixed_schedule(self, coord):
         coord.timezone = "any"
         sensor = SaxoMarketStatusSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == "fixed_schedule"
 
     def test_extra_attrs(self, coord):
         sensor = SaxoMarketStatusSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes
         assert "timezone" in attrs
         assert "update_interval" in attrs
@@ -705,18 +685,15 @@ class TestLastUpdateSensor:
         now = datetime(2026, 1, 1, 12, 0)
         coord.last_successful_update_time = now
         sensor = SaxoLastUpdateSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == now
 
     def test_value_none(self, coord):
         coord.last_successful_update_time = None
         sensor = SaxoLastUpdateSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value is None
 
     def test_extra_attrs(self, coord):
         sensor = SaxoLastUpdateSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes
         assert "update_success" in attrs
         assert "has_data" in attrs
@@ -724,31 +701,26 @@ class TestLastUpdateSensor:
     def test_extra_attrs_with_exception(self, coord):
         coord.last_exception = RuntimeError("test error")
         sensor = SaxoLastUpdateSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes
         assert "last_error" in attrs
 
     def test_available(self, coord):
         sensor = SaxoLastUpdateSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is True
 
 
 class TestTimezoneSensor:
     def test_value(self, coord):
         sensor = SaxoTimezoneSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == "Europe/Amsterdam"
 
     def test_value_any(self, coord):
         coord.timezone = "any"
         sensor = SaxoTimezoneSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == "Any (Fixed Schedule)"
 
     def test_extra_attrs_market_timezone(self, coord):
         sensor = SaxoTimezoneSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes
         assert attrs["configured_timezone"] == "Europe/Amsterdam"
         assert "mode" in attrs
@@ -757,7 +729,6 @@ class TestTimezoneSensor:
     def test_extra_attrs_any_timezone(self, coord):
         coord.timezone = "any"
         sensor = SaxoTimezoneSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes
         assert attrs["mode"] == "Fixed interval"
         assert attrs["market_hours_detection"] is False
@@ -765,7 +736,6 @@ class TestTimezoneSensor:
     def test_extra_attrs_unknown_timezone(self, coord):
         coord.timezone = "Unknown"
         sensor = SaxoTimezoneSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes
         assert attrs["mode"] == "Unknown configuration"
 
@@ -779,25 +749,21 @@ class TestMarketDataAccessSensor:
 
     def test_available_true(self, coord):
         sensor = SaxoMarketDataAccessSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == "available"
 
     def test_unavailable_false(self, coord):
         coord.has_market_data_access.return_value = False
         sensor = SaxoMarketDataAccessSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == "not_available"
 
     def test_unknown(self, coord):
         coord.has_market_data_access.return_value = None
         sensor = SaxoMarketDataAccessSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         # None renders as HA's own (translated) "unknown" state
         assert sensor.native_value is None
 
     def test_extra_attrs(self, coord):
         sensor = SaxoMarketDataAccessSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes
         assert "has_real_time_prices" in attrs
 
@@ -809,31 +775,26 @@ class TestMarketDataAccessSensor:
 class TestPositionSensor:
     def test_value(self, coord):
         sensor = SaxoPositionSensor(coord, "aapl_stock")
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == 150.0
 
     def test_value_none(self, coord):
         coord.get_position.return_value = None
         sensor = SaxoPositionSensor(coord, "aapl_stock")
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value is None
 
     def test_attrs(self, coord):
         sensor = SaxoPositionSensor(coord, "aapl_stock")
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes
         assert attrs["symbol"] == "AAPL"
         assert attrs["amount"] == 10.0
 
     def test_available_true(self, coord):
         sensor = SaxoPositionSensor(coord, "aapl_stock")
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is True
 
     def test_available_false(self, coord):
         coord.get_position.return_value = None
         sensor = SaxoPositionSensor(coord, "aapl_stock")
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is False
 
     def test_name(self, coord):
@@ -847,7 +808,6 @@ class TestPositionSensor:
 class TestYTDCurrencySensors:
     def test_ytd_profit_loss_value(self, coord):
         sensor = SaxoYTDProfitLossSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == pytest.approx(1234.56)
 
     def test_ytd_profit_loss_state_class(self, coord):
@@ -855,20 +815,17 @@ class TestYTDCurrencySensors:
         assert sensor._attr_state_class == "measurement"
 
     def test_ytd_profit_loss_unavailable_when_none(self, coord):
-        coord.get_ytd_profit_loss.return_value = None
+        _set_performance(coord, ytd_profit_loss=None)
         sensor = SaxoYTDProfitLossSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value is None
         assert sensor.available is False
 
     def test_ytd_profit_loss_currency_attr(self, coord):
         sensor = SaxoYTDProfitLossSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
-        assert sensor.extra_state_attributes["currency"] == coord.get_currency()
+        assert sensor.extra_state_attributes["currency"] == "EUR"
 
     def test_ytd_cash_transfer_value(self, coord):
         sensor = SaxoYTDCashTransferSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == pytest.approx(250.0)
 
     def test_ytd_cash_transfer_state_class(self, coord):
@@ -876,15 +833,13 @@ class TestYTDCurrencySensors:
         assert sensor._attr_state_class == "total"
 
     def test_ytd_cash_transfer_unavailable_when_none(self, coord):
-        coord.get_ytd_cash_transfer.return_value = None
+        _set_performance(coord, ytd_cash_transfer=None)
         sensor = SaxoYTDCashTransferSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value is None
         assert sensor.available is False
 
     def test_ytd_cash_transfer_last_reset_is_jan_1_current_year(self, coord):
         sensor = SaxoYTDCashTransferSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
         last_reset = sensor.last_reset
 
         now = dt_util.now()
@@ -901,7 +856,6 @@ class TestYTDCurrencySensors:
         reported last_reset accordingly.
         """
         sensor = SaxoYTDCashTransferSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
 
         next_year = dt_util.now().year + 1
         future = dt_util.now().replace(year=next_year, month=1, day=2)

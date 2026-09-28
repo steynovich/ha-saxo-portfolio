@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date, datetime, timedelta
 import logging
 import math
@@ -31,6 +32,9 @@ from .const import (
     STANDARD_PERIOD_QUARTER_SPAN,
 )
 from .coordinator import SaxoCoordinator
+from .data import DEFAULT_CURRENCY, UNKNOWN, SaxoPortfolioData
+
+type ValueFn = Callable[[SaxoPortfolioData], float | None]
 
 PARALLEL_UPDATES = 0
 
@@ -91,7 +95,7 @@ class SaxoSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
         super().__init__(coordinator)
 
         # Get entity prefix from ClientId with saxo_ prefix
-        client_id = coordinator.get_client_id()
+        client_id = coordinator.client_info.client_id
         entity_prefix = f"saxo_{client_id}".lower()
 
         self._attr_unique_id = f"{entity_prefix}_{sensor_type}"
@@ -104,7 +108,7 @@ class SaxoSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
     def device_info(self) -> DeviceInfo:
         """Return device information."""
         assert self.coordinator.config_entry is not None
-        client_id = self.coordinator.get_client_id()
+        client_id = self.coordinator.client_info.client_id
         device_name = f"Saxo {client_id} Portfolio"
 
         return DeviceInfo(
@@ -121,12 +125,15 @@ class SaxoSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
         """Return the base state attributes."""
         attributes = {"attribution": ATTRIBUTION}
 
-        if self.coordinator.data:
-            last_updated = self.coordinator.data.get("last_updated")
-            if last_updated:
-                attributes["last_updated"] = last_updated
+        if self.coordinator.data is not None:
+            attributes["last_updated"] = self.coordinator.data.last_updated.isoformat()
 
         return attributes
+
+    def _currency(self) -> str:
+        """Return the account base currency (USD before any data)."""
+        data = self.coordinator.data
+        return data.balance.currency if data is not None else DEFAULT_CURRENCY
 
     @property
     def available(self) -> bool:
@@ -198,62 +205,54 @@ class SaxoBalanceSensorBase(SaxoSensorBase):
         self,
         coordinator: SaxoCoordinator,
         sensor_type: str,
-        coordinator_method: str,
+        value_fn: ValueFn,
     ) -> None:
-        """Initialize the balance sensor."""
+        """Initialize the balance sensor.
+
+        Args:
+            coordinator: The coordinator instance
+            sensor_type: Type identifier (unique ID suffix and translation key)
+            value_fn: Reads this sensor's value from the coordinator data
+
+        """
         super().__init__(
             coordinator,
             sensor_type,
             device_class=SensorDeviceClass.MONETARY,
-            unit_of_measurement=coordinator.get_currency(),
         )
-        self._coordinator_method = coordinator_method
+        self._attr_native_unit_of_measurement = self._currency()
+        self._value_fn = value_fn
         self._attr_state_class = SensorStateClass.TOTAL
 
     @property
     def native_value(self) -> StateType:
         """Return the state of the sensor."""
-        if not self.coordinator.last_update_success or not self.coordinator.data:
+        data = self.coordinator.data
+        if not self.coordinator.last_update_success or data is None:
             return None
 
-        try:
-            # Get balance using coordinator method
-            balance = getattr(self.coordinator, self._coordinator_method)()
+        balance = self._value_fn(data)
+        if balance is None:
+            return None
 
-            if balance is None:
-                return None
-
-            # Validate and format numeric value
-            if isinstance(balance, int | float):
-                if not math.isfinite(balance):
-                    _LOGGER.warning(
-                        "Invalid (non-finite) %s value",
-                        self._attr_translation_key,
-                    )
-                    return None
-
-                # Round financial value to 2 decimal places
-                return round(float(balance), 2)
-
-            return balance  # type: ignore[no-any-return]
-
-        except Exception as e:
-            _LOGGER.error(
-                "Error getting %s: %s",
+        if not math.isfinite(balance):
+            _LOGGER.warning(
+                "Invalid (non-finite) %s value",
                 self._attr_translation_key,
-                type(e).__name__,
             )
             return None
+
+        # Round financial value to 2 decimal places
+        return round(balance, 2)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the state attributes."""
         attributes = super().extra_state_attributes
 
-        if self.coordinator.data:
+        if self.coordinator.data is not None:
             # Add currency information
-            currency = self.coordinator.get_currency()
-            attributes["currency"] = currency
+            attributes["currency"] = self._currency()
 
         return attributes
 
@@ -290,8 +289,8 @@ async def async_setup_entry(
 
     coordinator: SaxoCoordinator = config_entry.runtime_data.coordinator
 
-    client_name = coordinator.get_client_name()
-    if client_name == "unknown":
+    client_name = coordinator.client_info.client_name
+    if client_name == UNKNOWN:
         _LOGGER.warning(
             "Client name is unknown - skipping sensor setup for entry %s. "
             "This usually means the initial API call failed or is still in progress. "
@@ -364,7 +363,7 @@ class SaxoCashBalanceSensor(SaxoBalanceSensorBase):
         super().__init__(
             coordinator,
             "cash_balance",
-            "get_cash_balance",
+            lambda data: data.balance.cash_balance,
         )
 
 
@@ -376,7 +375,7 @@ class SaxoTotalValueSensor(SaxoBalanceSensorBase):
         super().__init__(
             coordinator,
             "total_value",
-            "get_total_value",
+            lambda data: data.balance.total_value,
         )
 
 
@@ -388,7 +387,7 @@ class SaxoNonMarginPositionsValueSensor(SaxoBalanceSensorBase):
         super().__init__(
             coordinator,
             "non_margin_positions_value",
-            "get_non_margin_positions_value",
+            lambda data: data.balance.non_margin_positions_value,
         )
 
 
@@ -400,40 +399,29 @@ class SaxoAccumulatedProfitLossSensor(SaxoSensorBase):
         super().__init__(
             coordinator,
             "accumulated_profit_loss",
-            unit_of_measurement=coordinator.get_currency(),
         )
+        self._attr_native_unit_of_measurement = self._currency()
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_suggested_display_precision = 2
 
     @property
     def native_value(self) -> StateType:
         """Return the state of the sensor."""
-        if not self.coordinator.data:
+        if self.coordinator.data is None:
             return None
 
-        return self.coordinator.get_ytd_earnings_percentage()
+        return self.coordinator.data.performance.ytd_earnings_percentage
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra attributes for the sensor."""
         attributes = super().extra_state_attributes
 
-        if self.coordinator.data:
+        if self.coordinator.data is not None:
             # Add currency information
-            currency = self.coordinator.get_currency()
-            attributes["currency"] = currency
+            attributes["currency"] = self._currency()
 
         return attributes
-
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        # Use improved availability from base class
-        if not super().available:
-            return False
-
-        # Additional check: ensure ytd_earnings_percentage data is present
-        return "ytd_earnings_percentage" in (self.coordinator.data or {})
 
 
 class SaxoPerformanceSensorBase(SaxoSensorBase):
@@ -443,14 +431,16 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
         self,
         coordinator: SaxoCoordinator,
         sensor_type: str,
-        data_key: str,
+        value_fn: ValueFn,
+        time_period: str,
     ) -> None:
         """Initialize the performance sensor.
 
         Args:
             coordinator: The coordinator instance
             sensor_type: Type identifier for the sensor (e.g., "investment_performance", "ytd_investment_performance")
-            data_key: Key to fetch data from coordinator data dict
+            value_fn: Reads this sensor's percentage from the coordinator data
+            time_period: Period the percentage covers (AllTime, YearToDate, Month, Quarter)
 
         """
         super().__init__(
@@ -458,58 +448,31 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
             sensor_type,
             unit_of_measurement="%",
         )
-        self._data_key = data_key
+        self._value_fn = value_fn
+        self._time_period = time_period
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_suggested_display_precision = 2
 
     @property
     def native_value(self) -> StateType:
         """Return the state of the sensor."""
-        if not self.coordinator.last_update_success or not self.coordinator.data:
+        data = self.coordinator.data
+        if not self.coordinator.last_update_success or data is None:
             return None
 
-        try:
-            # Get performance percentage using coordinator method
-            performance_percentage = self._get_performance_value()
+        performance_percentage = self._value_fn(data)
+        if performance_percentage is None:
+            return None
 
-            if performance_percentage is None:
-                return None
-
-            # Validate and format numeric value
-            if isinstance(performance_percentage, int | float):
-                if not math.isfinite(performance_percentage):
-                    _LOGGER.warning(
-                        "%s performance percentage is not finite",
-                        self._attr_translation_key,
-                    )
-                    return None
-
-                # Round to 2 decimal places for percentage display
-                return round(performance_percentage, 2)
-            else:
-                _LOGGER.warning(
-                    "%s performance percentage is not numeric (type: %s)",
-                    self._attr_translation_key,
-                    type(performance_percentage).__name__,
-                )
-                return None
-
-        except Exception as e:
-            _LOGGER.error(
-                "Error getting %s performance percentage: %s",
+        if not math.isfinite(performance_percentage):
+            _LOGGER.warning(
+                "%s performance percentage is not finite",
                 self._attr_translation_key,
-                type(e).__name__,
             )
             return None
 
-    def _get_performance_value(self) -> float | None:
-        """Get the performance value from coordinator data.
-
-        This method should be overridden by subclasses to call the appropriate coordinator method.
-        """
-        raise NotImplementedError(
-            "Subclasses must implement _get_performance_value method"
-        )
+        # Round to 2 decimal places for percentage display
+        return round(performance_percentage, 2)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -517,10 +480,10 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
         # Get base attributes from parent class
         attrs = super().extra_state_attributes
 
-        if not self.coordinator.data:
+        if self.coordinator.data is None:
             return attrs
 
-        attrs["time_period"] = self._get_time_period()
+        attrs["time_period"] = self._time_period
 
         # Add last updated timestamp from performance cache, fallback to general timestamp
         performance_last_updated = self.coordinator.performance_last_updated
@@ -534,29 +497,6 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
 
         return attrs
 
-    def _get_time_period(self) -> str:
-        """Get the time period for this sensor.
-
-        This method should be overridden by subclasses to return the appropriate time period.
-        """
-        raise NotImplementedError("Subclasses must implement _get_time_period method")
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        # Use improved availability from base class
-        if not super().available:
-            return False
-
-        # Additional check: ensure we can read a performance value. A None
-        # value (not fetched yet) keeps the sensor available with an unknown
-        # state rather than marking it unavailable.
-        try:
-            self._get_performance_value()
-        except Exception:
-            return False
-        return True
-
     def _get_period_dates(self) -> dict[str, str] | None:
         """Calculate From and Thru dates based on the time period.
 
@@ -564,7 +504,7 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
             Dictionary with 'from' and 'thru' date strings in ISO format, or None if not applicable
 
         """
-        time_period = self._get_time_period()
+        time_period = self._time_period
         now = dt_util.now()
 
         if time_period == "YearToDate":
@@ -599,16 +539,9 @@ class SaxoInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
         super().__init__(
             coordinator,
             "investment_performance",
-            "investment_performance_percentage",
+            lambda data: data.performance.investment_performance_percentage,
+            "AllTime",
         )
-
-    def _get_performance_value(self) -> float | None:
-        """Get the investment performance value from coordinator."""
-        return self.coordinator.get_investment_performance_percentage()
-
-    def _get_time_period(self) -> str:
-        """Get the time period for this sensor."""
-        return "AllTime"
 
 
 class SaxoCashTransferBalanceSensor(SaxoBalanceSensorBase):
@@ -619,18 +552,8 @@ class SaxoCashTransferBalanceSensor(SaxoBalanceSensorBase):
         super().__init__(
             coordinator,
             "cash_transfer_balance",
-            "get_cash_transfer_balance",
+            lambda data: data.performance.cash_transfer_balance,
         )
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        # Use improved availability from base class
-        if not super().available:
-            return False
-
-        # Additional check: ensure cash_transfer_balance data is present
-        return "cash_transfer_balance" in (self.coordinator.data or {})
 
 
 class SaxoYTDProfitLossSensor(SaxoSensorBase):
@@ -641,25 +564,25 @@ class SaxoYTDProfitLossSensor(SaxoSensorBase):
         super().__init__(
             coordinator,
             "ytd_profit_loss",
-            unit_of_measurement=coordinator.get_currency(),
         )
+        self._attr_native_unit_of_measurement = self._currency()
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_suggested_display_precision = 2
 
     @property
     def native_value(self) -> StateType:
         """Return the state of the sensor."""
-        if not self.coordinator.data:
+        if self.coordinator.data is None:
             return None
-        return self.coordinator.get_ytd_profit_loss()
+        return self.coordinator.data.performance.ytd_profit_loss
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra attributes for the sensor."""
         attributes = super().extra_state_attributes
 
-        if self.coordinator.data:
-            attributes["currency"] = self.coordinator.get_currency()
+        if self.coordinator.data is not None:
+            attributes["currency"] = self._currency()
 
         return attributes
 
@@ -669,7 +592,8 @@ class SaxoYTDProfitLossSensor(SaxoSensorBase):
         if not super().available:
             return False
 
-        return self.coordinator.get_ytd_profit_loss() is not None
+        data = self.coordinator.data
+        return data is not None and data.performance.ytd_profit_loss is not None
 
 
 class SaxoYTDCashTransferSensor(SaxoBalanceSensorBase):
@@ -680,7 +604,7 @@ class SaxoYTDCashTransferSensor(SaxoBalanceSensorBase):
         super().__init__(
             coordinator,
             "ytd_cash_transfer",
-            "get_ytd_cash_transfer",
+            lambda data: data.performance.ytd_cash_transfer,
         )
 
     @property
@@ -689,7 +613,8 @@ class SaxoYTDCashTransferSensor(SaxoBalanceSensorBase):
         if not super().available:
             return False
 
-        return self.coordinator.get_ytd_cash_transfer() is not None
+        data = self.coordinator.data
+        return data is not None and data.performance.ytd_cash_transfer is not None
 
     @property
     def last_reset(self) -> datetime:
@@ -711,23 +636,14 @@ class SaxoYTDInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
         """Initialize the sensor."""
+        # Not a StandardPeriod: ``StandardPeriod=Year`` is a trailing 12-month
+        # window, so this sensor requests an explicit 1 January-to-today range.
         super().__init__(
             coordinator,
             "ytd_investment_performance",
-            "ytd_investment_performance_percentage",
+            lambda data: data.performance.ytd_investment_performance_percentage,
+            "YearToDate",
         )
-
-    def _get_performance_value(self) -> float | None:
-        """Get the YTD investment performance value from coordinator."""
-        return self.coordinator.get_ytd_investment_performance_percentage()
-
-    def _get_time_period(self) -> str:
-        """Get the time period for this sensor.
-
-        Not a StandardPeriod: ``StandardPeriod=Year`` is a trailing 12-month
-        window, so this sensor requests an explicit 1 January-to-today range.
-        """
-        return "YearToDate"
 
 
 class SaxoMonthInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
@@ -738,16 +654,9 @@ class SaxoMonthInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
         super().__init__(
             coordinator,
             "month_investment_performance",
-            "month_investment_performance_percentage",
+            lambda data: data.performance.month_investment_performance_percentage,
+            "Month",
         )
-
-    def _get_performance_value(self) -> float | None:
-        """Get the Month investment performance value from coordinator."""
-        return self.coordinator.get_month_investment_performance_percentage()
-
-    def _get_time_period(self) -> str:
-        """Get the time period for this sensor."""
-        return "Month"
 
 
 class SaxoQuarterInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
@@ -758,16 +667,9 @@ class SaxoQuarterInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
         super().__init__(
             coordinator,
             "quarter_investment_performance",
-            "quarter_investment_performance_percentage",
+            lambda data: data.performance.quarter_investment_performance_percentage,
+            "Quarter",
         )
-
-    def _get_performance_value(self) -> float | None:
-        """Get the Quarter investment performance value from coordinator."""
-        return self.coordinator.get_quarter_investment_performance_percentage()
-
-    def _get_time_period(self) -> str:
-        """Get the time period for this sensor."""
-        return "Quarter"
 
 
 class SaxoClientIDSensor(SaxoDiagnosticSensorBase):
@@ -785,12 +687,12 @@ class SaxoClientIDSensor(SaxoDiagnosticSensorBase):
     @property
     def native_value(self) -> str:
         """Return the Client ID."""
-        return self.coordinator.get_client_id()
+        return self.coordinator.client_info.client_id
 
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        return self.coordinator.get_client_id() != "unknown"
+        return self.coordinator.client_info.client_id != UNKNOWN
 
 
 class SaxoAccountIDSensor(SaxoDiagnosticSensorBase):
@@ -808,12 +710,12 @@ class SaxoAccountIDSensor(SaxoDiagnosticSensorBase):
     @property
     def native_value(self) -> str:
         """Return the Account ID."""
-        return self.coordinator.get_account_id()
+        return self.coordinator.client_info.account_id
 
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        return self.coordinator.get_account_id() != "unknown"
+        return self.coordinator.client_info.account_id != UNKNOWN
 
 
 class SaxoNameSensor(SaxoDiagnosticSensorBase):
@@ -836,12 +738,12 @@ class SaxoNameSensor(SaxoDiagnosticSensorBase):
     @property
     def native_value(self) -> str:
         """Return the client Name."""
-        return self.coordinator.get_client_name()
+        return self.coordinator.client_info.client_name
 
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        return self.coordinator.get_client_name() != "unknown"
+        return self.coordinator.client_info.client_name != UNKNOWN
 
 
 class SaxoTokenExpirySensor(SaxoDiagnosticSensorBase):

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,6 +13,12 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from custom_components.saxo_portfolio.const import DOMAIN
+from custom_components.saxo_portfolio.data import (
+    BalanceData,
+    ClientInfo,
+    PerformanceData,
+    SaxoPortfolioData,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -63,3 +71,48 @@ def mock_oauth_session(mock_config_entry):
     session.token = mock_config_entry.data["token"]
     session.async_ensure_token_valid = AsyncMock()
     return session
+
+
+def portfolio_data(**fields: Any) -> SaxoPortfolioData:
+    """Build typed coordinator data from flat field names.
+
+    Accepts any field of BalanceData, PerformanceData or ClientInfo (the
+    names of the former coordinator data dict keys) plus ``last_updated``.
+    Unset fields keep their dataclass defaults.
+    """
+    last_updated = fields.pop("last_updated", datetime(2026, 1, 1, 12, 0))
+    groups: dict[type, dict[str, Any]] = {}
+    for cls in (BalanceData, PerformanceData, ClientInfo):
+        groups[cls] = {
+            name: fields.pop(name)
+            for name in list(fields)
+            if name in cls.__dataclass_fields__
+        }
+    if fields:
+        raise TypeError(f"Unknown portfolio data fields: {sorted(fields)}")
+    return SaxoPortfolioData(
+        balance=BalanceData(**groups[BalanceData]),
+        performance=PerformanceData(**groups[PerformanceData]),
+        client=ClientInfo(**groups[ClientInfo]),
+        last_updated=last_updated,
+    )
+
+
+@pytest.fixture
+def make_portfolio_data() -> Callable[..., SaxoPortfolioData]:
+    """Return the ``portfolio_data`` factory."""
+    return portfolio_data
+
+
+def attach_portfolio_data(coordinator: Any, **fields: Any) -> SaxoPortfolioData:
+    """Give a mock coordinator typed data and the matching ``client_info``."""
+    data = portfolio_data(**fields)
+    coordinator.data = data
+    coordinator.client_info = data.client
+    return data
+
+
+@pytest.fixture
+def set_portfolio_data() -> Callable[..., SaxoPortfolioData]:
+    """Return the ``attach_portfolio_data`` helper."""
+    return attach_portfolio_data

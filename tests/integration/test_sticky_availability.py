@@ -4,6 +4,8 @@ These tests validate that sensors remain available during normal coordinator
 updates and only become unavailable after sustained failures.
 """
 
+from dataclasses import replace
+
 import pytest
 from unittest.mock import Mock
 from datetime import timedelta
@@ -26,30 +28,24 @@ class TestStickyAvailabilityBehavior:
     """Test sticky availability behavior prevents sensor flashing."""
 
     @pytest.fixture
-    def mock_coordinator(self):
+    def mock_coordinator(self, set_portfolio_data):
         """Create a mock coordinator with reasonable defaults."""
         coordinator = Mock(spec=SaxoCoordinator)
         coordinator.update_interval = timedelta(minutes=5)
-        coordinator.data = {
-            "cash_balance": 5000.00,
-            "total_value": 100000.00,
-            "currency": "USD",
-            "ytd_earnings_percentage": 15.5,
-            "cash_transfer_balance": 1000.00,
-        }
+        set_portfolio_data(
+            coordinator,
+            cash_balance=5000.00,
+            total_value=100000.00,
+            currency="USD",
+            ytd_earnings_percentage=15.5,
+            investment_performance_percentage=25.0,
+            cash_transfer_balance=1000.00,
+            client_id="123456",
+        )
         coordinator.last_update_success = True
         coordinator.last_successful_update_time = dt_util.utcnow() - timedelta(
             minutes=1
         )
-
-        # Mock coordinator methods
-        coordinator.get_client_id = Mock(return_value="123456")
-        coordinator.get_cash_balance = Mock(return_value=5000.00)
-        coordinator.get_total_value = Mock(return_value=100000.00)
-        coordinator.get_currency = Mock(return_value="USD")
-        coordinator.get_ytd_earnings_percentage = Mock(return_value=15.5)
-        coordinator.get_investment_performance_percentage = Mock(return_value=25.0)
-        coordinator.get_cash_transfer_balance = Mock(return_value=1000.00)
 
         return coordinator
 
@@ -139,10 +135,20 @@ class TestStickyAvailabilityBehavior:
             "Should stay available when data present during update"
         )
 
-        # Remove specific data requirement
-        mock_coordinator.data = {"total_value": 100000.00}  # No cash_transfer_balance
+        # Not yet fetched: stays available with an unknown state (#15)
+        mock_coordinator.data = replace(
+            mock_coordinator.data,
+            performance=replace(
+                mock_coordinator.data.performance, cash_transfer_balance=None
+            ),
+        )
+        assert cash_transfer_sensor.available is True
+        assert cash_transfer_sensor.native_value is None
 
-        # Should become unavailable when specific data is missing
+        # Coordinator data lost entirely
+        mock_coordinator.data = None
+
+        # Should become unavailable when the data is missing
         assert cash_transfer_sensor.available is False, (
             "Should become unavailable when required data missing"
         )
@@ -242,7 +248,7 @@ class TestStickyAvailabilityBehavior:
         )
 
     @pytest.mark.asyncio
-    async def test_first_startup_scenarios(self, mock_coordinator):
+    async def test_first_startup_scenarios(self, mock_coordinator, make_portfolio_data):
         """Test availability behavior during first startup."""
 
         sensor = SaxoTotalValueSensor(mock_coordinator)
@@ -250,7 +256,7 @@ class TestStickyAvailabilityBehavior:
         # First startup: has data but no successful update history
         # According to sticky availability logic, if we have data but no
         # last_successful_update_time, we stay available (line 110-114 in sensor.py)
-        mock_coordinator.data = {"total_value": 100000.00}
+        mock_coordinator.data = make_portfolio_data(total_value=100000.00)
         mock_coordinator.last_update_success = False
         mock_coordinator.last_successful_update_time = None
 
@@ -267,14 +273,16 @@ class TestStickyAvailabilityBehavior:
         )
 
     @pytest.mark.asyncio
-    async def test_coordinator_update_simulation(self, mock_coordinator):
+    async def test_coordinator_update_simulation(
+        self, mock_coordinator, make_portfolio_data
+    ):
         """Test realistic coordinator update cycle simulation."""
 
         sensor = SaxoTotalValueSensor(mock_coordinator)
 
         # Step 1: Normal operation
         mock_coordinator.last_update_success = True
-        mock_coordinator.data = {"total_value": 100000.00}
+        mock_coordinator.data = make_portfolio_data(total_value=100000.00)
         mock_coordinator.last_successful_update_time = dt_util.utcnow() - timedelta(
             minutes=1
         )

@@ -2,30 +2,22 @@
 
 Tests cover:
 - api_client property (creation, token change, no access token)
-- _should_update_performance_data (cache stale/fresh)
-- _fetch_performance_data_safely (timeout, exception, cache usage)
-- _build_performance_defaults
-- _update_performance_cache
-- _populate_performance_result
-- _fetch_performance_metrics (v3 + v4 batch)
-- _extract_v4_batch_metrics (static method)
-- _fetch_positions_data_safely (disabled, success, error)
-- _check_market_data_access (available/unavailable)
-- _parse_single_position (parsing, no symbol, errors)
 - _is_market_hours (weekday/weekend, open/closed, timezone any, cache)
 - _ensure_token_valid (proactive refresh, token age)
 - _proactive_refresh_token (success, 400/401, transient error)
 - _fetch_portfolio_data (full flow, auth error, timeout, API error)
 - _async_update_data (interval adjustment, reload trigger)
 - async_shutdown (cleanup)
-- Getter methods (with/without data)
+- client_info and positions accessors (with/without data)
 - mark_sensors_initialized, mark_setup_complete
 - _update_config_entry_title_if_needed
+
+Performance and position fetching/parsing are tested in test_performance.py
+and test_positions.py.
 """
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
@@ -44,13 +36,16 @@ from custom_components.saxo_portfolio.const import (
     DEFAULT_UPDATE_INTERVAL_AFTER_HOURS,
     DEFAULT_UPDATE_INTERVAL_ANY,
     DEFAULT_UPDATE_INTERVAL_MARKET_HOURS,
-    PERFORMANCE_UPDATE_INTERVAL,
 )
-from custom_components.saxo_portfolio.coordinator import (
-    PositionData,
-    PositionsCache,
-    SaxoCoordinator,
+from custom_components.saxo_portfolio.coordinator import SaxoCoordinator
+from custom_components.saxo_portfolio.data import (
+    BalanceData,
+    ClientInfo,
+    PerformanceData,
+    SaxoPortfolioData,
 )
+from custom_components.saxo_portfolio.performance import PerformanceFetcher
+from custom_components.saxo_portfolio.positions import PositionData, PositionsFetcher
 
 _UTC = ZoneInfo("UTC")
 
@@ -82,15 +77,24 @@ def _make_coordinator(
     return coord
 
 
+def _portfolio_data(client_name: str = "unknown") -> SaxoPortfolioData:
+    """Minimal typed coordinator data for a given client name."""
+    return SaxoPortfolioData(
+        balance=BalanceData(),
+        client=ClientInfo(client_name=client_name),
+        last_updated=datetime.now(),
+    )
+
+
 def _bare_coordinator():
     """Build a coordinator via object.__new__ for testing individual methods."""
     coord = object.__new__(SaxoCoordinator)
-    coord._performance_data_cache = {}
-    coord._performance_last_updated = None
-    coord._positions_cache = PositionsCache()
-    coord._enable_position_sensors = False
-    coord._position_market_data_warning_logged = False
-    coord._has_market_data_access = None
+    coord._performance = PerformanceFetcher(
+        on_client_info=lambda client: coord._update_config_entry_title_if_needed(
+            client.client_id
+        )
+    )
+    coord._positions = PositionsFetcher(enabled=False)
     coord._timezone = "any"
     coord._market_hours_cache = None
     coord._market_hours_cache_time = None
@@ -111,27 +115,6 @@ def _bare_coordinator():
     coord.data = None
     coord.update_interval = DEFAULT_UPDATE_INTERVAL_ANY
     return coord
-
-
-# ---------------------------------------------------------------------------
-# PositionData.generate_slug
-# ---------------------------------------------------------------------------
-
-
-class TestPositionDataGenerateSlug:
-    """Tests for PositionData.generate_slug static method."""
-
-    def test_simple_stock(self):
-        """Simple stock symbol generates lowercase slug."""
-        assert PositionData.generate_slug("AAPL", "Stock") == "aapl_stock"
-
-    def test_fx_pair_with_slash(self):
-        """FX pair with slash converts slash to underscore."""
-        assert PositionData.generate_slug("EUR/USD", "FxSpot") == "eur_usd_fxspot"
-
-    def test_special_characters_collapsed(self):
-        """Consecutive special characters collapse to single underscore."""
-        assert PositionData.generate_slug("A--B//C", "T$$ype") == "a_b_c_t_ype"
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +169,14 @@ class TestCoordinatorInit:
         coord = _make_coordinator(
             mock_hass, mock_config_entry, mock_oauth_session, enable_positions=True
         )
-        assert coord._enable_position_sensors is True
+        assert coord.position_sensors_enabled is True
+
+    def test_init_position_sensors_default_off(
+        self, mock_hass, mock_config_entry, mock_oauth_session
+    ):
+        """Position sensors are opt-in."""
+        coord = _make_coordinator(mock_hass, mock_config_entry, mock_oauth_session)
+        assert coord.position_sensors_enabled is False
 
 
 # ---------------------------------------------------------------------------
@@ -257,710 +247,6 @@ class TestApiClientProperty:
         mock_oauth_session.token = {}
         with pytest.raises(ConfigEntryAuthFailed, match="No access token"):
             _ = coord.api_client
-
-
-# ---------------------------------------------------------------------------
-# _should_update_performance_data
-# ---------------------------------------------------------------------------
-
-
-class TestShouldUpdatePerformanceData:
-    """Tests for _should_update_performance_data cache logic."""
-
-    def test_no_cache_returns_true(self):
-        """No cached data should trigger an update."""
-        coord = _bare_coordinator()
-        assert coord._should_update_performance_data() is True
-
-    def test_stale_cache_returns_true(self):
-        """Cache older than PERFORMANCE_UPDATE_INTERVAL should trigger an update."""
-        coord = _bare_coordinator()
-        coord._performance_last_updated = (
-            datetime.now() - PERFORMANCE_UPDATE_INTERVAL - timedelta(minutes=1)
-        )
-        assert coord._should_update_performance_data() is True
-
-    def test_fresh_cache_returns_false(self):
-        """Recent cache should not trigger an update."""
-        coord = _bare_coordinator()
-        coord._performance_last_updated = datetime.now() - timedelta(minutes=5)
-        assert coord._should_update_performance_data() is False
-
-
-# ---------------------------------------------------------------------------
-# _build_performance_defaults
-# ---------------------------------------------------------------------------
-
-
-class TestBuildPerformanceDefaults:
-    """Tests for _build_performance_defaults."""
-
-    def test_empty_cache(self):
-        """Empty cache returns unknown (None) defaults."""
-        coord = _bare_coordinator()
-        defaults = coord._build_performance_defaults()
-        assert defaults["client_id"] == "unknown"
-        assert defaults["investment_performance_percentage"] is None
-        assert defaults["cash_transfer_balance"] is None
-
-    def test_populated_cache(self):
-        """Populated cache values are returned in defaults."""
-        coord = _bare_coordinator()
-        coord._performance_data_cache = {
-            "client_id": "C123",
-            "account_id": "A456",
-            "client_name": "John",
-            "investment_performance_percentage": 5.5,
-            "ytd_investment_performance_percentage": 3.2,
-            "month_investment_performance_percentage": 1.1,
-            "quarter_investment_performance_percentage": 2.0,
-            "cash_transfer_balance": 10000.0,
-            "ytd_earnings_percentage": 42.0,
-        }
-        defaults = coord._build_performance_defaults()
-        assert defaults["client_id"] == "C123"
-        assert defaults["investment_performance_percentage"] == 5.5
-        assert defaults["cash_transfer_balance"] == 10000.0
-
-
-# ---------------------------------------------------------------------------
-# _update_performance_cache
-# ---------------------------------------------------------------------------
-
-
-class TestUpdatePerformanceCache:
-    """Tests for _update_performance_cache."""
-
-    def test_persists_cache(self):
-        """Result is stored in the performance cache with timestamp."""
-        coord = _bare_coordinator()
-        result = {"client_id": "C1", "investment_performance_percentage": 1.0}
-        coord._update_performance_cache(result)
-        assert coord._performance_data_cache["client_id"] == "C1"
-        assert coord._performance_last_updated is not None
-
-    def test_updates_title(self):
-        """Cache update triggers config entry title update."""
-        coord = _bare_coordinator()
-        coord.config_entry.title = "Saxo Portfolio"
-        result = {"client_id": "C1"}
-        coord._update_performance_cache(result)
-        coord.hass.config_entries.async_update_entry.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-# _extract_v4_batch_metrics
-# ---------------------------------------------------------------------------
-
-
-class TestExtractV4BatchMetrics:
-    """Tests for _extract_v4_batch_metrics static method."""
-
-    def test_full_response(self):
-        """Full v4 batch response is parsed into all metrics."""
-        v4_batch = {
-            "alltime": {
-                "KeyFigures": {"ReturnFraction": 0.12},
-                "Balance": {"CashTransfer": [{"Value": 500}, {"Value": 1000}]},
-            },
-            "ytd": {"KeyFigures": {"ReturnFraction": 0.05}},
-            "month": {"KeyFigures": {"ReturnFraction": 0.02}},
-            "quarter": {"KeyFigures": {"ReturnFraction": 0.03}},
-        }
-        metrics = SaxoCoordinator._extract_v4_batch_metrics(v4_batch)
-        assert metrics["investment_performance_percentage"] == pytest.approx(12.0)
-        assert metrics["cash_transfer_balance"] == 1000
-        assert metrics["ytd_investment_performance_percentage"] == pytest.approx(5.0)
-        assert metrics["month_investment_performance_percentage"] == pytest.approx(2.0)
-        assert metrics["quarter_investment_performance_percentage"] == pytest.approx(
-            3.0
-        )
-
-    def test_empty_response(self):
-        """Empty batch response returns zero metrics without cash_transfer_balance."""
-        metrics = SaxoCoordinator._extract_v4_batch_metrics({})
-        assert metrics["investment_performance_percentage"] == 0.0
-        assert "cash_transfer_balance" not in metrics
-
-    def test_empty_cash_transfer_list(self):
-        """Empty CashTransfer list does not produce cash_transfer_balance."""
-        v4_batch = {"alltime": {"Balance": {"CashTransfer": []}}}
-        metrics = SaxoCoordinator._extract_v4_batch_metrics(v4_batch)
-        assert "cash_transfer_balance" not in metrics
-
-    def test_ytd_profit_loss_and_transfers(self):
-        """YTD currency metrics come from the Jan-1 anchored response."""
-        v4_batch = {
-            "alltime": {
-                "KeyFigures": {"ReturnFraction": 0.32},
-                "Balance": {"CashTransfer": [{"Value": 500}, {"Value": 1000}]},
-            },
-            "ytd": {
-                "KeyFigures": {"ReturnFraction": 0.09},
-                "Balance": {
-                    "YearlyProfitLoss": [
-                        {"Date": "2026-12-31", "Value": 1234.56},
-                    ],
-                    "CashTransfer": [
-                        {"Date": "2026-01-02", "Value": 0},
-                        {"Date": "2026-04-01", "Value": 250.0},
-                    ],
-                },
-            },
-            "month": {"KeyFigures": {"ReturnFraction": 0.02}},
-            "quarter": {"KeyFigures": {"ReturnFraction": 0.03}},
-        }
-        with patch(
-            "custom_components.saxo_portfolio.coordinator.dt_util.now"
-        ) as mock_now:
-            mock_now.return_value = datetime(2026, 8, 4, 12, 0)
-            metrics = SaxoCoordinator._extract_v4_batch_metrics(v4_batch)
-
-        assert metrics["ytd_profit_loss"] == pytest.approx(1234.56)
-        assert metrics["ytd_cash_transfer"] == pytest.approx(250.0)
-        assert metrics["ytd_investment_performance_percentage"] == pytest.approx(9.0)
-
-    def test_ytd_profit_loss_picks_current_year_bucket(self):
-        """A multi-year bucket list must select the current calendar year."""
-        v4_batch = {
-            "ytd": {
-                "Balance": {
-                    "YearlyProfitLoss": [
-                        {"Date": "2025-12-31", "Value": 999.0},
-                        {"Date": "2026-12-31", "Value": 111.0},
-                    ]
-                }
-            }
-        }
-        with patch(
-            "custom_components.saxo_portfolio.coordinator.dt_util.now"
-        ) as mock_now:
-            mock_now.return_value = datetime(2026, 8, 4, 12, 0)
-            metrics = SaxoCoordinator._extract_v4_batch_metrics(v4_batch)
-
-        assert metrics["ytd_profit_loss"] == pytest.approx(111.0)
-
-    def test_ytd_metrics_none_when_absent(self):
-        """Missing YTD balance data yields None, not 0.0."""
-        v4_batch = {"ytd": {"KeyFigures": {"ReturnFraction": 0.09}}}
-        metrics = SaxoCoordinator._extract_v4_batch_metrics(v4_batch)
-
-        assert metrics["ytd_profit_loss"] is None
-        assert metrics["ytd_cash_transfer"] is None
-
-    def test_ytd_profit_loss_none_when_no_matching_year(self):
-        """A bucket list without the current year yields None."""
-        v4_batch = {
-            "ytd": {
-                "Balance": {"YearlyProfitLoss": [{"Date": "2024-12-31", "Value": 5.0}]}
-            }
-        }
-        with patch(
-            "custom_components.saxo_portfolio.coordinator.dt_util.now"
-        ) as mock_now:
-            mock_now.return_value = datetime(2026, 8, 4, 12, 0)
-            metrics = SaxoCoordinator._extract_v4_batch_metrics(v4_batch)
-
-        assert metrics["ytd_profit_loss"] is None
-
-    def test_ytd_cash_transfer_skips_non_numeric(self):
-        """Non-numeric trailing entries are skipped, not returned."""
-        v4_batch = {
-            "ytd": {
-                "Balance": {
-                    "CashTransfer": [
-                        {"Date": "2026-01-02", "Value": 100.0},
-                        {"Date": "2026-04-01", "Value": None},
-                    ]
-                }
-            }
-        }
-        metrics = SaxoCoordinator._extract_v4_batch_metrics(v4_batch)
-
-        assert metrics["ytd_cash_transfer"] == pytest.approx(100.0)
-
-
-# ---------------------------------------------------------------------------
-# _fetch_performance_data_safely
-# ---------------------------------------------------------------------------
-
-
-class TestFetchPerformanceDataSafely:
-    """Tests for _fetch_performance_data_safely."""
-
-    async def test_returns_cached_when_fresh(self):
-        """Fresh cache returns cached data without API call."""
-        coord = _bare_coordinator()
-        coord._performance_last_updated = datetime.now()
-        coord._performance_data_cache = {"client_id": "cached"}
-        result = await coord._fetch_performance_data_safely(MagicMock())
-        assert result["client_id"] == "cached"
-
-    async def test_fetches_when_stale(self):
-        """Stale or missing cache triggers a fresh fetch."""
-        coord = _bare_coordinator()
-        coord._performance_last_updated = None
-        client = AsyncMock()
-        with patch.object(
-            coord, "_populate_performance_result", new_callable=AsyncMock
-        ):
-            result = await coord._fetch_performance_data_safely(client)
-            assert isinstance(result, dict)
-
-    async def test_timeout_returns_defaults(self):
-        """Timeout during fetch returns default values."""
-        coord = _bare_coordinator()
-        coord._performance_last_updated = None
-
-        async def slow_populate(*args, **kwargs):
-            await asyncio.sleep(100)
-
-        with patch.object(
-            coord, "_populate_performance_result", side_effect=slow_populate
-        ):
-            with patch(
-                "custom_components.saxo_portfolio.coordinator.PERFORMANCE_FETCH_TIMEOUT",
-                0.01,
-            ):
-                result = await coord._fetch_performance_data_safely(MagicMock())
-                assert result["client_id"] == "unknown"
-
-    async def test_exception_returns_defaults(self):
-        """Exception during fetch returns default values."""
-        coord = _bare_coordinator()
-        coord._performance_last_updated = None
-
-        with patch.object(
-            coord,
-            "_populate_performance_result",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("boom"),
-        ):
-            result = await coord._fetch_performance_data_safely(MagicMock())
-            assert result["client_id"] == "unknown"
-
-
-# ---------------------------------------------------------------------------
-# _populate_performance_result
-# ---------------------------------------------------------------------------
-
-
-class TestPopulatePerformanceResult:
-    """Tests for _populate_performance_result."""
-
-    async def test_populates_client_details(self):
-        """Client details are extracted into the result dict."""
-        coord = _bare_coordinator()
-        client = AsyncMock()
-        client.get_client_details = AsyncMock(
-            return_value={
-                "ClientKey": "ck1",
-                "ClientId": "C1",
-                "DefaultAccountId": "A1",
-                "Name": "Test User",
-            }
-        )
-        result = {
-            "client_id": "unknown",
-            "account_id": "unknown",
-            "client_name": "unknown",
-        }
-        with patch.object(coord, "_fetch_performance_metrics", new_callable=AsyncMock):
-            await coord._populate_performance_result(client, result)
-        assert result["client_id"] == "C1"
-        assert result["account_id"] == "A1"
-        assert result["client_name"] == "Test User"
-
-    async def test_no_client_details(self):
-        """None client details leaves result unchanged."""
-        coord = _bare_coordinator()
-        client = AsyncMock()
-        client.get_client_details = AsyncMock(return_value=None)
-        result = {"client_id": "unknown"}
-        await coord._populate_performance_result(client, result)
-        assert result["client_id"] == "unknown"
-
-    async def test_no_client_key(self):
-        """Missing ClientKey skips performance metrics fetch."""
-        coord = _bare_coordinator()
-        client = AsyncMock()
-        client.get_client_details = AsyncMock(
-            return_value={
-                "ClientId": "C1",
-                "DefaultAccountId": "A1",
-                "Name": "User",
-            }
-        )
-        result = {
-            "client_id": "unknown",
-            "account_id": "unknown",
-            "client_name": "unknown",
-        }
-        with patch.object(
-            coord, "_fetch_performance_metrics", new_callable=AsyncMock
-        ) as mock_fetch:
-            await coord._populate_performance_result(client, result)
-        mock_fetch.assert_not_called()
-        assert result["client_id"] == "C1"
-
-    async def test_exception_caught(self):
-        """Exception in client details is caught gracefully."""
-        coord = _bare_coordinator()
-        client = AsyncMock()
-        client.get_client_details = AsyncMock(side_effect=RuntimeError("fail"))
-        result = {"client_id": "unknown"}
-        await coord._populate_performance_result(client, result)
-        assert result["client_id"] == "unknown"
-
-
-# ---------------------------------------------------------------------------
-# _fetch_performance_metrics
-# ---------------------------------------------------------------------------
-
-
-class TestFetchPerformanceMetrics:
-    """Tests for _fetch_performance_metrics."""
-
-    async def test_v3_and_v4_success(self):
-        """Both v3 and v4 endpoints succeed and populate result."""
-        coord = _bare_coordinator()
-        client = AsyncMock()
-        client.get_performance = AsyncMock(
-            return_value={
-                "BalancePerformance": {"AccumulatedProfitLoss": 123.4},
-            }
-        )
-        v4_data = {
-            "alltime": {"KeyFigures": {"ReturnFraction": 0.1}},
-            "ytd": {"KeyFigures": {"ReturnFraction": 0.05}},
-            "month": {"KeyFigures": {"ReturnFraction": 0.02}},
-            "quarter": {"KeyFigures": {"ReturnFraction": 0.03}},
-        }
-        client.get_performance_v4_batch = AsyncMock(return_value=v4_data)
-        result = {}
-        await coord._fetch_performance_metrics(client, "ck1", result)
-        assert result["ytd_earnings_percentage"] == 123.4
-        assert result["investment_performance_percentage"] == pytest.approx(10.0)
-
-    async def test_v3_failure_v4_succeeds(self):
-        """V3 failure does not block v4 from succeeding."""
-        coord = _bare_coordinator()
-        client = AsyncMock()
-        client.get_performance = AsyncMock(side_effect=RuntimeError("v3 fail"))
-        client.get_performance_v4_batch = AsyncMock(
-            return_value={
-                "alltime": {"KeyFigures": {"ReturnFraction": 0.2}},
-            }
-        )
-        result = {}
-        await coord._fetch_performance_metrics(client, "ck1", result)
-        assert "ytd_earnings_percentage" not in result
-        assert result["investment_performance_percentage"] == pytest.approx(20.0)
-
-    async def test_v4_failure_v3_succeeds(self):
-        """V4 failure does not block v3 from succeeding."""
-        coord = _bare_coordinator()
-        client = AsyncMock()
-        client.get_performance = AsyncMock(
-            return_value={
-                "BalancePerformance": {"AccumulatedProfitLoss": 50.0},
-            }
-        )
-        client.get_performance_v4_batch = AsyncMock(side_effect=RuntimeError("v4 fail"))
-        result = {}
-        await coord._fetch_performance_metrics(client, "ck1", result)
-        assert result["ytd_earnings_percentage"] == 50.0
-        assert "investment_performance_percentage" not in result
-
-    async def test_batch_called_with_january_first_anchor(self):
-        """The YTD window must start on 1 January of the current year."""
-        coord = _bare_coordinator()
-        client = AsyncMock()
-        client.get_performance = AsyncMock(return_value={})
-        client.get_performance_v4_batch = AsyncMock(
-            return_value={"alltime": {}, "ytd": {}, "month": {}, "quarter": {}}
-        )
-        result: dict = {}
-
-        with patch(
-            "custom_components.saxo_portfolio.coordinator.dt_util.now"
-        ) as mock_now:
-            mock_now.return_value = datetime(2026, 8, 4, 12, 0)
-            await coord._fetch_performance_metrics(client, "ck1", result)
-
-        kwargs = client.get_performance_v4_batch.call_args.kwargs
-        assert kwargs["ytd_from"] == "2026-01-01"
-        assert kwargs["ytd_to"] == "2026-08-04"
-
-
-# ---------------------------------------------------------------------------
-# _fetch_positions_data_safely
-# ---------------------------------------------------------------------------
-
-
-class TestFetchPositionsDataSafely:
-    """Tests for _fetch_positions_data_safely."""
-
-    async def test_disabled_returns_empty(self):
-        """Disabled position sensors returns empty dict without API call."""
-        coord = _bare_coordinator()
-        coord._enable_position_sensors = False
-        result = await coord._fetch_positions_data_safely(MagicMock())
-        assert result == {}
-
-    async def test_success_returns_positions(self):
-        """Successful fetch returns parsed positions dict."""
-        coord = _bare_coordinator()
-        coord._enable_position_sensors = True
-        client = AsyncMock()
-        client.get_net_positions = AsyncMock(
-            return_value={
-                "Data": [
-                    {
-                        "NetPositionId": "P1",
-                        "NetPositionBase": {
-                            "Uic": 123,
-                            "AssetType": "Stock",
-                            "Amount": 10,
-                        },
-                        "NetPositionView": {
-                            "CurrentPrice": 150.0,
-                            "MarketValueOpen": -1400.0,
-                            "ProfitLossOnTrade": 100.0,
-                            "CurrentPriceType": "Tradable",
-                            "CalculationReliability": "Ok",
-                        },
-                        "DisplayAndFormat": {
-                            "Symbol": "AAPL",
-                            "Description": "Apple Inc",
-                            "Currency": "USD",
-                        },
-                    },
-                ],
-            }
-        )
-        result = await coord._fetch_positions_data_safely(client)
-        assert "aapl_stock" in result
-        assert result["aapl_stock"].symbol == "AAPL"
-
-    async def test_error_returns_cached(self):
-        """API error returns previously cached positions."""
-        coord = _bare_coordinator()
-        coord._enable_position_sensors = True
-        pos = PositionData(
-            position_id="P1",
-            symbol="AAPL",
-            description="Apple",
-            asset_type="Stock",
-            amount=10,
-            current_price=150.0,
-            market_value=1500.0,
-            profit_loss=100.0,
-            uic=123,
-        )
-        coord._positions_cache.positions = {"aapl_stock": pos}
-        client = AsyncMock()
-        client.get_net_positions = AsyncMock(side_effect=RuntimeError("network"))
-        result = await coord._fetch_positions_data_safely(client)
-        assert "aapl_stock" in result
-
-    async def test_empty_positions_response(self):
-        """Empty positions response returns empty dict."""
-        coord = _bare_coordinator()
-        coord._enable_position_sensors = True
-        client = AsyncMock()
-        client.get_net_positions = AsyncMock(return_value={"Data": []})
-        result = await coord._fetch_positions_data_safely(client)
-        assert result == {}
-
-
-# ---------------------------------------------------------------------------
-# _check_market_data_access
-# ---------------------------------------------------------------------------
-
-
-class TestCheckMarketDataAccess:
-    """Tests for _check_market_data_access."""
-
-    def test_has_access(self):
-        """Tradable price type with Ok reliability means access is available."""
-        coord = _bare_coordinator()
-        position = {
-            "NetPositionView": {
-                "CurrentPriceType": "Tradable",
-                "CalculationReliability": "Ok",
-            },
-        }
-        coord._check_market_data_access(position)
-        assert coord._has_market_data_access is True
-
-    def test_no_access_price_type_none(self):
-        """CurrentPriceType 'None' means no market data access."""
-        coord = _bare_coordinator()
-        position = {
-            "NetPositionView": {
-                "CurrentPriceType": "None",
-                "CalculationReliability": "Ok",
-            },
-        }
-        coord._check_market_data_access(position)
-        assert coord._has_market_data_access is False
-
-    def test_no_access_no_market_access(self):
-        """NoMarketAccess reliability means no market data access."""
-        coord = _bare_coordinator()
-        position = {
-            "NetPositionView": {
-                "CurrentPriceType": "Tradable",
-                "CalculationReliability": "NoMarketAccess",
-            },
-        }
-        coord._check_market_data_access(position)
-        assert coord._has_market_data_access is False
-
-    def test_no_access_approximated_price(self):
-        """ApproximatedPrice reliability means no market data access."""
-        coord = _bare_coordinator()
-        position = {
-            "NetPositionView": {
-                "CurrentPriceType": "Tradable",
-                "CalculationReliability": "ApproximatedPrice",
-            },
-        }
-        coord._check_market_data_access(position)
-        assert coord._has_market_data_access is False
-
-    def test_warning_logged_once(self):
-        """No-access warning is logged only once across multiple checks."""
-        coord = _bare_coordinator()
-        position = {"NetPositionView": {"CurrentPriceType": "None"}}
-        coord._check_market_data_access(position)
-        assert coord._position_market_data_warning_logged is True
-        # Call again - should not change state
-        coord._check_market_data_access(position)
-        assert coord._position_market_data_warning_logged is True
-
-
-# ---------------------------------------------------------------------------
-# _parse_single_position
-# ---------------------------------------------------------------------------
-
-
-class TestParseSinglePosition:
-    """Tests for _parse_single_position."""
-
-    def test_parse_success(self):
-        """Valid position raw data is parsed into slug and PositionData."""
-        coord = _bare_coordinator()
-        raw = {
-            "NetPositionId": "P1",
-            "NetPositionBase": {"Uic": 100, "AssetType": "Stock", "Amount": 5},
-            "NetPositionView": {
-                "CurrentPrice": 200.0,
-                "MarketValueOpen": -900.0,
-                "ProfitLossOnTrade": 100.0,
-            },
-            "DisplayAndFormat": {
-                "Symbol": "MSFT",
-                "Description": "Microsoft",
-                "Currency": "USD",
-            },
-            "PositionView": {},
-        }
-        result = coord._parse_single_position(raw)
-        assert result is not None
-        slug, pos = result
-        assert slug == "msft_stock"
-        assert pos.current_price == 200.0
-        assert pos.market_value == 1000.0  # abs(-900) + 100
-
-    def test_no_symbol_returns_none(self):
-        """Position with empty symbol is skipped."""
-        coord = _bare_coordinator()
-        raw = {
-            "NetPositionId": "P1",
-            "NetPositionBase": {"Uic": 100, "AssetType": "Stock", "Amount": 5},
-            "NetPositionView": {},
-            "DisplayAndFormat": {"Symbol": "", "Description": "No symbol"},
-        }
-        result = coord._parse_single_position(raw)
-        assert result is None
-
-    def test_calculated_price_when_zero(self):
-        """CurrentPrice of zero triggers calculation from market value and amount."""
-        coord = _bare_coordinator()
-        raw = {
-            "NetPositionId": "P1",
-            "NetPositionBase": {"Uic": 100, "AssetType": "Stock", "Amount": 10},
-            "NetPositionView": {
-                "CurrentPrice": 0.0,
-                "MarketValueOpen": -1000.0,
-                "ProfitLossOnTrade": 200.0,
-            },
-            "DisplayAndFormat": {
-                "Symbol": "TEST",
-                "Description": "Test Stock",
-                "Currency": "EUR",
-            },
-        }
-        result = coord._parse_single_position(raw)
-        assert result is not None
-        _slug, pos = result
-        # market_value = abs(-1000) + 200 = 1200
-        # current_price = 1200 / abs(10) = 120
-        assert pos.current_price == pytest.approx(120.0)
-        assert pos.market_value == pytest.approx(1200.0)
-
-    def test_exposure_fallback(self):
-        """Zero MarketValueOpen falls back to Exposure for market value."""
-        coord = _bare_coordinator()
-        raw = {
-            "NetPositionId": "P1",
-            "NetPositionBase": {"Uic": 100, "AssetType": "FxSpot", "Amount": 1000},
-            "NetPositionView": {
-                "CurrentPrice": 1.1,
-                "MarketValueOpen": 0.0,
-                "ProfitLossOnTrade": 0.0,
-                "Exposure": 5000.0,
-            },
-            "DisplayAndFormat": {
-                "Symbol": "EUR/USD",
-                "Description": "Euro/US Dollar",
-                "Currency": "USD",
-            },
-        }
-        result = coord._parse_single_position(raw)
-        assert result is not None
-        _, pos = result
-        assert pos.market_value == 5000.0
-
-    def test_profit_loss_fallback_to_base_currency(self):
-        """ProfitLossOnTradeInBaseCurrency is used when ProfitLossOnTrade is absent."""
-        coord = _bare_coordinator()
-        raw = {
-            "NetPositionId": "P1",
-            "NetPositionBase": {"Uic": 100, "AssetType": "Stock", "Amount": 10},
-            "NetPositionView": {
-                "CurrentPrice": 100.0,
-                "MarketValueOpen": -900.0,
-                "ProfitLossOnTradeInBaseCurrency": 50.0,
-            },
-            "DisplayAndFormat": {
-                "Symbol": "SYM",
-                "Description": "Sym",
-                "Currency": "USD",
-            },
-        }
-        result = coord._parse_single_position(raw)
-        assert result is not None
-        _, pos = result
-        assert pos.profit_loss == 50.0
-
-    def test_exception_returns_none(self):
-        """Invalid input causing exception returns None."""
-        coord = _bare_coordinator()
-        result = coord._parse_single_position("not_a_dict")
-        assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -1066,7 +352,7 @@ class TestPublicAccessors:
         coord = _bare_coordinator()
         assert coord.performance_last_updated is None
         stamp = datetime(2026, 1, 1, 12, 0)
-        coord._performance_last_updated = stamp
+        coord._performance.last_updated = stamp
         assert coord.performance_last_updated == stamp
 
 
@@ -1280,38 +566,46 @@ class TestFetchPortfolioData:
                 coord,
                 "_fetch_balance_with_logging",
                 new_callable=AsyncMock,
-                return_value={
-                    "CashBalance": 1000.0,
-                    "Currency": "EUR",
-                    "TotalValue": 5000.0,
-                    "NonMarginPositionsValue": 4000.0,
-                },
+                return_value=BalanceData(
+                    cash_balance=1000.0,
+                    currency="EUR",
+                    total_value=5000.0,
+                    non_margin_positions_value=4000.0,
+                ),
             ),
             patch.object(
-                coord,
-                "_fetch_performance_data_safely",
-                new_callable=AsyncMock,
-                return_value={
-                    "client_id": "C1",
-                    "investment_performance_percentage": 5.0,
-                },
-            ),
+                coord._performance, "async_update", new_callable=AsyncMock
+            ) as performance_update,
             patch.object(
-                coord,
-                "_fetch_positions_data_safely",
+                coord._positions,
+                "async_fetch",
                 new_callable=AsyncMock,
                 return_value={},
-            ),
+            ) as positions_fetch,
             patch(
                 "custom_components.saxo_portfolio.coordinator.async_get_clientsession",
                 return_value=MagicMock(),
             ),
         ):
             coord._oauth_session.token = {"access_token": "tok"}
+            coord._performance.client = ClientInfo(client_id="C1")
+            coord._performance.metrics = PerformanceData(
+                investment_performance_percentage=5.0
+            )
             result = await coord._fetch_portfolio_data()
-            assert result["cash_balance"] == 1000.0
-            assert result["currency"] == "EUR"
-            assert result["client_id"] == "C1"
+            performance_update.assert_awaited_once()
+            positions_fetch.assert_awaited_once()
+            assert result.balance == BalanceData(
+                cash_balance=1000.0,
+                currency="EUR",
+                total_value=5000.0,
+                non_margin_positions_value=4000.0,
+            )
+            assert result.client == ClientInfo(client_id="C1")
+            assert result.performance == PerformanceData(
+                investment_performance_percentage=5.0
+            )
+            assert isinstance(result.last_updated, datetime)
 
     async def test_auth_error(self):
         """AuthenticationError raises ConfigEntryAuthFailed."""
@@ -1529,7 +823,7 @@ class TestAsyncUpdateData:
             coord,
             "_fetch_portfolio_data",
             new_callable=AsyncMock,
-            return_value={"client_name": "unknown"},
+            return_value=_portfolio_data("unknown"),
         ):
             with patch(
                 "custom_components.saxo_portfolio.coordinator.dt_util"
@@ -1549,7 +843,7 @@ class TestAsyncUpdateData:
                 coord,
                 "_fetch_portfolio_data",
                 new_callable=AsyncMock,
-                return_value={"client_name": "unknown"},
+                return_value=_portfolio_data("unknown"),
             ),
             patch("custom_components.saxo_portfolio.coordinator.dt_util") as mock_dt,
         ):
@@ -1568,7 +862,7 @@ class TestAsyncUpdateData:
                 coord,
                 "_fetch_portfolio_data",
                 new_callable=AsyncMock,
-                return_value={"client_name": "unknown"},
+                return_value=_portfolio_data("unknown"),
             ),
             patch("custom_components.saxo_portfolio.coordinator.dt_util") as mock_dt,
         ):
@@ -1587,7 +881,7 @@ class TestAsyncUpdateData:
                 coord,
                 "_fetch_portfolio_data",
                 new_callable=AsyncMock,
-                return_value={"client_name": "John Doe"},
+                return_value=_portfolio_data("John Doe"),
             ),
             patch("custom_components.saxo_portfolio.coordinator.dt_util") as mock_dt,
         ):
@@ -1606,7 +900,7 @@ class TestAsyncUpdateData:
                 coord,
                 "_fetch_portfolio_data",
                 new_callable=AsyncMock,
-                return_value={"client_name": "John Doe"},
+                return_value=_portfolio_data("John Doe"),
             ),
             patch("custom_components.saxo_portfolio.coordinator.dt_util") as mock_dt,
         ):
@@ -1625,7 +919,7 @@ class TestAsyncUpdateData:
                 coord,
                 "_fetch_portfolio_data",
                 new_callable=AsyncMock,
-                return_value={"client_name": "John Doe"},
+                return_value=_portfolio_data("John Doe"),
             ),
             patch("custom_components.saxo_portfolio.coordinator.dt_util") as mock_dt,
         ):
@@ -1643,7 +937,7 @@ class TestAsyncUpdateData:
                 coord,
                 "_fetch_portfolio_data",
                 new_callable=AsyncMock,
-                return_value={"client_name": "unknown"},
+                return_value=_portfolio_data("unknown"),
             ),
             patch("custom_components.saxo_portfolio.coordinator.dt_util") as mock_dt,
         ):
@@ -1670,7 +964,7 @@ class TestAsyncUpdateData:
             coord,
             "_fetch_portfolio_data",
             new_callable=AsyncMock,
-            return_value={"client_name": "unknown"},
+            return_value=_portfolio_data("unknown"),
         ):
             with patch(
                 "custom_components.saxo_portfolio.coordinator.dt_util"
@@ -1706,163 +1000,25 @@ class TestAsyncShutdown:
 
 
 class TestGetters:
-    """Tests for all getter methods."""
+    """Tests for the public accessors."""
 
-    def test_get_cash_balance_no_data(self):
-        """No data returns 0.0 for cash balance."""
+    def test_client_info_no_data(self):
+        """No data yet: every client field is "unknown"."""
         coord = _bare_coordinator()
         coord.data = None
-        assert coord.get_cash_balance() == 0.0
+        assert coord.client_info == ClientInfo()
+        assert coord.client_info.client_id == "unknown"
+        assert coord.client_info.account_id == "unknown"
+        assert coord.client_info.client_name == "unknown"
 
-    def test_get_cash_balance_with_data(self):
-        """Cash balance is returned from data."""
+    def test_client_info_with_data(self):
+        """Client identity comes from the typed coordinator data."""
         coord = _bare_coordinator()
-        coord.data = {"cash_balance": 1234.56}
-        assert coord.get_cash_balance() == 1234.56
-
-    def test_get_total_value_no_data(self):
-        """No data returns 0.0 for total value."""
-        coord = _bare_coordinator()
-        coord.data = None
-        assert coord.get_total_value() == 0.0
-
-    def test_get_total_value_with_data(self):
-        """Total value is returned from data."""
-        coord = _bare_coordinator()
-        coord.data = {"total_value": 9999.99}
-        assert coord.get_total_value() == 9999.99
-
-    def test_get_non_margin_positions_value_no_data(self):
-        """No data returns 0.0 for non-margin positions value."""
-        coord = _bare_coordinator()
-        coord.data = None
-        assert coord.get_non_margin_positions_value() == 0.0
-
-    def test_get_non_margin_positions_value_with_data(self):
-        """Non-margin positions value is returned from data."""
-        coord = _bare_coordinator()
-        coord.data = {"non_margin_positions_value": 5000.0}
-        assert coord.get_non_margin_positions_value() == 5000.0
-
-    def test_get_currency_no_data(self):
-        """No data returns USD default."""
-        coord = _bare_coordinator()
-        coord.data = None
-        assert coord.get_currency() == "USD"
-
-    def test_get_currency_with_data(self):
-        """Currency is returned from data."""
-        coord = _bare_coordinator()
-        coord.data = {"currency": "EUR"}
-        assert coord.get_currency() == "EUR"
-
-    def test_get_ytd_earnings_percentage_no_data(self):
-        """No data returns None for YTD earnings."""
-        coord = _bare_coordinator()
-        coord.data = None
-        assert coord.get_ytd_earnings_percentage() is None
-
-    def test_get_ytd_earnings_percentage_with_data(self):
-        """YTD earnings percentage is returned from data."""
-        coord = _bare_coordinator()
-        coord.data = {"ytd_earnings_percentage": 12.5}
-        assert coord.get_ytd_earnings_percentage() == 12.5
-
-    def test_get_client_id_no_data(self):
-        """No data returns 'unknown' for client ID."""
-        coord = _bare_coordinator()
-        coord.data = None
-        assert coord.get_client_id() == "unknown"
-
-    def test_get_client_id_with_data(self):
-        """Client ID is returned from data."""
-        coord = _bare_coordinator()
-        coord.data = {"client_id": "C123"}
-        assert coord.get_client_id() == "C123"
-
-    def test_get_investment_performance_percentage_no_data(self):
-        """No data returns None for investment performance."""
-        coord = _bare_coordinator()
-        coord.data = None
-        assert coord.get_investment_performance_percentage() is None
-
-    def test_get_investment_performance_percentage_with_data(self):
-        """Investment performance is returned from data."""
-        coord = _bare_coordinator()
-        coord.data = {"investment_performance_percentage": 7.3}
-        assert coord.get_investment_performance_percentage() == 7.3
-
-    def test_get_cash_transfer_balance_no_data(self):
-        """No data returns None for cash transfer balance."""
-        coord = _bare_coordinator()
-        coord.data = None
-        assert coord.get_cash_transfer_balance() is None
-
-    def test_get_cash_transfer_balance_with_data(self):
-        """Cash transfer balance is returned from data."""
-        coord = _bare_coordinator()
-        coord.data = {"cash_transfer_balance": 50000.0}
-        assert coord.get_cash_transfer_balance() == 50000.0
-
-    def test_get_ytd_investment_performance_percentage_no_data(self):
-        """No data returns None for YTD investment performance."""
-        coord = _bare_coordinator()
-        coord.data = None
-        assert coord.get_ytd_investment_performance_percentage() is None
-
-    def test_get_ytd_investment_performance_percentage_with_data(self):
-        """YTD investment performance is returned from data."""
-        coord = _bare_coordinator()
-        coord.data = {"ytd_investment_performance_percentage": 3.2}
-        assert coord.get_ytd_investment_performance_percentage() == 3.2
-
-    def test_get_month_investment_performance_percentage_no_data(self):
-        """No data returns None for month investment performance."""
-        coord = _bare_coordinator()
-        coord.data = None
-        assert coord.get_month_investment_performance_percentage() is None
-
-    def test_get_month_investment_performance_percentage_with_data(self):
-        """Month investment performance is returned from data."""
-        coord = _bare_coordinator()
-        coord.data = {"month_investment_performance_percentage": 1.5}
-        assert coord.get_month_investment_performance_percentage() == 1.5
-
-    def test_get_quarter_investment_performance_percentage_no_data(self):
-        """No data returns None for quarter investment performance."""
-        coord = _bare_coordinator()
-        coord.data = None
-        assert coord.get_quarter_investment_performance_percentage() is None
-
-    def test_get_quarter_investment_performance_percentage_with_data(self):
-        """Quarter investment performance is returned from data."""
-        coord = _bare_coordinator()
-        coord.data = {"quarter_investment_performance_percentage": 2.8}
-        assert coord.get_quarter_investment_performance_percentage() == 2.8
-
-    def test_get_account_id_no_data(self):
-        """No data returns 'unknown' for account ID."""
-        coord = _bare_coordinator()
-        coord.data = None
-        assert coord.get_account_id() == "unknown"
-
-    def test_get_account_id_with_data(self):
-        """Account ID is returned from data."""
-        coord = _bare_coordinator()
-        coord.data = {"account_id": "A456"}
-        assert coord.get_account_id() == "A456"
-
-    def test_get_client_name_no_data(self):
-        """No data returns 'unknown' for client name."""
-        coord = _bare_coordinator()
-        coord.data = None
-        assert coord.get_client_name() == "unknown"
-
-    def test_get_client_name_with_data(self):
-        """Client name is returned from data."""
-        coord = _bare_coordinator()
-        coord.data = {"client_name": "John"}
-        assert coord.get_client_name() == "John"
+        client = ClientInfo(client_id="C123", account_id="A456", client_name="John")
+        coord.data = SaxoPortfolioData(
+            balance=BalanceData(), client=client, last_updated=datetime.now()
+        )
+        assert coord.client_info is client
 
     def test_get_positions_empty(self):
         """Empty cache returns empty positions dict."""
@@ -1883,7 +1039,7 @@ class TestGetters:
             profit_loss=100.0,
             uic=123,
         )
-        coord._positions_cache.positions = {"aapl_stock": pos}
+        coord._positions.cache.positions = {"aapl_stock": pos}
         assert len(coord.get_positions()) == 1
 
     def test_get_position_found(self):
@@ -1900,7 +1056,7 @@ class TestGetters:
             profit_loss=100.0,
             uic=123,
         )
-        coord._positions_cache.positions = {"aapl_stock": pos}
+        coord._positions.cache.positions = {"aapl_stock": pos}
         assert coord.get_position("aapl_stock") is pos
 
     def test_get_position_not_found(self):
@@ -1911,22 +1067,21 @@ class TestGetters:
     def test_get_position_ids(self):
         """Position IDs list is returned from cache."""
         coord = _bare_coordinator()
-        coord._positions_cache.position_ids = ["a", "b"]
+        coord._positions.cache.position_ids = ["a", "b"]
         assert coord.get_position_ids() == ["a", "b"]
 
     def test_has_market_data_access(self):
         """Market data access reflects internal state."""
         coord = _bare_coordinator()
         assert coord.has_market_data_access() is None
-        coord._has_market_data_access = True
+        coord._positions.has_market_data_access = True
         assert coord.has_market_data_access() is True
 
     def test_position_sensors_enabled(self):
         """Position sensors enabled reflects internal flag."""
         coord = _bare_coordinator()
-        coord._enable_position_sensors = False
         assert coord.position_sensors_enabled is False
-        coord._enable_position_sensors = True
+        coord._positions = PositionsFetcher(enabled=True)
         assert coord.position_sensors_enabled is True
 
     def test_last_successful_update_time(self):
@@ -1943,40 +1098,6 @@ class TestGetters:
         assert coord.is_startup_phase is True
         coord._is_startup_phase = False
         assert coord.is_startup_phase is False
-
-
-class TestYtdGetters:
-    """Tests for the YTD currency getters."""
-
-    def test_get_ytd_profit_loss(self):
-        """YTD profit/loss is returned from data."""
-        coord = _bare_coordinator()
-        coord.data = {"ytd_profit_loss": 1234.56}
-        assert coord.get_ytd_profit_loss() == pytest.approx(1234.56)
-
-    def test_get_ytd_profit_loss_none_when_missing(self):
-        """Missing key returns None, not 0.0."""
-        coord = _bare_coordinator()
-        coord.data = {}
-        assert coord.get_ytd_profit_loss() is None
-
-    def test_get_ytd_profit_loss_none_without_data(self):
-        """No data returns None."""
-        coord = _bare_coordinator()
-        coord.data = None
-        assert coord.get_ytd_profit_loss() is None
-
-    def test_get_ytd_cash_transfer(self):
-        """YTD net transfers is returned from data."""
-        coord = _bare_coordinator()
-        coord.data = {"ytd_cash_transfer": 250.0}
-        assert coord.get_ytd_cash_transfer() == pytest.approx(250.0)
-
-    def test_get_ytd_cash_transfer_none_when_missing(self):
-        """Missing key returns None, not 0.0."""
-        coord = _bare_coordinator()
-        coord.data = {}
-        assert coord.get_ytd_cash_transfer() is None
 
 
 # ---------------------------------------------------------------------------
@@ -2009,6 +1130,25 @@ class TestMarkMethods:
 
 class TestUpdateConfigEntryTitleIfNeeded:
     """Tests for _update_config_entry_title_if_needed."""
+
+    async def test_performance_fetch_updates_title(
+        self, mock_hass, mock_config_entry, mock_oauth_session
+    ):
+        """A performance fetch passes the fetched ClientId to the title update."""
+        coord = _make_coordinator(mock_hass, mock_config_entry, mock_oauth_session)
+        client = AsyncMock()
+        client.get_client_details = AsyncMock(
+            return_value={"ClientId": "C123", "Name": "Someone"}
+        )
+        with patch(
+            "custom_components.saxo_portfolio.performance.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await coord._performance.async_update(client)
+
+        mock_hass.config_entries.async_update_entry.assert_called_once_with(
+            mock_config_entry, title="Saxo Portfolio (C123)"
+        )
 
     def test_unknown_client_id_noop(self):
         """Unknown client ID does not trigger title update."""
@@ -2048,34 +1188,6 @@ class TestUpdateConfigEntryTitleIfNeeded:
 
 
 # ---------------------------------------------------------------------------
-# _update_positions_cache
-# ---------------------------------------------------------------------------
-
-
-class TestUpdatePositionsCache:
-    """Tests for _update_positions_cache."""
-
-    def test_updates_cache(self):
-        """Positions are stored in cache with IDs and timestamp."""
-        coord = _bare_coordinator()
-        pos = PositionData(
-            position_id="P1",
-            symbol="AAPL",
-            description="Apple",
-            asset_type="Stock",
-            amount=10,
-            current_price=150.0,
-            market_value=1500.0,
-            profit_loss=100.0,
-            uic=123,
-        )
-        coord._update_positions_cache({"aapl_stock": pos})
-        assert coord._positions_cache.positions == {"aapl_stock": pos}
-        assert coord._positions_cache.position_ids == ["aapl_stock"]
-        assert coord._positions_cache.last_updated is not None
-
-
-# ---------------------------------------------------------------------------
 # _fetch_balance_with_logging
 # ---------------------------------------------------------------------------
 
@@ -2084,7 +1196,7 @@ class TestFetchBalanceWithLogging:
     """Tests for _fetch_balance_with_logging."""
 
     async def test_strips_margin_detail(self):
-        """MarginCollateralNotAvailableDetail is removed from response."""
+        """The response is parsed; MarginCollateralNotAvailableDetail is dropped."""
         coord = _bare_coordinator()
         client = AsyncMock()
         client.get_account_balance = AsyncMock(
@@ -2097,8 +1209,12 @@ class TestFetchBalanceWithLogging:
         )
         client.base_url = "https://gateway.saxobank.com/openapi"
         result = await coord._fetch_balance_with_logging(client)
-        assert "MarginCollateralNotAvailableDetail" not in result
-        assert result["CashBalance"] == 1000.0
+        assert result == BalanceData(
+            cash_balance=1000.0,
+            currency="EUR",
+            total_value=5000.0,
+            non_margin_positions_value=0.0,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -2151,19 +1267,3 @@ class TestAsyncUpdateIntervalIfNeeded:
         with patch.object(coord, "_is_market_hours", return_value=False):
             await coord.async_update_interval_if_needed()
         assert coord.update_interval == DEFAULT_UPDATE_INTERVAL_AFTER_HOURS
-
-
-# ---------------------------------------------------------------------------
-# PositionsCache dataclass
-# ---------------------------------------------------------------------------
-
-
-class TestPositionsCache:
-    """Tests for PositionsCache dataclass."""
-
-    def test_defaults(self):
-        """Default PositionsCache has empty positions and no timestamp."""
-        cache = PositionsCache()
-        assert cache.positions == {}
-        assert cache.last_updated is None
-        assert cache.position_ids == []

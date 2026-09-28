@@ -3,6 +3,8 @@
 These tests verify dynamic sensor creation, options flow, and sensor lifecycle.
 """
 
+from datetime import datetime
+
 import pytest
 from unittest.mock import MagicMock
 
@@ -13,7 +15,7 @@ from custom_components.saxo_portfolio.const import (
     CONF_ENABLE_POSITION_SENSORS,
     CONF_TIMEZONE,
 )
-from custom_components.saxo_portfolio.coordinator import PositionData
+from custom_components.saxo_portfolio.positions import PositionData
 
 
 @pytest.mark.integration
@@ -43,13 +45,16 @@ class TestPositionSensorDynamicCreation:
         return entry
 
     @pytest.fixture
-    def mock_coordinator(self):
+    def mock_coordinator(self, set_portfolio_data):
         """Create a mock coordinator with positions."""
         coordinator = MagicMock()
-        coordinator.get_client_id.return_value = "123456"
-        coordinator.get_client_name.return_value = "Test User"
+        set_portfolio_data(
+            coordinator,
+            client_id="123456",
+            client_name="Test User",
+            last_updated=datetime(2024, 1, 1, 12, 0),
+        )
         coordinator.last_update_success = True
-        coordinator.data = {"last_updated": "2024-01-01T12:00:00"}
         coordinator.position_sensors_enabled = True
         coordinator.update_interval = MagicMock()
         coordinator.update_interval.total_seconds.return_value = 300
@@ -219,12 +224,13 @@ class TestPositionSensorAvailability:
     """Tests for position sensor availability behavior."""
 
     @pytest.fixture
-    def mock_coordinator(self):
+    def mock_coordinator(self, set_portfolio_data):
         """Create a mock coordinator."""
         coordinator = MagicMock()
-        coordinator.get_client_id.return_value = "123456"
+        set_portfolio_data(
+            coordinator, client_id="123456", last_updated=datetime(2024, 1, 1, 12, 0)
+        )
         coordinator.last_update_success = True
-        coordinator.data = {"last_updated": "2024-01-01T12:00:00"}
         coordinator.update_interval = MagicMock()
         coordinator.update_interval.total_seconds.return_value = 300
 
@@ -233,7 +239,6 @@ class TestPositionSensorAvailability:
     def test_position_sensor_available_when_position_exists(self, mock_coordinator):
         """Test sensor is available when position exists in cache."""
         from custom_components.saxo_portfolio.sensor import SaxoPositionSensor
-        from unittest.mock import PropertyMock
 
         position = PositionData(
             position_id="pos_1",
@@ -249,31 +254,26 @@ class TestPositionSensorAvailability:
         mock_coordinator.get_position.return_value = position
 
         sensor = SaxoPositionSensor(mock_coordinator, "aapl_stock")
-        type(sensor).coordinator = PropertyMock(return_value=mock_coordinator)
 
         assert sensor.available is True
 
     def test_position_sensor_unavailable_when_position_closed(self, mock_coordinator):
         """Test sensor becomes unavailable when position is closed."""
         from custom_components.saxo_portfolio.sensor import SaxoPositionSensor
-        from unittest.mock import PropertyMock
 
         # Position no longer in cache (closed)
         mock_coordinator.get_position.return_value = None
 
         sensor = SaxoPositionSensor(mock_coordinator, "aapl_stock")
-        type(sensor).coordinator = PropertyMock(return_value=mock_coordinator)
 
         assert sensor.available is False
 
     def test_position_sensor_unavailable_when_coordinator_fails(self, mock_coordinator):
         """Test sensor unavailable when coordinator data is None."""
         from custom_components.saxo_portfolio.sensor import SaxoPositionSensor
-        from unittest.mock import PropertyMock
 
         mock_coordinator.data = None
 
         sensor = SaxoPositionSensor(mock_coordinator, "aapl_stock")
-        type(sensor).coordinator = PropertyMock(return_value=mock_coordinator)
 
         assert sensor.available is False

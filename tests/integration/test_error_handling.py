@@ -16,6 +16,12 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.saxo_portfolio.coordinator import SaxoCoordinator
+from custom_components.saxo_portfolio.data import (
+    BalanceData,
+    ClientInfo,
+    PerformanceData,
+    SaxoPortfolioData,
+)
 from custom_components.saxo_portfolio.api.saxo_client import (
     AuthenticationError,
     APIError,
@@ -180,9 +186,9 @@ class TestErrorHandlingAndRecovery:
 
             result = await coordinator._fetch_portfolio_data()
             assert result is not None
-            assert isinstance(result, dict)
-            assert result["cash_balance"] == 5000.00
-            assert result["total_value"] == 125000.00
+            assert isinstance(result, SaxoPortfolioData)
+            assert result.balance.cash_balance == 5000.00
+            assert result.balance.total_value == 125000.00
 
     @pytest.mark.asyncio
     async def test_rate_limit_error_handling_with_backoff(
@@ -267,15 +273,17 @@ class TestErrorHandlingAndRecovery:
 
             # Balance data should be present
             assert result is not None
-            assert isinstance(result, dict)
-            assert result["cash_balance"] == 5000.00
-            assert result["total_value"] == 125000.00
-            assert result["currency"] == "USD"
+            assert isinstance(result, SaxoPortfolioData)
+            assert result.balance.cash_balance == 5000.00
+            assert result.balance.total_value == 125000.00
+            assert result.balance.currency == "USD"
 
             # Never-fetched performance data is unknown (None), not 0.0
-            assert result["investment_performance_percentage"] is None
-            assert result["client_id"] == "unknown"
-            assert "last_updated" in result
+            assert result.performance == PerformanceData()
+            assert result.performance.investment_performance_percentage is None
+            assert result.client == ClientInfo()
+            assert result.client.client_id == "unknown"
+            assert isinstance(result.last_updated, datetime)
 
     @pytest.mark.asyncio
     async def test_config_flow_oauth_error_handling(self, mock_hass):
@@ -316,15 +324,15 @@ class TestErrorHandlingAndRecovery:
         # Coordinator in error state with no data
         coordinator.data = None
 
-        # Patch get_client_id and get_currency which are called during sensor init
-        with (
-            patch.object(coordinator, "get_client_id", return_value="test123"),
-            patch.object(coordinator, "get_currency", return_value="USD"),
-        ):
-            sensor = SaxoTotalValueSensor(coordinator)
+        sensor = SaxoTotalValueSensor(coordinator)
 
-            # Sensor should report unavailable when coordinator.data is None
-            assert sensor.available is False
+        # Without data the identity and currency fall back to defaults
+        assert sensor.unique_id == "saxo_unknown_total_value"
+        assert sensor.native_unit_of_measurement == "USD"
+
+        # Sensor should report unavailable when coordinator.data is None
+        assert sensor.available is False
+        assert sensor.native_value is None
 
     @pytest.mark.asyncio
     async def test_integration_setup_failure_handling(
@@ -384,7 +392,7 @@ class TestErrorHandlingAndRecovery:
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             # Some should succeed, some should fail with UpdateFailed
-            successful = [r for r in results if isinstance(r, dict)]
+            successful = [r for r in results if isinstance(r, SaxoPortfolioData)]
             failed = [r for r in results if isinstance(r, UpdateFailed)]
             assert len(successful) >= 1
             assert len(failed) >= 1
@@ -417,14 +425,18 @@ class TestErrorHandlingAndRecovery:
 
             result = await coordinator._fetch_portfolio_data()
 
-            # The coordinator uses .get() with defaults, so it should still return a dict
-            assert isinstance(result, dict)
-            # CashBalance is "invalid_float" string - the coordinator passes it through
-            assert result["cash_balance"] == "invalid_float"
+            # Malformed fields degrade per field instead of failing the update
+            assert isinstance(result, SaxoPortfolioData)
+            # CashBalance is "invalid_float" string - it is not a number (unknown)
+            assert result.balance.cash_balance is None
             # Missing keys get default values
-            assert result["currency"] == "USD"
-            assert result["total_value"] == 0.0
-            assert "last_updated" in result
+            assert result.balance == BalanceData(
+                cash_balance=None,
+                currency="USD",
+                total_value=0.0,
+                non_margin_positions_value=0.0,
+            )
+            assert isinstance(result.last_updated, datetime)
 
     @pytest.mark.asyncio
     async def test_timeout_handling_for_slow_api(
@@ -485,9 +497,9 @@ class TestErrorHandlingAndRecovery:
 
             result = await coordinator._fetch_portfolio_data()
             assert result is not None
-            assert isinstance(result, dict)
-            assert result["total_value"] == 135000.00
-            assert result["cash_balance"] == 6000.00
+            assert isinstance(result, SaxoPortfolioData)
+            assert result.balance.total_value == 135000.00
+            assert result.balance.cash_balance == 6000.00
 
     @pytest.mark.asyncio
     async def test_error_logging_and_diagnostics(

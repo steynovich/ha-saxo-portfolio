@@ -21,6 +21,7 @@ from custom_components.saxo_portfolio.button import (
     SaxoRefreshButton,
     async_setup_entry,
 )
+from custom_components.saxo_portfolio.data import ClientInfo
 from custom_components.saxo_portfolio.const import (
     DEVICE_MANUFACTURER,
     DEVICE_MODEL,
@@ -40,8 +41,7 @@ def _make_coordinator(
 ) -> MagicMock:
     """Create a mock SaxoCoordinator with the minimum attributes needed."""
     coordinator = MagicMock()
-    coordinator.get_client_name.return_value = client_name
-    coordinator.get_client_id.return_value = client_id
+    coordinator.client_info = ClientInfo(client_id=client_id, client_name=client_name)
     coordinator.config_entry = MagicMock()
     coordinator.config_entry.entry_id = entry_id
     coordinator.async_refresh = AsyncMock()
@@ -146,8 +146,8 @@ class TestSaxoRefreshButtonDeviceInfo:
         coordinator = _make_coordinator(client_id="111")
         btn = SaxoRefreshButton(coordinator)
 
-        # Change the coordinator return value after creation
-        coordinator.get_client_id.return_value = "222"
+        # Change the coordinator's client data after creation
+        coordinator.client_info = ClientInfo(client_id="222", client_name="John Doe")
         info = btn.device_info
         assert info["name"] == "Saxo 222 Portfolio"
 

@@ -6,6 +6,7 @@ timing behavior, following validation scenarios from quickstart.md.
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 import asyncio
 
@@ -15,6 +16,12 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.saxo_portfolio.coordinator import SaxoCoordinator
 from custom_components.saxo_portfolio.const import DOMAIN
+from custom_components.saxo_portfolio.data import SaxoPortfolioData
+
+
+def _with_total_value(data: SaxoPortfolioData, total_value: float) -> SaxoPortfolioData:
+    """Return a copy of ``data`` with a different total value."""
+    return replace(data, balance=replace(data.balance, total_value=total_value))
 
 
 @pytest.mark.integration
@@ -56,24 +63,24 @@ class TestDataRefreshCycle:
         return session
 
     @pytest.fixture
-    def mock_portfolio_data(self):
-        """Return a complete portfolio data dict matching the coordinator schema."""
-        return {
-            "cash_balance": 5000.00,
-            "currency": "USD",
-            "total_value": 125000.00,
-            "non_margin_positions_value": 120000.00,
-            "ytd_earnings_percentage": 5.2,
-            "investment_performance_percentage": 12.3,
-            "ytd_investment_performance_percentage": 4.5,
-            "month_investment_performance_percentage": 1.1,
-            "quarter_investment_performance_percentage": 3.2,
-            "cash_transfer_balance": 50000.00,
-            "client_id": "client_123",
-            "client_name": "Test User",
-            "account_id": "acc_001",
-            "last_updated": datetime.now().isoformat(),
-        }
+    def mock_portfolio_data(self, make_portfolio_data):
+        """Return complete typed portfolio data matching the coordinator schema."""
+        return make_portfolio_data(
+            cash_balance=5000.00,
+            currency="USD",
+            total_value=125000.00,
+            non_margin_positions_value=120000.00,
+            ytd_earnings_percentage=5.2,
+            investment_performance_percentage=12.3,
+            ytd_investment_performance_percentage=4.5,
+            month_investment_performance_percentage=1.1,
+            quarter_investment_performance_percentage=3.2,
+            cash_transfer_balance=50000.00,
+            client_id="client_123",
+            client_name="Test User",
+            account_id="acc_001",
+            last_updated=datetime.now(),
+        )
 
     @pytest.fixture
     def coordinator(self, mock_hass, mock_config_entry, mock_oauth_session):
@@ -102,9 +109,9 @@ class TestDataRefreshCycle:
         # Should have populated data
         assert coordinator.data is not None
         assert coordinator.last_update_success is True
-        assert "cash_balance" in coordinator.data
-        assert "total_value" in coordinator.data
-        assert "currency" in coordinator.data
+        assert coordinator.data.balance.cash_balance == 5000.00
+        assert coordinator.data.balance.total_value == 125000.00
+        assert coordinator.data.balance.currency == "USD"
 
     @pytest.mark.asyncio
     async def test_dynamic_update_interval_market_hours(
@@ -222,7 +229,7 @@ class TestDataRefreshCycle:
         coordinator.async_add_listener(on_update)
 
         # Return different data so always_update=False still notifies listeners
-        updated_data = {**mock_portfolio_data, "total_value": 130000.00}
+        updated_data = _with_total_value(mock_portfolio_data, 130000.00)
         with patch.object(
             coordinator, "_fetch_portfolio_data", return_value=updated_data
         ):
@@ -241,7 +248,7 @@ class TestDataRefreshCycle:
             coordinator, "_fetch_portfolio_data", return_value=mock_portfolio_data
         ):
             await coordinator.async_config_entry_first_refresh()
-            good_data = coordinator.data.copy()
+            good_data = coordinator.data
 
         # Subsequent refresh fails
         with patch.object(
@@ -311,9 +318,9 @@ class TestDataRefreshCycle:
 
         # Different data for each refresh
         responses = [
-            {**mock_portfolio_data, "total_value": 100000},
-            {**mock_portfolio_data, "total_value": 105000},
-            {**mock_portfolio_data, "total_value": 103000},
+            _with_total_value(mock_portfolio_data, 100000),
+            _with_total_value(mock_portfolio_data, 105000),
+            _with_total_value(mock_portfolio_data, 103000),
         ]
 
         with patch.object(coordinator, "_fetch_portfolio_data") as mock_fetch:
@@ -325,10 +332,12 @@ class TestDataRefreshCycle:
                     await coordinator.async_refresh()
 
                 # Capture data snapshot
-                data_snapshots.append(coordinator.data.copy())
+                data_snapshots.append(coordinator.data)
 
                 # Data should be consistent with API response
-                assert coordinator.data["total_value"] == response["total_value"]
+                assert (
+                    coordinator.data.balance.total_value == response.balance.total_value
+                )
 
         # Should have three different snapshots
         assert len({str(snapshot) for snapshot in data_snapshots}) == 3

@@ -4,12 +4,13 @@ These tests cover slug generation, sensor state/attributes, and availability log
 """
 
 import json
+from datetime import datetime
 from pathlib import Path
-from unittest.mock import MagicMock, PropertyMock
+from unittest.mock import MagicMock
 
 import pytest
 
-from custom_components.saxo_portfolio.coordinator import PositionData
+from custom_components.saxo_portfolio.positions import PositionData
 
 
 class TestPositionDataSlugGeneration:
@@ -126,12 +127,13 @@ class TestPositionSensorIntegration:
     """Tests for position sensor behavior."""
 
     @pytest.fixture
-    def mock_coordinator(self):
+    def mock_coordinator(self, set_portfolio_data):
         """Create a mock coordinator."""
         coordinator = MagicMock()
-        coordinator.get_client_id.return_value = "123456"
+        set_portfolio_data(
+            coordinator, client_id="123456", last_updated=datetime(2024, 1, 1, 12, 0)
+        )
         coordinator.last_update_success = True
-        coordinator.data = {"last_updated": "2024-01-01T12:00:00"}
         coordinator.update_interval = MagicMock()
         coordinator.update_interval.total_seconds.return_value = 300
 
@@ -185,9 +187,6 @@ class TestPositionSensorIntegration:
 
         sensor = SaxoPositionSensor(mock_coordinator, "aapl_stock")
 
-        # Override coordinator property for testing
-        type(sensor).coordinator = PropertyMock(return_value=mock_coordinator)
-
         assert sensor.native_value == 150.25
 
     def test_position_sensor_attributes(self, mock_coordinator):
@@ -195,7 +194,6 @@ class TestPositionSensorIntegration:
         from custom_components.saxo_portfolio.sensor import SaxoPositionSensor
 
         sensor = SaxoPositionSensor(mock_coordinator, "aapl_stock")
-        type(sensor).coordinator = PropertyMock(return_value=mock_coordinator)
 
         attrs = sensor.extra_state_attributes
 
@@ -217,7 +215,6 @@ class TestPositionSensorIntegration:
         mock_coordinator.get_position.return_value = None
 
         sensor = SaxoPositionSensor(mock_coordinator, "nonexistent_stock")
-        type(sensor).coordinator = PropertyMock(return_value=mock_coordinator)
 
         # Sensor should be unavailable if position doesn't exist
         assert sensor.available is False
@@ -229,7 +226,6 @@ class TestPositionSensorIntegration:
         mock_coordinator.get_position.return_value = None
 
         sensor = SaxoPositionSensor(mock_coordinator, "closed_stock")
-        type(sensor).coordinator = PropertyMock(return_value=mock_coordinator)
 
         assert sensor.native_value is None
 
