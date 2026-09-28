@@ -36,6 +36,10 @@
     },
     "abort": {
       "missing_credentials": "**Applikationsuppgifter krävs**\n\nInnan du ställer in Saxo Portfolio måste du konfigurera applikationsuppgifter.\n\n**Steg:**\n1. Gå till [Saxo Developer Portal]({developer_portal_url})\n2. Skapa en produktionsapplikation med omdirigerings-URI: `{redirect_uri}`\n3. Gå till [Applikationsuppgifter]({setup_url}) i Home Assistant\n4. Lägg till uppgifter för {domain} med din App Key och Secret\n5. Återvänd hit för att slutföra inställningen\n\n**Produktions OAuth-endpoints:**\n• Auktorisera: {authorize_url}\n• Token: {token_url}",
+      "already_configured": "Detta Saxo-konto är redan konfigurerat.",
+      "api_validation_failed": "Det gick inte att validera dina Saxo API-uppgifter. Försök igen.",
+      "invalid_auth": "Ogiltiga autentiseringsuppgifter. Försök igen.",
+      "cannot_connect": "Det gick inte att ansluta till Saxo Bank. Kontrollera din internetanslutning.",
       "reauth_successful": "Återautentisering med Saxo Bank lyckades. Din integration kommer nu att fungera med de nya uppgifterna.",
       "reauth_account_mismatch": "Du loggade in med ett annat Saxo-konto än det som är konfigurerat för den här posten. Autentisera igen med det ursprungliga Saxo-kontot. Om du vill övervaka ett annat konto lägger du i stället till det som en ny integrationspost."
     }
@@ -58,7 +62,7 @@
   "entity": {
     "button": {
       "refresh": {
-        "name": "Refresh"
+        "name": "Uppdatera"
       },
       "reauthenticate": {
         "name": "Autentisera igen"
@@ -66,49 +70,49 @@
     },
     "sensor": {
       "cash_balance": {
-        "name": "Cash Balance"
+        "name": "Kontantsaldo"
       },
       "total_value": {
-        "name": "Total Value"
+        "name": "Totalt värde"
       },
       "non_margin_positions_value": {
-        "name": "Non-Margin Positions Value"
+        "name": "Värde för icke-marginalpositioner"
       },
       "accumulated_profit_loss": {
-        "name": "Accumulated Profit/Loss"
+        "name": "Ackumulerad vinst/förlust"
       },
       "investment_performance": {
-        "name": "Investment Performance"
+        "name": "Investeringsavkastning"
       },
       "ytd_investment_performance": {
-        "name": "YTD Investment Performance"
+        "name": "YTD-investeringsavkastning"
       },
       "ytd_profit_loss": {
-        "name": "YTD Profit/Loss"
+        "name": "YTD-vinst/förlust"
       },
       "ytd_cash_transfer": {
-        "name": "YTD Net Transfers"
+        "name": "YTD-nettoöverföringar"
       },
       "month_investment_performance": {
-        "name": "Month Investment Performance"
+        "name": "Månadens investeringsavkastning"
       },
       "quarter_investment_performance": {
-        "name": "Quarter Investment Performance"
+        "name": "Kvartalets investeringsavkastning"
       },
       "cash_transfer_balance": {
-        "name": "Cash Transfer Balance"
+        "name": "Saldo för kontantöverföringar"
       },
       "client_id": {
-        "name": "Client ID"
+        "name": "Kund-ID"
       },
       "account_id": {
-        "name": "Account ID"
+        "name": "Konto-ID"
       },
       "name": {
-        "name": "Name"
+        "name": "Namn"
       },
       "token_expiry": {
-        "name": "Token Expiry",
+        "name": "Tokenutgång",
         "state": {
           "valid": "Giltig",
           "warning": "Går ut inom 5 minuter",
@@ -117,7 +121,7 @@
         }
       },
       "market_status": {
-        "name": "Market Status",
+        "name": "Marknadsstatus",
         "state": {
           "market_open": "Marknaden öppen",
           "after_hours": "Efter stängning",
@@ -125,13 +129,13 @@
         }
       },
       "last_update": {
-        "name": "Last Update"
+        "name": "Senaste uppdatering"
       },
       "timezone": {
-        "name": "Timezone"
+        "name": "Tidszon"
       },
       "market_data_access": {
-        "name": "Market Data Access",
+        "name": "Åtkomst till marknadsdata",
         "state": {
           "available": "Tillgänglig",
           "not_available": "Inte tillgänglig"
@@ -140,6 +144,20 @@
       "position": {
         "name": "Position {symbol}"
       }
+    }
+  },
+  "exceptions": {
+    "refresh_failed": {
+      "message": "Det gick inte att uppdatera portföljdata: {error}"
+    },
+    "no_loaded_entries": {
+      "message": "Inga Saxo Portfolio-poster är inlästa. Konfigurera integrationen, eller autentisera igen eller aktivera en befintlig post igen, innan du uppdaterar data."
+    },
+    "entry_not_found": {
+      "message": "Konfigurationsposten {entry_id} hittades inte eller tillhör inte Saxo Portfolio."
+    },
+    "entry_not_loaded": {
+      "message": "Saxo Portfolio-posten {title} är inte inläst. Kontrollera dess status under Enheter och tjänster och försök igen."
     }
   },
   "issues": {
@@ -158,20 +176,6 @@
           "description": "Den Saxo Portfolio-post som ska uppdateras. Lämna tomt för att uppdatera alla inlästa poster."
         }
       }
-    }
-  },
-  "exceptions": {
-    "refresh_failed": {
-      "message": "Det gick inte att uppdatera portföljdata: {error}"
-    },
-    "no_loaded_entries": {
-      "message": "Inga Saxo Portfolio-poster är inlästa. Konfigurera integrationen, eller autentisera igen eller aktivera en befintlig post igen, innan du uppdaterar data."
-    },
-    "entry_not_found": {
-      "message": "Konfigurationsposten {entry_id} hittades inte eller tillhör inte Saxo Portfolio."
-    },
-    "entry_not_loaded": {
-      "message": "Saxo Portfolio-posten {title} är inte inläst. Kontrollera dess status under Enheter och tjänster och försök igen."
     }
   }
 }

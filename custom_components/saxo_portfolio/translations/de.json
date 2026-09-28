@@ -36,6 +36,10 @@
     },
     "abort": {
       "missing_credentials": "**Anwendungsanmeldedaten erforderlich**\n\nBevor Sie Saxo Portfolio einrichten, müssen Sie Anwendungsanmeldedaten konfigurieren.\n\n**Schritte:**\n1. Gehen Sie zum [Saxo Developer Portal]({developer_portal_url})\n2. Erstellen Sie eine Produktionsanwendung mit Redirect-URI: `{redirect_uri}`\n3. Gehen Sie zu [Anwendungsanmeldedaten]({setup_url}) in Home Assistant\n4. Fügen Sie Anmeldedaten für {domain} mit Ihrem App-Schlüssel und Geheimnis hinzu\n5. Kehren Sie hierher zurück, um die Einrichtung abzuschließen\n\n**Produktions-OAuth-Endpunkte:**\n• Autorisieren: {authorize_url}\n• Token: {token_url}",
+      "already_configured": "Dieses Saxo-Konto ist bereits konfiguriert.",
+      "api_validation_failed": "Ihre Saxo-API-Zugangsdaten konnten nicht überprüft werden. Bitte versuchen Sie es erneut.",
+      "invalid_auth": "Ungültige Anmeldedaten. Bitte versuchen Sie es erneut.",
+      "cannot_connect": "Verbindung zu Saxo Bank fehlgeschlagen. Bitte überprüfen Sie Ihre Internetverbindung.",
       "reauth_successful": "Erfolgreich bei Saxo Bank erneut authentifiziert. Ihre Integration funktioniert jetzt mit den neuen Anmeldedaten.",
       "reauth_account_mismatch": "Sie haben sich mit einem anderen Saxo-Konto angemeldet als dem, das für diesen Eintrag konfiguriert ist. Bitte authentifizieren Sie sich erneut mit dem ursprünglichen Saxo-Konto. Um ein anderes Konto zu überwachen, fügen Sie es stattdessen als neuen Integrationseintrag hinzu."
     }
@@ -58,7 +62,7 @@
   "entity": {
     "button": {
       "refresh": {
-        "name": "Refresh"
+        "name": "Aktualisieren"
       },
       "reauthenticate": {
         "name": "Erneut authentifizieren"
@@ -66,49 +70,49 @@
     },
     "sensor": {
       "cash_balance": {
-        "name": "Cash Balance"
+        "name": "Barguthaben"
       },
       "total_value": {
-        "name": "Total Value"
+        "name": "Gesamtwert"
       },
       "non_margin_positions_value": {
-        "name": "Non-Margin Positions Value"
+        "name": "Wert der Nicht-Margin-Positionen"
       },
       "accumulated_profit_loss": {
-        "name": "Accumulated Profit/Loss"
+        "name": "Kumulierter Gewinn/Verlust"
       },
       "investment_performance": {
-        "name": "Investment Performance"
+        "name": "Anlageperformance"
       },
       "ytd_investment_performance": {
-        "name": "YTD Investment Performance"
+        "name": "YTD-Anlageperformance"
       },
       "ytd_profit_loss": {
-        "name": "YTD Profit/Loss"
+        "name": "YTD-Gewinn/Verlust"
       },
       "ytd_cash_transfer": {
-        "name": "YTD Net Transfers"
+        "name": "YTD-Nettoüberweisungen"
       },
       "month_investment_performance": {
-        "name": "Month Investment Performance"
+        "name": "Monatliche Anlageperformance"
       },
       "quarter_investment_performance": {
-        "name": "Quarter Investment Performance"
+        "name": "Quartalsweise Anlageperformance"
       },
       "cash_transfer_balance": {
-        "name": "Cash Transfer Balance"
+        "name": "Saldo der Barüberweisungen"
       },
       "client_id": {
-        "name": "Client ID"
+        "name": "Kunden-ID"
       },
       "account_id": {
-        "name": "Account ID"
+        "name": "Konto-ID"
       },
       "name": {
         "name": "Name"
       },
       "token_expiry": {
-        "name": "Token Expiry",
+        "name": "Token-Ablauf",
         "state": {
           "valid": "Gültig",
           "warning": "Läuft innerhalb von 5 Minuten ab",
@@ -117,7 +121,7 @@
         }
       },
       "market_status": {
-        "name": "Market Status",
+        "name": "Marktstatus",
         "state": {
           "market_open": "Markt geöffnet",
           "after_hours": "Nachbörslich",
@@ -125,13 +129,13 @@
         }
       },
       "last_update": {
-        "name": "Last Update"
+        "name": "Letzte Aktualisierung"
       },
       "timezone": {
-        "name": "Timezone"
+        "name": "Zeitzone"
       },
       "market_data_access": {
-        "name": "Market Data Access",
+        "name": "Marktdatenzugriff",
         "state": {
           "available": "Verfügbar",
           "not_available": "Nicht verfügbar"
@@ -140,6 +144,20 @@
       "position": {
         "name": "Position {symbol}"
       }
+    }
+  },
+  "exceptions": {
+    "refresh_failed": {
+      "message": "Portfoliodaten konnten nicht aktualisiert werden: {error}"
+    },
+    "no_loaded_entries": {
+      "message": "Es sind keine Saxo Portfolio-Einträge geladen. Richten Sie die Integration ein oder authentifizieren bzw. aktivieren Sie einen vorhandenen Eintrag erneut, bevor Sie Daten aktualisieren."
+    },
+    "entry_not_found": {
+      "message": "Der Konfigurationseintrag {entry_id} wurde nicht gefunden oder gehört nicht zu Saxo Portfolio."
+    },
+    "entry_not_loaded": {
+      "message": "Der Saxo Portfolio-Eintrag {title} ist nicht geladen. Prüfen Sie seinen Status unter Geräte & Dienste und versuchen Sie es erneut."
     }
   },
   "issues": {
@@ -158,20 +176,6 @@
           "description": "Der zu aktualisierende Saxo Portfolio-Eintrag. Leer lassen, um alle geladenen Einträge zu aktualisieren."
         }
       }
-    }
-  },
-  "exceptions": {
-    "refresh_failed": {
-      "message": "Portfoliodaten konnten nicht aktualisiert werden: {error}"
-    },
-    "no_loaded_entries": {
-      "message": "Es sind keine Saxo Portfolio-Einträge geladen. Richten Sie die Integration ein oder authentifizieren bzw. aktivieren Sie einen vorhandenen Eintrag erneut, bevor Sie Daten aktualisieren."
-    },
-    "entry_not_found": {
-      "message": "Der Konfigurationseintrag {entry_id} wurde nicht gefunden oder gehört nicht zu Saxo Portfolio."
-    },
-    "entry_not_loaded": {
-      "message": "Der Saxo Portfolio-Eintrag {title} ist nicht geladen. Prüfen Sie seinen Status unter Geräte & Dienste und versuchen Sie es erneut."
     }
   }
 }

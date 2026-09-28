@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Reauthenticate button** (`button.saxo_{clientid}_reauthenticate`, configuration entity). Pressing it starts Home Assistant's reauthentication flow for the entry, the same flow that runs when Saxo rejects the refresh token, including the same-account check from #16. The current token stays in use until you finish signing in again.
 
+### Fixed
+- **Translation files are complete.** Entity names (the Refresh button, the portfolio sensors and the diagnostic sensors) are now translated in all ten non-English languages; they were still in English. Four setup-abort messages (`already_configured`, `api_validation_failed`, `invalid_auth`, `cannot_connect`) were missing from every non-English file and fell back to English. Entity IDs are unchanged, because Home Assistant builds them from the English names. A new test fails when a translation file misses a key from `strings.json`, still has an English entity name, or drops a placeholder.
+
 ## [2.9.0-beta.5] - 2026-09-28
 
 ### Changed

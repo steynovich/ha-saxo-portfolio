@@ -36,6 +36,10 @@
     },
     "abort": {
       "missing_credentials": "**Applicatiegegevens vereist**\n\nVoordat u Saxo Portfolio instelt, moet u applicatiegegevens configureren.\n\n**Stappen:**\n1. Ga naar het [Saxo Developer Portal]({developer_portal_url})\n2. Maak een productieapplicatie met redirect URI: `{redirect_uri}`\n3. Ga naar [Applicatiegegevens]({setup_url}) in Home Assistant\n4. Voeg gegevens toe voor {domain} met uw App Key en Secret\n5. Keer hier terug om de installatie te voltooien\n\n**Productie OAuth-eindpunten:**\n• Autoriseren: {authorize_url}\n• Token: {token_url}",
+      "already_configured": "Dit Saxo-account is al geconfigureerd.",
+      "api_validation_failed": "Uw Saxo API-gegevens konden niet worden gevalideerd. Probeer het opnieuw.",
+      "invalid_auth": "Ongeldige inloggegevens. Probeer het opnieuw.",
+      "cannot_connect": "Kan geen verbinding maken met Saxo Bank. Controleer uw internetverbinding.",
       "reauth_successful": "Succesvol opnieuw geauthenticeerd met Saxo Bank. Uw integratie werkt nu met de nieuwe gegevens.",
       "reauth_account_mismatch": "U bent ingelogd met een ander Saxo-account dan het account dat voor deze vermelding is geconfigureerd. Authenticeer opnieuw met het oorspronkelijke Saxo-account. Wilt u een ander account volgen, voeg het dan toe als nieuwe integratievermelding."
     }
@@ -58,7 +62,7 @@
   "entity": {
     "button": {
       "refresh": {
-        "name": "Refresh"
+        "name": "Vernieuwen"
       },
       "reauthenticate": {
         "name": "Opnieuw authenticeren"
@@ -66,49 +70,49 @@
     },
     "sensor": {
       "cash_balance": {
-        "name": "Cash Balance"
+        "name": "Contant saldo"
       },
       "total_value": {
-        "name": "Total Value"
+        "name": "Totale waarde"
       },
       "non_margin_positions_value": {
-        "name": "Non-Margin Positions Value"
+        "name": "Waarde niet-marginposities"
       },
       "accumulated_profit_loss": {
-        "name": "Accumulated Profit/Loss"
+        "name": "Gecumuleerde winst/verlies"
       },
       "investment_performance": {
-        "name": "Investment Performance"
+        "name": "Beleggingsrendement"
       },
       "ytd_investment_performance": {
-        "name": "YTD Investment Performance"
+        "name": "YTD-beleggingsrendement"
       },
       "ytd_profit_loss": {
-        "name": "YTD Profit/Loss"
+        "name": "YTD-winst/verlies"
       },
       "ytd_cash_transfer": {
-        "name": "YTD Net Transfers"
+        "name": "YTD-netto-overboekingen"
       },
       "month_investment_performance": {
-        "name": "Month Investment Performance"
+        "name": "Maandelijks beleggingsrendement"
       },
       "quarter_investment_performance": {
-        "name": "Quarter Investment Performance"
+        "name": "Kwartaalbeleggingsrendement"
       },
       "cash_transfer_balance": {
-        "name": "Cash Transfer Balance"
+        "name": "Saldo geldoverboekingen"
       },
       "client_id": {
-        "name": "Client ID"
+        "name": "Klant-ID"
       },
       "account_id": {
-        "name": "Account ID"
+        "name": "Rekening-ID"
       },
       "name": {
-        "name": "Name"
+        "name": "Naam"
       },
       "token_expiry": {
-        "name": "Token Expiry",
+        "name": "Tokenverloop",
         "state": {
           "valid": "Geldig",
           "warning": "Verloopt binnen 5 minuten",
@@ -117,7 +121,7 @@
         }
       },
       "market_status": {
-        "name": "Market Status",
+        "name": "Marktstatus",
         "state": {
           "market_open": "Markt open",
           "after_hours": "Na sluitingstijd",
@@ -125,13 +129,13 @@
         }
       },
       "last_update": {
-        "name": "Last Update"
+        "name": "Laatste update"
       },
       "timezone": {
-        "name": "Timezone"
+        "name": "Tijdzone"
       },
       "market_data_access": {
-        "name": "Market Data Access",
+        "name": "Toegang tot marktgegevens",
         "state": {
           "available": "Beschikbaar",
           "not_available": "Niet beschikbaar"
@@ -140,6 +144,20 @@
       "position": {
         "name": "Positie {symbol}"
       }
+    }
+  },
+  "exceptions": {
+    "refresh_failed": {
+      "message": "Vernieuwen van portefeuillegegevens mislukt: {error}"
+    },
+    "no_loaded_entries": {
+      "message": "Er zijn geen Saxo Portfolio-vermeldingen geladen. Stel de integratie in, of authenticeer opnieuw of schakel een bestaande vermelding weer in, voordat u gegevens vernieuwt."
+    },
+    "entry_not_found": {
+      "message": "Configuratievermelding {entry_id} is niet gevonden of hoort niet bij Saxo Portfolio."
+    },
+    "entry_not_loaded": {
+      "message": "De Saxo Portfolio-vermelding {title} is niet geladen. Controleer de status onder Apparaten & diensten en probeer het opnieuw."
     }
   },
   "issues": {
@@ -158,20 +176,6 @@
           "description": "De Saxo Portfolio-vermelding die vernieuwd moet worden. Laat leeg om alle geladen vermeldingen te vernieuwen."
         }
       }
-    }
-  },
-  "exceptions": {
-    "refresh_failed": {
-      "message": "Vernieuwen van portefeuillegegevens mislukt: {error}"
-    },
-    "no_loaded_entries": {
-      "message": "Er zijn geen Saxo Portfolio-vermeldingen geladen. Stel de integratie in, of authenticeer opnieuw of schakel een bestaande vermelding weer in, voordat u gegevens vernieuwt."
-    },
-    "entry_not_found": {
-      "message": "Configuratievermelding {entry_id} is niet gevonden of hoort niet bij Saxo Portfolio."
-    },
-    "entry_not_loaded": {
-      "message": "De Saxo Portfolio-vermelding {title} is niet geladen. Controleer de status onder Apparaten & diensten en probeer het opnieuw."
     }
   }
 }
