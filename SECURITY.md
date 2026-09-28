@@ -17,6 +17,9 @@ This document outlines security best practices for users and developers of the S
 - **Never manually copy or store OAuth tokens** outside of Home Assistant
 - If you suspect token compromise, revoke access in the Saxo Developer Portal
 
+#### Why the OAuth flow does not use PKCE
+The integration uses Saxo's **Authorization Code Grant** for confidential clients: the token request is authenticated with your App Key and App Secret. PKCE is not used. Saxo offers PKCE as a separate grant type for native apps that have no secret, and its refresh requests need the original `code_verifier` in place of the secret. Saxo does not document combining PKCE with a client secret. The authorization code can only be redeemed with your App Secret, which never leaves Home Assistant, and the OAuth `state` parameter is signed by Home Assistant. Register your Saxo app with the **Code** grant type (not PKCE). Background and sources are in `specs/001-create-a-homeassistant/spec.md` (FR-003 note).
+
 ### 3. Network Security
 - Ensure Home Assistant instance uses HTTPS (SSL/TLS) for external access
 - All API communication with Saxo uses HTTPS with certificate verification

@@ -165,7 +165,7 @@ The integration automatically creates **eighteen entities** using your Saxo Clie
 
 This integration implements enterprise-grade security practices:
 
-- **🔐 Authentication**: OAuth 2.0 with Home Assistant's secure credential management system
+- **🔐 Authentication**: OAuth 2.0 Authorization Code Grant (confidential client, App Secret kept in Home Assistant's Application Credentials). PKCE is not used because Saxo offers it only as a separate grant for apps without a secret; see [SECURITY.md](SECURITY.md)
 - **🔒 Token Security**: Encrypted storage with automatic refresh and proper expiration handling  
 - **🌐 Network Security**: Mandatory HTTPS with explicit SSL certificate verification
 - **📝 Data Protection**: Comprehensive sensitive data masking in all log outputs

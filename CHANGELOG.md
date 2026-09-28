@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **`saxo_portfolio.refresh_data` is registered once at integration setup** (#19), following the HA quality-scale `action-setup` rule. It stays available while entries are unloaded and reloaded. It now takes an optional `config_entry_id` to refresh a single entry; leave it out to refresh all loaded entries. Calling it when no entry is loaded, or targeting an unknown or unloaded entry, raises a translated validation error. Previously such a call silently did nothing.
 
+### Documentation
+- **Recorded why the OAuth flow does not use PKCE** (#23). Saxo documents PKCE as a separate grant type for public clients without a secret, and it requires the `code_verifier` again on every refresh. It does not document combining PKCE with a client secret. The integration keeps the confidential Authorization Code Grant with the App Secret. The original spec's FR-003 ("with PKCE") has been amended, and `SECURITY.md` and the README explain the decision. Config-flow tests now assert that no PKCE parameters are sent. No behaviour change.
+
 ### Fixed
 - **Reauthentication must use the same Saxo account** (#16): the new token is validated against the API, and reauth is aborted with a translated "account mismatch" message if the token belongs to a different account than the entry. Previously, signing in with another Saxo login silently repointed the entry, its entities and history at that account. Entries created before unique IDs existed get theirs filled in on the next reauth.
 

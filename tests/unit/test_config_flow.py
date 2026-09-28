@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, PropertyMock, patch
 
 import pytest
 from homeassistant.core import HomeAssistant
@@ -438,3 +438,88 @@ def test_reauth_account_mismatch_is_translated_everywhere():
     for path in files:
         data = json.loads(path.read_text(encoding="utf-8"))
         assert data["config"]["abort"].get("reauth_account_mismatch"), path.name
+
+
+def _fixed_redirect_uri():
+    return patch(
+        "custom_components.saxo_portfolio.application_credentials"
+        ".SaxoAuthImplementation.redirect_uri",
+        new_callable=PropertyMock,
+        return_value="https://example.com/cb",
+    )
+
+
+class TestOAuthWithoutPkce:
+    """#23: Saxo's confidential "Code" grant is used, without PKCE.
+
+    Saxo documents PKCE as a separate public-client grant (no AppSecret) whose
+    refresh requests must carry the original code_verifier. The integration
+    therefore uses the Authorization Code Grant with client secret and must not
+    send PKCE parameters. See specs/001-create-a-homeassistant/spec.md (FR-003).
+    """
+
+    @pytest.fixture
+    async def implementation(self, mock_hass):
+        from homeassistant.components.application_credentials import ClientCredential
+
+        from custom_components.saxo_portfolio.application_credentials import (
+            async_get_auth_implementation,
+        )
+
+        return await async_get_auth_implementation(
+            mock_hass, DOMAIN, ClientCredential("app_key", "app_secret")
+        )
+
+    @pytest.mark.asyncio
+    async def test_implementation_is_not_pkce(self, implementation):
+        """The Saxo implementation is a plain (confidential) local implementation."""
+        from homeassistant.helpers.config_entry_oauth2_flow import (
+            LocalOAuth2ImplementationWithPkce,
+        )
+
+        assert not isinstance(implementation, LocalOAuth2ImplementationWithPkce)
+        assert implementation.client_secret == "app_secret"
+        assert "code_challenge" not in implementation.extra_authorize_data
+
+    @pytest.mark.asyncio
+    async def test_authorize_url_has_no_code_challenge(self, flow, implementation):
+        """The authorize URL the flow sends users to carries no PKCE challenge."""
+        from urllib.parse import parse_qs, urlparse
+
+        flow.flow_impl = implementation
+        flow.flow_id = "flow_1"
+        flow.context = {}
+        with _fixed_redirect_uri():
+            result = await flow.async_step_auth()
+
+        assert result["type"] == "external"
+        query = parse_qs(urlparse(result["url"]).query)
+        assert query["response_type"] == ["code"]
+        assert query["client_id"] == ["app_key"]
+        assert query["scope"] == ["openapi"]
+        assert "code_challenge" not in query
+        assert "code_challenge_method" not in query
+
+    @pytest.mark.asyncio
+    async def test_code_exchange_and_refresh_send_no_code_verifier(
+        self, implementation
+    ):
+        """Token exchange and refresh rely on the client secret, not a verifier."""
+        implementation._token_request = AsyncMock(
+            return_value={"access_token": "a", "refresh_token": "r"}
+        )
+        with _fixed_redirect_uri():
+            await implementation.async_resolve_external_data(
+                {"code": "auth_code", "state": {"redirect_uri": "https://x/cb"}}
+            )
+            await implementation._async_refresh_token(
+                {"access_token": "a", "refresh_token": "r"}
+            )
+
+        exchange, refresh = (
+            c.args[0] for c in implementation._token_request.await_args_list
+        )
+        assert exchange["grant_type"] == "authorization_code"
+        assert refresh["grant_type"] == "refresh_token"
+        assert "code_verifier" not in exchange
+        assert "code_verifier" not in refresh
