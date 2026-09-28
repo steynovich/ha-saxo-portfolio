@@ -49,6 +49,8 @@ DEFAULT_CURRENCY: Final = "USD"
 # Rate limiting
 API_RATE_LIMIT_PER_MINUTE: Final = 120
 API_RATE_LIMIT_WINDOW: Final = 60  # seconds
+# Delay between consecutive batched API calls to avoid request bursts
+API_REQUEST_DELAY: Final = 0.5  # seconds
 MAX_RETRIES: Final = 3
 RETRY_BACKOFF_FACTOR: Final = 2
 
@@ -138,6 +140,13 @@ DEFAULT_UPDATE_INTERVAL_ANY: Final = timedelta(minutes=15)
 # Performance data update interval (less frequent since performance changes slowly)
 # Increased to 2 hours to reduce API calls and prevent rate limiting
 PERFORMANCE_UPDATE_INTERVAL: Final = timedelta(hours=2)
+
+# Spans of Saxo's trailing StandardPeriod windows. These are rolling windows
+# ending at the last completed day, not calendar month/quarter-to-date
+# (observed against /hist/v4/performance/timeseries; Saxo does not document
+# the exact span). See docs/superpowers/specs/2026-08-04-ytd-sensors-design.md.
+STANDARD_PERIOD_MONTH_SPAN: Final = timedelta(days=28)
+STANDARD_PERIOD_QUARTER_SPAN: Final = timedelta(days=90)
 
 
 # Configuration flow

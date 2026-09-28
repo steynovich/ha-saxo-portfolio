@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
@@ -61,6 +63,7 @@ def coord():
     c.get_ytd_cash_transfer.return_value = 250.0
     c.get_account_id.return_value = "ACC456"
     c.last_update_success = True
+    c.last_exception = None
     c.data = {
         "cash_balance": 1000.50,
         "total_value": 50000.0,
@@ -78,9 +81,9 @@ def coord():
         "timezone": "Europe/Amsterdam",
     }
     c.update_interval = timedelta(minutes=5)
-    c._performance_last_updated = datetime(2026, 1, 1, 12, 0)
-    c._timezone = "Europe/Amsterdam"
-    c._is_market_hours.return_value = True
+    c.performance_last_updated = datetime(2026, 1, 1, 12, 0)
+    c.timezone = "Europe/Amsterdam"
+    c.is_market_hours = True
     c.position_sensors_enabled = True
     c.get_position_ids.return_value = ["aapl_stock"]
     c.get_positions.return_value = {}
@@ -211,13 +214,6 @@ class TestSaxoSensorBase:
     def test_available_no_last_success_time(self, coord):
         coord.last_update_success = False
         coord.last_successful_update_time = None
-        sensor = SaxoCashBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
-        assert sensor.available is True
-
-    def test_available_no_last_successful_update_attr(self, coord):
-        coord.last_update_success = False
-        del coord.last_successful_update_time
         sensor = SaxoCashBalanceSensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is True
@@ -378,7 +374,7 @@ class TestPerformanceSensors:
                 SaxoYTDInvestmentPerformanceSensor,
                 "get_ytd_investment_performance_percentage",
                 8.76,
-                "Year",
+                "YearToDate",
             ),
             (
                 SaxoMonthInvestmentPerformanceSensor,
@@ -445,24 +441,71 @@ class TestPerformanceSensors:
         assert attrs["from"] == "inception"
 
     def test_ytd_period_dates(self, coord):
+        """YTD reports the 1 January-anchored window, not StandardPeriod=Year."""
         sensor = SaxoYTDInvestmentPerformanceSensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
-        attrs = sensor.extra_state_attributes
-        assert attrs["time_period"] == "Year"
-        assert "from" in attrs
-        assert "thru" in attrs
+        fixed_now = datetime(2026, 8, 4, 10, 0, tzinfo=dt_util.UTC)
+        with patch(
+            "custom_components.saxo_portfolio.sensor.dt_util.now",
+            return_value=fixed_now,
+        ):
+            attrs = sensor.extra_state_attributes
+        assert attrs["time_period"] == "YearToDate"
+        assert attrs["from"] == "2026-01-01"
+        assert attrs["thru"] == "2026-08-04"
 
-    def test_month_period_dates(self, coord):
-        sensor = SaxoMonthInvestmentPerformanceSensor(coord)
+    # StandardPeriod=Month/Quarter are trailing windows ending at the last
+    # completed day: probed on 2026-08-04 the API returned 2026-07-06..2026-08-03
+    # (28 days) and 2026-05-05..2026-08-03 (90 days). See
+    # docs/superpowers/specs/2026-08-04-ytd-sensors-design.md.
+    @pytest.mark.parametrize(
+        "cls,period,today,expected_from,expected_thru",
+        [
+            (
+                SaxoMonthInvestmentPerformanceSensor,
+                "Month",
+                datetime(2026, 8, 4, 10, 0),
+                "2026-07-06",
+                "2026-08-03",
+            ),
+            (
+                SaxoQuarterInvestmentPerformanceSensor,
+                "Quarter",
+                datetime(2026, 8, 4, 10, 0),
+                "2026-05-05",
+                "2026-08-03",
+            ),
+            # Not calendar-to-date: on the 1st the window still spans the
+            # previous month / quarter
+            (
+                SaxoMonthInvestmentPerformanceSensor,
+                "Month",
+                datetime(2026, 3, 1, 10, 0),
+                "2026-01-31",
+                "2026-02-28",
+            ),
+            (
+                SaxoQuarterInvestmentPerformanceSensor,
+                "Quarter",
+                datetime(2026, 1, 1, 10, 0),
+                "2025-10-02",
+                "2025-12-31",
+            ),
+        ],
+    )
+    def test_trailing_period_dates(
+        self, coord, cls, period, today, expected_from, expected_thru
+    ):
+        sensor = cls(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
-        attrs = sensor.extra_state_attributes
-        assert attrs["time_period"] == "Month"
-
-    def test_quarter_period_dates(self, coord):
-        sensor = SaxoQuarterInvestmentPerformanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
-        attrs = sensor.extra_state_attributes
-        assert attrs["time_period"] == "Quarter"
+        with patch(
+            "custom_components.saxo_portfolio.sensor.dt_util.now",
+            return_value=today.replace(tzinfo=dt_util.UTC),
+        ):
+            attrs = sensor.extra_state_attributes
+        assert attrs["time_period"] == period
+        assert attrs["from"] == expected_from
+        assert attrs["thru"] == expected_thru
 
     def test_attrs_no_data(self, coord):
         coord.data = None
@@ -558,41 +601,41 @@ class TestDiagnosticSensors:
 
 
 class TestTokenExpirySensor:
-    def test_expired(self, coord):
-        coord.config_entry.data = {"token": {"expires_at": time.time() - 100}}
+    def test_enum_options(self, coord):
         sensor = SaxoTokenExpirySensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
-        assert sensor.native_value == "Expired"
+        assert sensor.device_class == SensorDeviceClass.ENUM
+        assert sensor.options == ["valid", "warning", "critical", "expired"]
 
-    def test_critical(self, coord):
-        coord.config_entry.data = {"token": {"expires_at": time.time() + 30}}
+    @pytest.mark.parametrize(
+        "offset,expected",
+        [
+            (-100, "expired"),
+            (0, "expired"),
+            (30, "critical"),
+            (60, "critical"),
+            (200, "warning"),
+            (300, "warning"),
+            (1800, "valid"),
+            (7200, "valid"),
+        ],
+    )
+    def test_state(self, coord, offset, expected):
+        now = 1_800_000_000.0
+        coord.config_entry.data = {"token": {"expires_at": now + offset}}
         sensor = SaxoTokenExpirySensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
-        assert "Critical" in sensor.native_value
-
-    def test_warning(self, coord):
-        coord.config_entry.data = {"token": {"expires_at": time.time() + 200}}
-        sensor = SaxoTokenExpirySensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
-        assert "Warning" in sensor.native_value
-
-    def test_minutes(self, coord):
-        coord.config_entry.data = {"token": {"expires_at": time.time() + 1800}}
-        sensor = SaxoTokenExpirySensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
-        assert "minutes" in sensor.native_value
-
-    def test_hours(self, coord):
-        coord.config_entry.data = {"token": {"expires_at": time.time() + 7200}}
-        sensor = SaxoTokenExpirySensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
-        assert "hours" in sensor.native_value
+        with patch(
+            "custom_components.saxo_portfolio.sensor.time.time", return_value=now
+        ):
+            assert sensor.native_value == expected
+        assert sensor.native_value in sensor.options
 
     def test_unknown_no_token(self, coord):
         coord.config_entry.data = {}
         sensor = SaxoTokenExpirySensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
-        assert sensor.native_value == "Unknown"
+        # None renders as HA's own (translated) "unknown" state
+        assert sensor.native_value is None
 
     def test_extra_attrs(self, coord):
         coord.config_entry.data = {"token": {"expires_at": time.time() + 3600}}
@@ -626,23 +669,28 @@ class TestTokenExpirySensor:
 
 
 class TestMarketStatusSensor:
+    def test_enum_options(self, coord):
+        sensor = SaxoMarketStatusSensor(coord)
+        assert sensor.device_class == SensorDeviceClass.ENUM
+        assert sensor.options == ["market_open", "after_hours", "fixed_schedule"]
+
     def test_open(self, coord):
-        coord._is_market_hours.return_value = True
+        coord.is_market_hours = True
         sensor = SaxoMarketStatusSensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
-        assert sensor.native_value == "Market Open"
+        assert sensor.native_value == "market_open"
 
     def test_closed(self, coord):
-        coord._is_market_hours.return_value = False
+        coord.is_market_hours = False
         sensor = SaxoMarketStatusSensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
-        assert sensor.native_value == "After Hours"
+        assert sensor.native_value == "after_hours"
 
     def test_fixed_schedule(self, coord):
-        coord._timezone = "any"
+        coord.timezone = "any"
         sensor = SaxoMarketStatusSensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
-        assert sensor.native_value == "Fixed Schedule"
+        assert sensor.native_value == "fixed_schedule"
 
     def test_extra_attrs(self, coord):
         sensor = SaxoMarketStatusSensor(coord)
@@ -693,7 +741,7 @@ class TestTimezoneSensor:
         assert sensor.native_value == "Europe/Amsterdam"
 
     def test_value_any(self, coord):
-        coord._timezone = "any"
+        coord.timezone = "any"
         sensor = SaxoTimezoneSensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == "Any (Fixed Schedule)"
@@ -707,7 +755,7 @@ class TestTimezoneSensor:
         assert attrs["market_hours_detection"] is True
 
     def test_extra_attrs_any_timezone(self, coord):
-        coord._timezone = "any"
+        coord.timezone = "any"
         sensor = SaxoTimezoneSensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes
@@ -715,7 +763,7 @@ class TestTimezoneSensor:
         assert attrs["market_hours_detection"] is False
 
     def test_extra_attrs_unknown_timezone(self, coord):
-        coord._timezone = "Unknown"
+        coord.timezone = "Unknown"
         sensor = SaxoTimezoneSensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes
@@ -723,22 +771,29 @@ class TestTimezoneSensor:
 
 
 class TestMarketDataAccessSensor:
+    def test_enum_options(self, coord):
+        sensor = SaxoMarketDataAccessSensor(coord)
+        assert sensor.device_class == SensorDeviceClass.ENUM
+        # Not "unavailable": that is HA's reserved state for unavailable entities
+        assert sensor.options == ["available", "not_available"]
+
     def test_available_true(self, coord):
         sensor = SaxoMarketDataAccessSensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
-        assert sensor.native_value == "Available"
+        assert sensor.native_value == "available"
 
     def test_unavailable_false(self, coord):
         coord.has_market_data_access.return_value = False
         sensor = SaxoMarketDataAccessSensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
-        assert sensor.native_value == "Unavailable"
+        assert sensor.native_value == "not_available"
 
     def test_unknown(self, coord):
         coord.has_market_data_access.return_value = None
         sensor = SaxoMarketDataAccessSensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
-        assert sensor.native_value == "Unknown"
+        # None renders as HA's own (translated) "unknown" state
+        assert sensor.native_value is None
 
     def test_extra_attrs(self, coord):
         sensor = SaxoMarketDataAccessSensor(coord)
@@ -783,7 +838,9 @@ class TestPositionSensor:
 
     def test_name(self, coord):
         sensor = SaxoPositionSensor(coord, "aapl_stock")
-        assert sensor._attr_name == "Position AAPL"
+        assert sensor._attr_translation_key == "position"
+        assert sensor._attr_translation_placeholders == {"symbol": "AAPL"}
+        assert sensor._attr_unique_id == "saxo_test123_position_aapl_stock"
         assert sensor._attr_has_entity_name is True
 
 
@@ -858,3 +915,28 @@ class TestYTDCurrencySensors:
         assert last_reset.month == 1
         assert last_reset.day == 1
         assert last_reset.tzinfo is not None
+
+
+_PKG_ROOT = Path(__file__).parents[2] / "custom_components" / "saxo_portfolio"
+_TRANSLATION_FILES = [
+    _PKG_ROOT / "strings.json",
+    *sorted((_PKG_ROOT / "translations").glob("*.json")),
+]
+
+
+class TestEnumStateTranslations:
+    """Every ENUM diagnostic sensor option is translated in every language."""
+
+    @pytest.mark.parametrize(
+        "cls",
+        [SaxoMarketStatusSensor, SaxoTokenExpirySensor, SaxoMarketDataAccessSensor],
+    )
+    @pytest.mark.parametrize("path", _TRANSLATION_FILES, ids=lambda p: p.name)
+    def test_all_options_translated(self, coord, cls, path):
+        assert len(_TRANSLATION_FILES) == 12  # strings.json + 11 languages
+        sensor = cls(coord)
+        states = json.loads(path.read_text())["entity"]["sensor"][
+            sensor.translation_key
+        ]["state"]
+        assert set(states) == set(sensor.options)
+        assert all(isinstance(v, str) and v for v in states.values())

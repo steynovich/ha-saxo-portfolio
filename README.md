@@ -146,8 +146,8 @@ The integration automatically creates **nineteen entities** using your Saxo Clie
 - `sensor.saxo_123456_accumulated_profit_loss` - All-time profit/loss performance
 - `sensor.saxo_123456_investment_performance` - Overall portfolio return percentage (all-time)
 - `sensor.saxo_123456_ytd_investment_performance` - Year-to-Date portfolio return percentage
-- `sensor.saxo_123456_month_investment_performance` - Rolling ~28-day portfolio return percentage (not calendar month-to-date; see Known Issues in CHANGELOG.md)
-- `sensor.saxo_123456_quarter_investment_performance` - Rolling ~90-day portfolio return percentage (not calendar quarter-to-date; see Known Issues in CHANGELOG.md)
+- `sensor.saxo_123456_month_investment_performance` - Trailing 28-day portfolio return percentage (Saxo's `StandardPeriod=Month`; not calendar month-to-date)
+- `sensor.saxo_123456_quarter_investment_performance` - Trailing 90-day portfolio return percentage (Saxo's `StandardPeriod=Quarter`; not calendar quarter-to-date)
 - `sensor.saxo_123456_cash_transfer_balance` - Latest cash transfer balance
 - `sensor.saxo_123456_ytd_profit_loss` - Year-to-Date profit/loss
 - `sensor.saxo_123456_ytd_cash_transfer` - Year-to-Date net deposits and withdrawals
@@ -156,11 +156,24 @@ The integration automatically creates **nineteen entities** using your Saxo Clie
 - `sensor.saxo_123456_client_id` - Saxo Client ID identifier for troubleshooting
 - `sensor.saxo_123456_account_id` - Saxo Account ID from account details API
 - `sensor.saxo_123456_name` - Client name from client details API
-- `sensor.saxo_123456_token_expiry` - OAuth token expiration countdown and status
-- `sensor.saxo_123456_market_status` - Current market status (Open/Closed/Fixed Schedule)
+- `sensor.saxo_123456_token_expiry` - OAuth token expiration status (seconds remaining in the `expires_in_seconds` attribute)
+- `sensor.saxo_123456_market_status` - Current market status
 - `sensor.saxo_123456_last_update` - Last successful data update timestamp
 - `sensor.saxo_123456_timezone` - Configured timezone and market hours settings
 - `sensor.saxo_123456_market_data_access` - Whether the API has real-time market data access (only created when position sensors are enabled)
+
+#### Diagnostic sensor states
+Market Status, Token Expiry and Market Data Access are enum sensors: their states are fixed values that Home Assistant shows translated into your language. Automations and templates should match on these values:
+
+| Sensor | States |
+|---|---|
+| Market Status | `market_open`, `after_hours`, `fixed_schedule` |
+| Token Expiry | `valid`, `warning` (≤ 5 minutes left), `critical` (≤ 1 minute left), `expired` |
+| Market Data Access | `available`, `not_available` |
+
+A sensor whose status cannot be determined reports Home Assistant's standard `unknown` state.
+
+> **Breaking change after 2.9.0-beta.4:** up to and including 2.9.0-beta.4 these sensors reported English text such as `Market Open`, `After Hours`, `Fixed Schedule`, `Critical - < 1 minute`, `Warning - 4.2 minutes`, `45 minutes`, `2.3 hours`, `Available`, `Unavailable` and `Unknown`. Automations or templates matching the old strings must be updated to the values above.
 
 ### Buttons (Example: Client ID "123456")
 - `button.saxo_123456_refresh` - Manually refresh portfolio data (configuration entity)
@@ -168,8 +181,12 @@ The integration automatically creates **nineteen entities** using your Saxo Clie
 ### Entity Attributes
 - **Currency**: Portfolio currency (EUR, USD, etc.) - automatically detected
 - **Last Updated**: Timestamp of last data refresh (balance sensors use balance API timestamp, performance sensors use performance API timestamp)
-- **Time Period**: Performance sensors include the StandardPeriod value ("AllTime", "Year", "Month", or "Quarter") used in API calls
-- **From/Thru Dates**: Performance sensors include calculated date ranges showing the period covered by each sensor
+- **Time Period**: Performance sensors include a `time_period` attribute naming the window the value covers:
+  - Investment Performance: `AllTime` (the `StandardPeriod=AllTime` API window)
+  - YTD Investment Performance: `YearToDate`, an explicit 1 January-to-today window (Saxo's `StandardPeriod=Year` is a trailing 12 months, so it is not used)
+  - Month Investment Performance: `Month` (the `StandardPeriod=Month` API window, a trailing 28 days)
+  - Quarter Investment Performance: `Quarter` (the `StandardPeriod=Quarter` API window, a trailing 90 days)
+- **From/Thru Dates**: Performance sensors include `from`/`thru` dates for the window the value was computed over: `inception` to today for all-time, 1 January to today for YTD, and for Month/Quarter the trailing 28/90 days ending yesterday (the last completed day)
 - **Performance Metrics**: Historical profit/loss and return calculations with clear time period identification
 - **Attribution**: Data source identification
 
@@ -359,7 +376,7 @@ automation:
     condition:
       - condition: state
         entity_id: sensor.saxo_123456_token_expiry
-        state: "WARNING"
+        state: "warning"
     action:
       - service: notify.mobile_app
         data:

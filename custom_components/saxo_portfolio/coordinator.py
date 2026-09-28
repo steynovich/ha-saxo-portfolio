@@ -28,6 +28,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api.saxo_client import SaxoApiClient, AuthenticationError, APIError
 from .const import (
+    API_REQUEST_DELAY,
     CONF_ENABLE_POSITION_SENSORS,
     CONF_TIMEZONE,
     COORDINATOR_UPDATE_TIMEOUT,
@@ -148,7 +149,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._initial_update_offset = random.uniform(0, 30)
 
         # Get configured timezone
-        self._timezone = config_entry.data.get(CONF_TIMEZONE, DEFAULT_TIMEZONE)
+        self._timezone: str = config_entry.data.get(CONF_TIMEZONE, DEFAULT_TIMEZONE)
 
         # Cache market hours check to avoid repeated calculations
         self._market_hours_cache: bool | None = None
@@ -259,7 +260,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             async with asyncio.timeout(PERFORMANCE_FETCH_TIMEOUT):
                 result = dict(defaults)
                 # Delay before client details call to prevent burst
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(API_REQUEST_DELAY)
                 complete = await self._populate_performance_result(client, result)
 
             if complete:
@@ -415,7 +416,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # v4 batch — four periods in one call
         try:
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(API_REQUEST_DELAY)
             now = dt_util.now()
             v4_batch = await client.get_performance_v4_batch(
                 client_key,
@@ -524,7 +525,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         try:
             # Add delay before positions call to prevent rate limiting
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(API_REQUEST_DELAY)
 
             positions_response = await client.get_net_positions()
             raw_positions = positions_response.get("Data", [])
@@ -1171,6 +1172,21 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def last_successful_update_time(self) -> datetime | None:
         """Get the last successful update time."""
         return self._last_successful_update
+
+    @property
+    def timezone(self) -> str:
+        """Return the configured market timezone ("any" for a fixed schedule)."""
+        return self._timezone
+
+    @property
+    def is_market_hours(self) -> bool:
+        """Return True if the configured market is currently open."""
+        return self._is_market_hours()
+
+    @property
+    def performance_last_updated(self) -> datetime | None:
+        """Return when performance data was last fetched, if ever."""
+        return self._performance_last_updated
 
     def get_cash_balance(self) -> float:
         """Get cash balance from data.

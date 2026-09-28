@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **BREAKING: Diagnostic sensor states are now translated enum values.** Market Status, Token Expiry and Market Data Access use `SensorDeviceClass.ENUM` with fixed states that Home Assistant displays in the user's language. Automations or templates matching the old English strings must be updated:
+  - Market Status: `Market Open` → `market_open`, `After Hours` → `after_hours`, `Fixed Schedule` → `fixed_schedule`
+  - Token Expiry: `Expired` → `expired`, `Critical - < 1 minute` → `critical`, `Warning - N minutes` → `warning`, `N minutes` / `N hours` → `valid`; the exact countdown remains available in the `expires_in_seconds` attribute
+  - Market Data Access: `Available` → `available`, `Unavailable` → `not_available`
+  - `Unknown` (Token Expiry, Market Data Access) → Home Assistant's standard `unknown` state
+- **Position sensor names are translatable**: position sensors now take their name from the `position` translation key with the symbol as a placeholder (e.g. "Position AAPL", "Positie AAPL" in Dutch) instead of a hard-coded English string. Entity IDs and unique IDs are unchanged.
 - **`saxo_portfolio.refresh_data` is registered once at integration setup** (#19), following the HA quality-scale `action-setup` rule. It stays available while entries are unloaded and reloaded. It now takes an optional `config_entry_id` to refresh a single entry; leave it out to refresh all loaded entries. Calling it when no entry is loaded, or targeting an unknown or unloaded entry, raises a translated validation error. Previously such a call silently did nothing.
 
 ### Documentation
@@ -25,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Failed performance fetches are no longer cached for 2 hours** (#15): a failed or partial fetch (client details, v3 or v4 performance) is retried on the next update instead of pinning values until the cache expires. Sensors keep their last known good values; before the first successful fetch the performance sensors report *unknown* instead of 0.0, so no false zeros are recorded in long-term statistics. Balance data still updates when performance calls fail
 - **Diagnostics report real data availability** (#17): `has_balance_data`, `has_performance_data` and `has_client_data` are derived from the data the coordinator actually holds (they were always false), a position count is included, and the sensor inventory is taken from the entity registry (including YTD, position and diagnostic sensors) instead of a hard-coded 16. The entry title, which contains the ClientId, is now redacted
 - **Reauthentication must use the same Saxo account** (#16): the new token is validated against the API, and reauth is aborted with a translated "account mismatch" message if the token belongs to a different account than the entry. Previously, signing in with another Saxo login silently repointed the entry, its entities and history at that account. Entries created before unique IDs existed get theirs filled in on the next reauth.
+- **YTD Investment Performance `time_period` attribute** now reads `YearToDate` instead of `Year`. Since 2.9.0-beta.3 the sensor uses a 1 January-anchored window rather than `StandardPeriod=Year` (a trailing 12 months), so `Year` was misleading. Automations or templates matching `time_period == "Year"` need updating.
+- **Month and Quarter Investment Performance `from`/`thru` attributes** now describe the trailing windows Saxo's `StandardPeriod=Month`/`Quarter` actually cover — the 28 and 90 days ending yesterday — instead of calendar month-to-date and quarter-to-date ranges. The sensor values are unchanged. This resolves the Known Issue listed under 2.9.0-beta.3.
 
 ## [2.9.0-beta.4] - 2026-09-28
 
@@ -54,9 +62,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Performance data no longer fetches the trailing `Year` window; the January-anchored request takes its place, keeping the refresh at four API calls
 - `Month` and `Quarter` performance requests trimmed to the `KeyFigures` field group
 - Removed unused `get_performance_v4`, `get_performance_v4_ytd`, `get_performance_v4_month` and `get_performance_v4_quarter` client methods
-
-### Known Issues
-- **Month and Quarter Investment Performance are also trailing windows**, not month-to-date and quarter-to-date: `StandardPeriod=Month` returns a rolling ~28 days and `Quarter` a rolling ~90 days. Their `from`/`thru` attributes are therefore inaccurate. Correcting these is deferred; see `docs/superpowers/specs/2026-08-04-ytd-sensors-design.md`.
 
 ## [2.9.0-beta.2] - 2026-04-17
 

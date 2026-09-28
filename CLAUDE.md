@@ -20,7 +20,7 @@
 
 ### Availability & resilience
 - Sticky availability: sensors stay available during transient failures and only go unavailable after `max(15 min, 3 × update_interval)` of consecutive failures (`max_failure_time` in `sensor.py`).
-- Rate limiting: 0.5 s delay between batched API calls (`asyncio.sleep(0.5)` in `api/saxo_client.py`); 0–30 s random stagger across multi-account coordinators (`_initial_update_offset` in `coordinator.py`).
+- Rate limiting: 0.5 s delay between batched API calls (`API_REQUEST_DELAY` in `const.py`, used by `api/saxo_client.py` and `coordinator.py`); 0–30 s random stagger across multi-account coordinators (`_initial_update_offset` in `coordinator.py`).
 
 ### Entity conventions
 - All entities use `_attr_has_entity_name = True` with `_attr_translation_key`; user-facing strings live in `strings.json` and icons in `icons.json`.

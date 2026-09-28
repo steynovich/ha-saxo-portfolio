@@ -3,8 +3,11 @@
 These tests cover slug generation, sensor state/attributes, and availability logic.
 """
 
-import pytest
+import json
+from pathlib import Path
 from unittest.mock import MagicMock, PropertyMock
+
+import pytest
 
 from custom_components.saxo_portfolio.coordinator import PositionData
 
@@ -158,9 +161,23 @@ class TestPositionSensorIntegration:
 
         # Unique ID should follow pattern: saxo_{client_id}_position_{slug}
         assert sensor._attr_unique_id == "saxo_123456_position_aapl_stock"
-        # Position sensors use has_entity_name with a dynamic name
+        # Position sensors use a shared translation key with a symbol placeholder
         assert sensor._attr_has_entity_name is True
-        assert sensor._attr_name == "Position AAPL"
+        assert sensor._attr_translation_key == "position"
+        assert sensor._attr_translation_placeholders == {"symbol": "AAPL"}
+        # The name comes from translations, not a hard-coded English string
+        assert not hasattr(sensor, "_attr_name")
+
+    def test_position_sensor_placeholder_falls_back_to_slug(self, mock_coordinator):
+        """Without cached position data the slug is used as the symbol."""
+        from custom_components.saxo_portfolio.sensor import SaxoPositionSensor
+
+        mock_coordinator.get_position.return_value = None
+        sensor = SaxoPositionSensor(mock_coordinator, "aapl_stock")
+
+        assert sensor._attr_translation_key == "position"
+        assert sensor._attr_translation_placeholders == {"symbol": "aapl_stock"}
+        assert sensor._attr_unique_id == "saxo_123456_position_aapl_stock"
 
     def test_position_sensor_state_is_current_price(self, mock_coordinator):
         """Test that position sensor state is the current price."""
@@ -215,3 +232,35 @@ class TestPositionSensorIntegration:
         type(sensor).coordinator = PropertyMock(return_value=mock_coordinator)
 
         assert sensor.native_value is None
+
+
+_PKG_ROOT = Path(__file__).parents[2] / "custom_components" / "saxo_portfolio"
+_TRANSLATION_FILES = [
+    _PKG_ROOT / "strings.json",
+    *sorted((_PKG_ROOT / "translations").glob("*.json")),
+]
+
+
+def _position_name(path: Path) -> str:
+    return json.loads(path.read_text())["entity"]["sensor"]["position"]["name"]
+
+
+class TestPositionSensorTranslations:
+    """The position sensor name is translated in every language file."""
+
+    def test_all_translation_files_present(self):
+        # strings.json + 11 languages
+        assert len(_TRANSLATION_FILES) == 12
+
+    @pytest.mark.parametrize("path", _TRANSLATION_FILES, ids=lambda p: p.name)
+    def test_position_name_has_symbol_placeholder(self, path):
+        assert "{symbol}" in _position_name(path)
+
+    @pytest.mark.parametrize(
+        "path",
+        [_PKG_ROOT / "strings.json", _PKG_ROOT / "translations" / "en.json"],
+        ids=lambda p: p.name,
+    )
+    def test_english_name_matches_previous_hard_coded_name(self, path):
+        """HA derives entity IDs from the English name; it must be unchanged."""
+        assert _position_name(path).format(symbol="AAPL") == "Position AAPL"

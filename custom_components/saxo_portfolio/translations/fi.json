@@ -105,10 +105,21 @@
         "name": "Name"
       },
       "token_expiry": {
-        "name": "Token Expiry"
+        "name": "Token Expiry",
+        "state": {
+          "valid": "Voimassa",
+          "warning": "Vanhenee 5 minuutin sisällä",
+          "critical": "Vanhenee 1 minuutin sisällä",
+          "expired": "Vanhentunut"
+        }
       },
       "market_status": {
-        "name": "Market Status"
+        "name": "Market Status",
+        "state": {
+          "market_open": "Markkinat auki",
+          "after_hours": "Kaupankäyntiajan ulkopuolella",
+          "fixed_schedule": "Kiinteä aikataulu"
+        }
       },
       "last_update": {
         "name": "Last Update"
@@ -117,7 +128,14 @@
         "name": "Timezone"
       },
       "market_data_access": {
-        "name": "Market Data Access"
+        "name": "Market Data Access",
+        "state": {
+          "available": "Saatavilla",
+          "not_available": "Ei saatavilla"
+        }
+      },
+      "position": {
+        "name": "Positio {symbol}"
       }
     }
   },

@@ -105,10 +105,21 @@
         "name": "Name"
       },
       "token_expiry": {
-        "name": "Token Expiry"
+        "name": "Token Expiry",
+        "state": {
+          "valid": "Giltig",
+          "warning": "Går ut inom 5 minuter",
+          "critical": "Går ut inom 1 minut",
+          "expired": "Utgången"
+        }
       },
       "market_status": {
-        "name": "Market Status"
+        "name": "Market Status",
+        "state": {
+          "market_open": "Marknaden öppen",
+          "after_hours": "Efter stängning",
+          "fixed_schedule": "Fast schema"
+        }
       },
       "last_update": {
         "name": "Last Update"
@@ -117,7 +128,14 @@
         "name": "Timezone"
       },
       "market_data_access": {
-        "name": "Market Data Access"
+        "name": "Market Data Access",
+        "state": {
+          "available": "Tillgänglig",
+          "not_available": "Inte tillgänglig"
+        }
+      },
+      "position": {
+        "name": "Position {symbol}"
       }
     }
   },

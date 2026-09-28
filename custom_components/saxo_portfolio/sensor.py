@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import logging
 import math
 import time
@@ -27,6 +27,8 @@ from .const import (
     DEVICE_MANUFACTURER,
     DEVICE_MODEL,
     DOMAIN,
+    STANDARD_PERIOD_MONTH_SPAN,
+    STANDARD_PERIOD_QUARTER_SPAN,
 )
 from .coordinator import SaxoCoordinator
 
@@ -144,11 +146,6 @@ class SaxoSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
 
         # If we have data but the current update is failing, check if it's a sustained failure
         # We have data (checked above), so we should stay available unless there's a sustained failure
-        if not hasattr(self.coordinator, "last_successful_update_time"):
-            # If we have data but no successful update time tracking, stay available
-            # This ensures compatibility with older coordinators and first updates
-            return True
-
         last_success = self.coordinator.last_successful_update_time
         if last_success is None:
             # No successful update time recorded yet but we have data, stay available
@@ -526,13 +523,9 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
         attrs["time_period"] = self._get_time_period()
 
         # Add last updated timestamp from performance cache, fallback to general timestamp
-        if (
-            hasattr(self.coordinator, "_performance_last_updated")
-            and self.coordinator._performance_last_updated
-        ):
-            attrs["last_updated"] = (
-                self.coordinator._performance_last_updated.isoformat()
-            )
+        performance_last_updated = self.coordinator.performance_last_updated
+        if performance_last_updated:
+            attrs["last_updated"] = performance_last_updated.isoformat()
 
         # Add From and Thru attributes based on time period
         period_dates = self._get_period_dates()
@@ -574,19 +567,20 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
         time_period = self._get_time_period()
         now = dt_util.now()
 
-        if time_period == "Year":
-            # Year-to-date: January 1st to today
+        if time_period == "YearToDate":
+            # Year-to-date: January 1st to today (explicit FromDate/ToDate)
             from_date = date(now.year, 1, 1)
             thru_date = now.date()
-        elif time_period == "Month":
-            # Month-to-date: 1st of current month to today
-            from_date = date(now.year, now.month, 1)
-            thru_date = now.date()
-        elif time_period == "Quarter":
-            # Quarter-to-date: 1st day of current quarter to today
-            quarter_start_month = ((now.month - 1) // 3) * 3 + 1
-            from_date = date(now.year, quarter_start_month, 1)
-            thru_date = now.date()
+        elif time_period in ("Month", "Quarter"):
+            # StandardPeriod=Month/Quarter are trailing windows ending at the
+            # last completed day, not calendar month/quarter-to-date
+            span = (
+                STANDARD_PERIOD_MONTH_SPAN
+                if time_period == "Month"
+                else STANDARD_PERIOD_QUARTER_SPAN
+            )
+            thru_date = now.date() - timedelta(days=1)
+            from_date = thru_date - span
         elif time_period == "AllTime":
             # All-time: No specific from date, just indicate it's all-time
             return {"from": "inception", "thru": now.date().isoformat()}
@@ -728,8 +722,12 @@ class SaxoYTDInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
         return self.coordinator.get_ytd_investment_performance_percentage()
 
     def _get_time_period(self) -> str:
-        """Get the time period for this sensor."""
-        return "Year"
+        """Get the time period for this sensor.
+
+        Not a StandardPeriod: ``StandardPeriod=Year`` is a trailing 12-month
+        window, so this sensor requests an explicit 1 January-to-today range.
+        """
+        return "YearToDate"
 
 
 class SaxoMonthInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
@@ -849,12 +847,15 @@ class SaxoNameSensor(SaxoDiagnosticSensorBase):
 class SaxoTokenExpirySensor(SaxoDiagnosticSensorBase):
     """Representation of a Saxo Token Expiry diagnostic sensor."""
 
+    _attr_options = ["valid", "warning", "critical", "expired"]
+
     def __init__(self, coordinator: SaxoCoordinator) -> None:
         """Initialize the sensor."""
         super().__init__(
             coordinator,
             "token_expiry",
         )
+        self._attr_device_class = SensorDeviceClass.ENUM
 
         _LOGGER.debug(
             "Initialized token expiry sensor - translation_key: %s",
@@ -867,22 +868,18 @@ class SaxoTokenExpirySensor(SaxoDiagnosticSensorBase):
         assert self.coordinator.config_entry is not None
         token_data = self.coordinator.config_entry.data.get("token", {})
         if not token_data or "expires_at" not in token_data:
-            return "Unknown"
+            return None
 
-        expires_at = token_data["expires_at"]
-        current_time = time.time()
-        time_until_expiry = expires_at - current_time
+        # The exact countdown is exposed as the expires_in_seconds attribute
+        time_until_expiry = token_data["expires_at"] - time.time()
 
         if time_until_expiry <= 0:
-            return "Expired"
-        elif time_until_expiry <= 60:
-            return "Critical - < 1 minute"
-        elif time_until_expiry <= 300:
-            return f"Warning - {round(time_until_expiry / 60, 1)} minutes"
-        elif time_until_expiry <= 3600:
-            return f"{round(time_until_expiry / 60)} minutes"
-        else:
-            return f"{round(time_until_expiry / 3600, 1)} hours"
+            return "expired"
+        if time_until_expiry <= 60:
+            return "critical"
+        if time_until_expiry <= 300:
+            return "warning"
+        return "valid"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -915,12 +912,15 @@ class SaxoTokenExpirySensor(SaxoDiagnosticSensorBase):
 class SaxoMarketStatusSensor(SaxoDiagnosticSensorBase):
     """Representation of a Saxo Market Status diagnostic sensor."""
 
+    _attr_options = ["market_open", "after_hours", "fixed_schedule"]
+
     def __init__(self, coordinator: SaxoCoordinator) -> None:
         """Initialize the sensor."""
         super().__init__(
             coordinator,
             "market_status",
         )
+        self._attr_device_class = SensorDeviceClass.ENUM
 
         _LOGGER.debug(
             "Initialized market status sensor - translation_key: %s",
@@ -930,21 +930,12 @@ class SaxoMarketStatusSensor(SaxoDiagnosticSensorBase):
     @property
     def native_value(self) -> str:
         """Return the market status."""
-        timezone = getattr(self.coordinator, "_timezone", "Unknown")
+        if self.coordinator.timezone == "any":
+            return "fixed_schedule"
 
-        if timezone == "any":
-            return "Fixed Schedule"
-
-        is_market_hours = (
-            self.coordinator._is_market_hours()
-            if hasattr(self.coordinator, "_is_market_hours")
-            else False
-        )
-
-        if is_market_hours:
-            return "Market Open"
-        else:
-            return "After Hours"
+        if self.coordinator.is_market_hours:
+            return "market_open"
+        return "after_hours"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -956,12 +947,10 @@ class SaxoMarketStatusSensor(SaxoDiagnosticSensorBase):
             DEFAULT_UPDATE_INTERVAL_ANY,
         )
 
-        timezone = getattr(self.coordinator, "_timezone", "Unknown")
-        attrs = {
+        timezone = self.coordinator.timezone
+        attrs: dict[str, Any] = {
             "timezone": timezone,
-            "update_interval": str(self.coordinator.update_interval)
-            if hasattr(self.coordinator, "update_interval")
-            else None,
+            "update_interval": str(self.coordinator.update_interval),
         }
 
         if timezone != "any" and timezone in MARKET_HOURS:
@@ -974,14 +963,9 @@ class SaxoMarketStatusSensor(SaxoDiagnosticSensorBase):
             )
             attrs["trading_days"] = market_info["weekdays"]
 
-            is_market_hours = (
-                self.coordinator._is_market_hours()
-                if hasattr(self.coordinator, "_is_market_hours")
-                else False
-            )
             attrs["interval_active"] = str(
                 DEFAULT_UPDATE_INTERVAL_MARKET_HOURS
-                if is_market_hours
+                if self.coordinator.is_market_hours
                 else DEFAULT_UPDATE_INTERVAL_AFTER_HOURS
             )
         elif timezone == "any":
@@ -1015,30 +999,17 @@ class SaxoLastUpdateSensor(SaxoDiagnosticSensorBase):
     def native_value(self) -> datetime | None:
         """Return the last update time."""
         # Use our custom property that tracks successful updates
-        if (
-            hasattr(self.coordinator, "last_successful_update_time")
-            and self.coordinator.last_successful_update_time is not None
-        ):
-            return self.coordinator.last_successful_update_time
-
-        return None
+        return self.coordinator.last_successful_update_time
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
         attrs: dict[str, Any] = {
-            "update_success": self.coordinator.last_update_success
-            if hasattr(self.coordinator, "last_update_success")
-            else None,
-            "has_data": self.coordinator.data is not None
-            if hasattr(self.coordinator, "data")
-            else False,
+            "update_success": self.coordinator.last_update_success,
+            "has_data": self.coordinator.data is not None,
         }
 
-        if (
-            hasattr(self.coordinator, "last_exception")
-            and self.coordinator.last_exception
-        ):
+        if self.coordinator.last_exception:
             attrs["last_error"] = str(self.coordinator.last_exception)
 
         return attrs
@@ -1069,7 +1040,7 @@ class SaxoTimezoneSensor(SaxoDiagnosticSensorBase):
     @property
     def native_value(self) -> str:
         """Return the configured timezone."""
-        timezone = getattr(self.coordinator, "_timezone", "Unknown")
+        timezone = self.coordinator.timezone
 
         if timezone == "any":
             return "Any (Fixed Schedule)"
@@ -1088,7 +1059,7 @@ class SaxoTimezoneSensor(SaxoDiagnosticSensorBase):
         )
 
         assert self.coordinator.config_entry is not None
-        timezone = getattr(self.coordinator, "_timezone", "Unknown")
+        timezone = self.coordinator.timezone
         attrs: dict[str, Any] = {
             "configured_timezone": timezone,
             "config_entry_timezone": self.coordinator.config_entry.data.get(
@@ -1115,12 +1086,9 @@ class SaxoTimezoneSensor(SaxoDiagnosticSensorBase):
             attrs["update_interval_after"] = str(DEFAULT_UPDATE_INTERVAL_AFTER_HOURS)
 
             # Show current market status
-            is_market_hours = (
-                self.coordinator._is_market_hours()
-                if hasattr(self.coordinator, "_is_market_hours")
-                else False
+            attrs["current_market_status"] = (
+                "Open" if self.coordinator.is_market_hours else "Closed"
             )
-            attrs["current_market_status"] = "Open" if is_market_hours else "Closed"
         else:
             attrs["mode"] = "Unknown configuration"
             attrs["error"] = f"Unknown timezone: {timezone}"
@@ -1136,12 +1104,16 @@ class SaxoTimezoneSensor(SaxoDiagnosticSensorBase):
 class SaxoMarketDataAccessSensor(SaxoDiagnosticSensorBase):
     """Diagnostic sensor showing if API has access to real-time market data."""
 
+    # Not "unavailable": that is HA's reserved state for unavailable entities
+    _attr_options = ["available", "not_available"]
+
     def __init__(self, coordinator: SaxoCoordinator) -> None:
         """Initialize the sensor."""
         super().__init__(
             coordinator,
             "market_data_access",
         )
+        self._attr_device_class = SensorDeviceClass.ENUM
 
         _LOGGER.debug(
             "Initialized real-time market data access sensor - translation_key: %s",
@@ -1149,23 +1121,20 @@ class SaxoMarketDataAccessSensor(SaxoDiagnosticSensorBase):
         )
 
     @property
-    def native_value(self) -> str:
-        """Return market data access status."""
+    def native_value(self) -> str | None:
+        """Return market data access status (None until it has been checked)."""
         has_access = self.coordinator.has_market_data_access()
 
         if has_access is None:
-            return "Unknown"
-        elif has_access:
-            return "Available"
-        else:
-            return "Unavailable"
+            return None
+        return "available" if has_access else "not_available"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
         has_access = self.coordinator.has_market_data_access()
 
-        attrs = {
+        attrs: dict[str, Any] = {
             "has_real_time_prices": has_access if has_access is not None else "unknown",
         }
 
@@ -1214,8 +1183,11 @@ class SaxoPositionSensor(SaxoSensorBase):
             unit_of_measurement=position.currency if position else "USD",
         )
 
-        # Position sensors use dynamic names (not translatable)
-        self._attr_name = f"Position {symbol}"
+        # All position sensors share one translation key; the symbol is a
+        # placeholder. The unique ID (set by the base class) keeps its
+        # per-position suffix, so registry entries are unchanged.
+        self._attr_translation_key = "position"
+        self._attr_translation_placeholders = {"symbol": symbol}
 
         self._attr_state_class = SensorStateClass.MEASUREMENT
 
