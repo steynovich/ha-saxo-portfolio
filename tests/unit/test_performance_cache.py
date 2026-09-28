@@ -21,6 +21,7 @@ from custom_components.saxo_portfolio.data import (
     PerformanceData,
     SaxoPortfolioData,
 )
+from custom_components.saxo_portfolio.performance import PerformanceFetcher
 from custom_components.saxo_portfolio.sensor import (
     SaxoAccumulatedProfitLossSensor,
     SaxoInvestmentPerformanceSensor,
@@ -95,15 +96,30 @@ def _client(
 @pytest.fixture(autouse=True)
 def _no_sleep():
     with patch(
-        "custom_components.saxo_portfolio.coordinator.asyncio.sleep",
+        "custom_components.saxo_portfolio.performance.asyncio.sleep",
         new_callable=AsyncMock,
     ):
         yield
 
 
-def _expire_cache(coord) -> None:
+def _fetcher() -> PerformanceFetcher:
+    return PerformanceFetcher(on_client_info=lambda client: None)
+
+
+async def _fetch(fetcher: PerformanceFetcher, client) -> dict:
+    """Run one fetch and return the resulting values by field name."""
+    await fetcher.async_update(client)
+    return {
+        **{key: getattr(fetcher.metrics, key) for key in PERF_KEYS},
+        "client_id": fetcher.client.client_id,
+        "account_id": fetcher.client.account_id,
+        "client_name": fetcher.client.client_name,
+    }
+
+
+def _expire_cache(fetcher: PerformanceFetcher) -> None:
     """Pretend the last good fetch happened longer ago than the cache TTL."""
-    coord._performance_last_updated = (
+    fetcher.last_updated = (
         datetime.now() - PERFORMANCE_UPDATE_INTERVAL - PERFORMANCE_UPDATE_INTERVAL
     )
 
@@ -112,34 +128,27 @@ class TestNeverFetched:
     """Without any good fetch, performance values are unknown, not 0.0."""
 
     def test_defaults_are_none(self):
-        coord = _bare_coordinator()
-        defaults = coord._build_performance_defaults()
+        metrics = _fetcher().metrics
+        assert metrics == PerformanceData()
         for key in PERF_KEYS:
-            assert defaults[key] is None, key
+            assert getattr(metrics, key) is None, key
 
     async def test_startup_failure_leaves_values_unknown(self):
-        coord = _bare_coordinator()
+        fetcher = _fetcher()
         client = _client(v3=APIError("x"), v4=APIError("x"))
 
-        result = await coord._fetch_performance_data_safely(client)
+        result = await _fetch(fetcher, client)
 
         for key in PERF_KEYS:
             assert result[key] is None, key
-        assert coord._performance_last_updated is None
-
-    def test_typed_data_is_none_without_values(self):
-        coord = _bare_coordinator()
-        performance = coord._to_performance_data(coord._build_performance_defaults())
-        assert performance == PerformanceData()
-        for key in PERF_KEYS:
-            assert getattr(performance, key) is None, key
+        assert fetcher.last_updated is None
 
     def test_sensors_unknown_without_values(self):
         coord = _bare_coordinator()
         coord.last_update_success = True
         coord.data = SaxoPortfolioData(
             balance=BalanceData(cash_balance=1.0, currency="EUR"),
-            performance=coord._to_performance_data(coord._build_performance_defaults()),
+            performance=coord._performance.metrics,
             client=ClientInfo(client_id="C1"),
             last_updated=datetime.now(),
         )
@@ -167,25 +176,25 @@ class TestStartupFailureThenRecovery:
         ids=["client_details", "v4", "v3"],
     )
     async def test_retry_next_cycle(self, failing_client):
-        coord = _bare_coordinator()
+        fetcher = _fetcher()
 
-        await coord._fetch_performance_data_safely(failing_client)
-        assert coord._performance_last_updated is None
-        assert coord._should_update_performance_data() is True
+        await _fetch(fetcher, failing_client)
+        assert fetcher.last_updated is None
+        assert fetcher.should_update() is True
 
         good = _client()
-        result = await coord._fetch_performance_data_safely(good)
+        result = await _fetch(fetcher, good)
 
         good.get_performance_v4_batch.assert_awaited_once()
-        assert coord._performance_last_updated is not None
+        assert fetcher.last_updated is not None
         assert result["investment_performance_percentage"] == pytest.approx(10.0)
         assert result["ytd_earnings_percentage"] == 123.0
         assert result["client_id"] == "C1"
 
     async def test_timeout_does_not_refresh_timestamp(self):
-        coord = _bare_coordinator()
+        fetcher = _fetcher()
         with patch(
-            "custom_components.saxo_portfolio.coordinator.PERFORMANCE_FETCH_TIMEOUT",
+            "custom_components.saxo_portfolio.performance.PERFORMANCE_FETCH_TIMEOUT",
             0.01,
         ):
 
@@ -196,23 +205,23 @@ class TestStartupFailureThenRecovery:
 
             client = _client()
             client.get_client_details = AsyncMock(side_effect=_hang)
-            await coord._fetch_performance_data_safely(client)
+            await _fetch(fetcher, client)
 
-        assert coord._performance_last_updated is None
+        assert fetcher.last_updated is None
 
 
 class TestFailureAfterGoodFetch:
     """A later failure keeps the last known good values."""
 
     async def test_total_failure_keeps_old_values(self):
-        coord = _bare_coordinator()
-        first = await coord._fetch_performance_data_safely(_client())
-        good_timestamp = coord._performance_last_updated
-        _expire_cache(coord)
-        stale_timestamp = coord._performance_last_updated
+        fetcher = _fetcher()
+        first = await _fetch(fetcher, _client())
+        good_timestamp = fetcher.last_updated
+        _expire_cache(fetcher)
+        stale_timestamp = fetcher.last_updated
 
-        result = await coord._fetch_performance_data_safely(
-            _client(details=None, v3=APIError("x"), v4=APIError("x"))
+        result = await _fetch(
+            fetcher, _client(details=None, v3=APIError("x"), v4=APIError("x"))
         )
 
         assert good_timestamp is not None
@@ -221,67 +230,66 @@ class TestFailureAfterGoodFetch:
         assert result["client_id"] == "C1"
         assert result["client_name"] == "Test User"
         # Not refreshed: the next cycle retries.
-        assert coord._performance_last_updated == stale_timestamp
-        assert coord._should_update_performance_data() is True
+        assert fetcher.last_updated == stale_timestamp
+        assert fetcher.should_update() is True
 
     async def test_v4_failure_keeps_old_v4_values_updates_v3(self):
-        coord = _bare_coordinator()
-        first = await coord._fetch_performance_data_safely(_client())
-        _expire_cache(coord)
-        stale_timestamp = coord._performance_last_updated
+        fetcher = _fetcher()
+        first = await _fetch(fetcher, _client())
+        _expire_cache(fetcher)
+        stale_timestamp = fetcher.last_updated
 
-        result = await coord._fetch_performance_data_safely(
+        result = await _fetch(
+            fetcher,
             _client(
                 v3={"BalancePerformance": {"AccumulatedProfitLoss": 999.0}},
                 v4=APIError("v4 down"),
-            )
+            ),
         )
 
         assert result["ytd_earnings_percentage"] == 999.0
         for key in PERF_KEYS:
             if key != "ytd_earnings_percentage":
                 assert result[key] == first[key], key
-        assert coord._performance_last_updated == stale_timestamp
+        assert fetcher.last_updated == stale_timestamp
 
     async def test_v3_failure_keeps_old_v3_value_updates_v4(self):
-        coord = _bare_coordinator()
-        await coord._fetch_performance_data_safely(_client())
-        _expire_cache(coord)
-        stale_timestamp = coord._performance_last_updated
+        fetcher = _fetcher()
+        await _fetch(fetcher, _client())
+        _expire_cache(fetcher)
+        stale_timestamp = fetcher.last_updated
 
-        result = await coord._fetch_performance_data_safely(
-            _client(v3=APIError("v3 down"), v4=_v4_batch(scale=2.0))
+        result = await _fetch(
+            fetcher, _client(v3=APIError("v3 down"), v4=_v4_batch(scale=2.0))
         )
 
         assert result["ytd_earnings_percentage"] == 123.0
         assert result["investment_performance_percentage"] == pytest.approx(20.0)
         assert result["ytd_profit_loss"] == pytest.approx(1000.0)
-        assert coord._performance_last_updated == stale_timestamp
+        assert fetcher.last_updated == stale_timestamp
 
     async def test_client_details_failure_keeps_everything(self):
-        coord = _bare_coordinator()
-        first = await coord._fetch_performance_data_safely(_client())
-        _expire_cache(coord)
-        stale_timestamp = coord._performance_last_updated
+        fetcher = _fetcher()
+        first = await _fetch(fetcher, _client())
+        _expire_cache(fetcher)
+        stale_timestamp = fetcher.last_updated
 
         client = _client(details=None)
-        result = await coord._fetch_performance_data_safely(client)
+        result = await _fetch(fetcher, client)
 
         client.get_performance.assert_not_awaited()
         for key in (*PERF_KEYS, "client_id", "account_id", "client_name"):
             assert result[key] == first[key], key
-        assert coord._performance_last_updated == stale_timestamp
+        assert fetcher.last_updated == stale_timestamp
 
     async def test_cached_values_served_between_fetches(self):
         """Partial values are also served on the next cycle if it fails too."""
-        coord = _bare_coordinator()
-        await coord._fetch_performance_data_safely(_client(v4=APIError("x")))
-        result = await coord._fetch_performance_data_safely(
-            _client(v3=APIError("x"), v4=APIError("x"))
-        )
+        fetcher = _fetcher()
+        await _fetch(fetcher, _client(v4=APIError("x")))
+        result = await _fetch(fetcher, _client(v3=APIError("x"), v4=APIError("x")))
         assert result["ytd_earnings_percentage"] == 123.0
         assert result["investment_performance_percentage"] is None
-        assert coord._performance_last_updated is None
+        assert fetcher.last_updated is None
 
 
 class TestBalanceUnaffected:
@@ -300,12 +308,12 @@ class TestBalanceUnaffected:
                 coord,
                 "_fetch_balance_with_logging",
                 new_callable=AsyncMock,
-                return_value={
-                    "CashBalance": 1000.0,
-                    "Currency": "EUR",
-                    "TotalValue": 5000.0,
-                    "NonMarginPositionsValue": 4000.0,
-                },
+                return_value=BalanceData(
+                    cash_balance=1000.0,
+                    currency="EUR",
+                    total_value=5000.0,
+                    non_margin_positions_value=4000.0,
+                ),
             ),
         ):
             result = await coord._fetch_portfolio_data()
@@ -313,4 +321,4 @@ class TestBalanceUnaffected:
         assert result.balance.cash_balance == 1000.0
         assert result.balance.total_value == 5000.0
         assert result.performance == PerformanceData()
-        assert coord._performance_last_updated is None
+        assert coord.performance_last_updated is None

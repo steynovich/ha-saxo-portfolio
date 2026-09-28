@@ -1,7 +1,10 @@
 """DataUpdateCoordinator for Saxo Portfolio integration.
 
-This coordinator manages data fetching from the Saxo API and coordinates
-updates across all sensors.
+The coordinator schedules updates (market-hours aware, with a stagger across
+accounts), keeps the OAuth token valid, and assembles the typed
+:class:`SaxoPortfolioData` that sensors read. Parsing of the Saxo API
+responses lives in ``data.py`` (balance), ``performance.py`` (client
+details and performance) and ``positions.py`` (net positions).
 """
 
 from __future__ import annotations
@@ -9,11 +12,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
-import re
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta, time
 import zoneinfo
-from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -27,16 +27,10 @@ import aiohttp
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api.saxo_client import SaxoApiClient, AuthenticationError, APIError
-from .data import (
-    BalanceData,
-    ClientInfo,
-    PerformanceData,
-    SaxoPortfolioData,
-    UNKNOWN,
-    numeric_or_none,
-)
+from .data import BalanceData, ClientInfo, SaxoPortfolioData
+from .performance import PerformanceFetcher
+from .positions import PositionData, PositionsFetcher
 from .const import (
-    API_REQUEST_DELAY,
     CONF_ENABLE_POSITION_SENSORS,
     CONF_TIMEZONE,
     COORDINATOR_UPDATE_TIMEOUT,
@@ -47,61 +41,11 @@ from .const import (
     DEFAULT_UPDATE_INTERVAL_MARKET_HOURS,
     DOMAIN,
     MARKET_HOURS,
-    PERFORMANCE_FETCH_TIMEOUT,
-    PERFORMANCE_UPDATE_INTERVAL,
     REFRESH_TOKEN_BUFFER,
     REFRESH_TOKEN_REFRESH_AT_FRACTION,
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-
-@dataclass
-class PositionData:
-    """Data class for a single portfolio position."""
-
-    position_id: str
-    symbol: str
-    description: str
-    asset_type: str
-    amount: float
-    current_price: float
-    market_value: float
-    profit_loss: float
-    uic: int
-    currency: str = "USD"
-
-    @staticmethod
-    def generate_slug(symbol: str, asset_type: str) -> str:
-        """Generate a URL-safe slug for the position.
-
-        Args:
-            symbol: The position symbol (e.g., "AAPL", "EUR/USD")
-            asset_type: The asset type (e.g., "Stock", "FxSpot")
-
-        Returns:
-            A lowercase slug suitable for entity IDs (e.g., "aapl_stock", "eur_usd_fxspot")
-
-        """
-        # Clean and lowercase the symbol
-        clean_symbol = re.sub(r"[^a-zA-Z0-9]", "_", symbol.lower())
-        # Remove consecutive underscores and strip leading/trailing underscores
-        clean_symbol = re.sub(r"_+", "_", clean_symbol).strip("_")
-
-        # Clean and lowercase the asset type
-        clean_asset_type = re.sub(r"[^a-zA-Z0-9]", "_", asset_type.lower())
-        clean_asset_type = re.sub(r"_+", "_", clean_asset_type).strip("_")
-
-        return f"{clean_symbol}_{clean_asset_type}"
-
-
-@dataclass
-class PositionsCache:
-    """Cache for portfolio positions data."""
-
-    positions: dict[str, PositionData] = field(default_factory=dict)
-    last_updated: datetime | None = None
-    position_ids: list[str] = field(default_factory=list)
 
 
 class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
@@ -126,20 +70,24 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
         self._api_client: SaxoApiClient | None = None
         self._last_successful_update: datetime | None = None
 
-        # Performance data caching
-        self._performance_data_cache: dict[str, Any] = {}
-        self._performance_last_updated: datetime | None = None
-
-        # Positions data caching
-        self._positions_cache = PositionsCache()
-        self._enable_position_sensors = config_entry.options.get(
-            CONF_ENABLE_POSITION_SENSORS,
-            config_entry.data.get(
-                CONF_ENABLE_POSITION_SENSORS, DEFAULT_ENABLE_POSITION_SENSORS
-            ),
+        # Performance data (cached for PERFORMANCE_UPDATE_INTERVAL)
+        self._performance = PerformanceFetcher(
+            on_client_info=lambda client: self._update_config_entry_title_if_needed(
+                client.client_id
+            )
         )
-        self._position_market_data_warning_logged = False
-        self._has_market_data_access: bool | None = None  # None = unknown/not checked
+
+        # Positions data (only fetched when position sensors are enabled)
+        self._positions = PositionsFetcher(
+            enabled=bool(
+                config_entry.options.get(
+                    CONF_ENABLE_POSITION_SENSORS,
+                    config_entry.data.get(
+                        CONF_ENABLE_POSITION_SENSORS, DEFAULT_ENABLE_POSITION_SENSORS
+                    ),
+                )
+            )
+        )
 
         # Track if sensors were skipped due to unknown client name
         self._sensors_initialized = False
@@ -209,487 +157,6 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
             )
 
         return self._api_client
-
-    def _should_update_performance_data(self) -> bool:
-        """Check if performance data should be updated based on cache age.
-
-        Returns:
-            True if performance data should be fetched (cache is stale or empty)
-
-        """
-        if self._performance_last_updated is None:
-            # No cached data, should update
-            return True
-
-        time_since_last_update = datetime.now() - self._performance_last_updated
-        should_update = time_since_last_update >= PERFORMANCE_UPDATE_INTERVAL
-
-        _LOGGER.debug(
-            "Performance cache age: %s, should_update: %s",
-            time_since_last_update,
-            should_update,
-        )
-
-        return should_update
-
-    async def _fetch_performance_data_safely(
-        self, client: SaxoApiClient
-    ) -> dict[str, Any]:
-        """Fetch performance and client data with graceful error handling.
-
-        This method wraps all performance/client detail fetching with its own
-        timeout. If the fetch times out or fails, cached/default values are
-        returned instead of raising an exception.
-
-        This ensures that balance data can be returned successfully even when
-        the performance API is slow or unresponsive.
-
-        Only a *complete* fetch (client details, v3 and v4 all succeeded)
-        refreshes the cache timestamp. A failed or partial fetch keeps the last
-        known good value for every field that could not be fetched, and leaves
-        the timestamp alone so the next coordinator update retries.
-
-        Args:
-            client: The Saxo API client to use for requests
-
-        Returns:
-            Dictionary with performance and client data (fresh or cached/default)
-
-        """
-        defaults = self._build_performance_defaults()
-
-        if not self._should_update_performance_data():
-            _LOGGER.debug("Using cached performance data")
-            return defaults
-
-        _LOGGER.debug("Updating performance data (cache expired or missing)")
-
-        try:
-            async with asyncio.timeout(PERFORMANCE_FETCH_TIMEOUT):
-                result = dict(defaults)
-                # Delay before client details call to prevent burst
-                await asyncio.sleep(API_REQUEST_DELAY)
-                complete = await self._populate_performance_result(client, result)
-
-            if complete:
-                self._update_performance_cache(result)
-            else:
-                self._store_partial_performance_result(result)
-            return result
-
-        except TimeoutError:
-            _LOGGER.warning(
-                "Performance data fetch timed out after %ds, using cached/default values. "
-                "Balance data will still be available.",
-                PERFORMANCE_FETCH_TIMEOUT,
-            )
-            return defaults
-
-        except Exception as e:
-            # Anything that's NOT a timeout here is unexpected — log at WARNING
-            # so real bugs in performance parsing don't hide behind the
-            # "graceful degradation" curtain.
-            _LOGGER.warning(
-                "Performance data fetch failed with %s, using cached/default values",
-                type(e).__name__,
-            )
-            return defaults
-
-    def _build_performance_defaults(self) -> dict[str, Any]:
-        """Build the performance-data defaults dict from the current cache."""
-        cache = self._performance_data_cache
-        return {
-            # Never-fetched metrics are None ("unknown"), not 0.0: a zero would
-            # be recorded as a real measurement in long-term statistics.
-            "ytd_earnings_percentage": cache.get("ytd_earnings_percentage"),
-            "investment_performance_percentage": cache.get(
-                "investment_performance_percentage"
-            ),
-            "ytd_investment_performance_percentage": cache.get(
-                "ytd_investment_performance_percentage"
-            ),
-            "month_investment_performance_percentage": cache.get(
-                "month_investment_performance_percentage"
-            ),
-            "quarter_investment_performance_percentage": cache.get(
-                "quarter_investment_performance_percentage"
-            ),
-            "cash_transfer_balance": cache.get("cash_transfer_balance"),
-            "ytd_profit_loss": cache.get("ytd_profit_loss"),
-            "ytd_cash_transfer": cache.get("ytd_cash_transfer"),
-            "client_id": cache.get("client_id", "unknown"),
-            "account_id": cache.get("account_id", "unknown"),
-            "client_name": cache.get("client_name", "unknown"),
-        }
-
-    def _update_performance_cache(self, result: dict[str, Any]) -> None:
-        """Persist fresh performance data to cache and update config entry title."""
-        self._performance_data_cache = result.copy()
-        self._performance_last_updated = datetime.now()
-        _LOGGER.debug("Updated performance data cache")
-        self._update_config_entry_title_if_needed(result["client_id"])
-
-    def _store_partial_performance_result(self, result: dict[str, Any]) -> None:
-        """Keep the values from a partial fetch without refreshing the timestamp.
-
-        ``result`` started as the cached values, so fields that failed to
-        fetch still hold their last known good value. The cache timestamp is
-        deliberately left untouched so the next update retries the fetch.
-        """
-        self._performance_data_cache = result.copy()
-        _LOGGER.debug(
-            "Performance data fetch incomplete, keeping last known values; "
-            "will retry on next update"
-        )
-        self._update_config_entry_title_if_needed(result["client_id"])
-
-    async def _populate_performance_result(
-        self, client: SaxoApiClient, result: dict[str, Any]
-    ) -> bool:
-        """Populate ``result`` in-place with client details and performance metrics.
-
-        Any exception in the client-details path is caught so the caller falls
-        back to the ``result`` populated so far (which starts as the defaults).
-
-        Returns:
-            True only if client details, v3 and v4 performance all succeeded.
-
-        """
-        try:
-            client_details = await client.get_client_details()
-            if not client_details:
-                _LOGGER.debug("No client details available")
-                return False
-
-            client_key = client_details.get("ClientKey")
-            result["client_id"] = client_details.get("ClientId", "unknown")
-            result["account_id"] = client_details.get("DefaultAccountId", "unknown")
-            result["client_name"] = client_details.get("Name", "unknown")
-            _LOGGER.debug(
-                "Client details fetched - ClientId present: %s, "
-                "DefaultAccountId present: %s, Name present: %s",
-                result["client_id"] != "unknown",
-                result["account_id"] != "unknown",
-                result["client_name"] != "unknown",
-            )
-
-            if not client_key:
-                _LOGGER.debug("No ClientKey found from client details endpoint")
-                return False
-
-            _LOGGER.debug(
-                "Found ClientKey from client details, attempting performance fetch"
-            )
-            return await self._fetch_performance_metrics(client, client_key, result)
-        except Exception as client_e:
-            _LOGGER.debug(
-                "Could not fetch client details: %s",
-                type(client_e).__name__,
-            )
-            return False
-
-    async def _fetch_performance_metrics(
-        self, client: SaxoApiClient, client_key: str, result: dict[str, Any]
-    ) -> bool:
-        """Fetch v3 and batched v4 performance metrics into ``result`` in-place.
-
-        Each endpoint is wrapped in its own graceful-degradation try/except, so
-        a failure on one does not prevent the other from updating ``result``.
-
-        Returns:
-            True if both the v3 and the v4 fetch succeeded.
-
-        """
-        v3_ok = False
-        v4_ok = False
-
-        # v3 performance — AccumulatedProfitLoss only
-        try:
-            performance_data = await client.get_performance(client_key)
-            accumulated_profit_loss = performance_data.get(
-                "BalancePerformance", {}
-            ).get("AccumulatedProfitLoss", 0.0)
-            result["ytd_earnings_percentage"] = accumulated_profit_loss
-            _LOGGER.debug(
-                "Retrieved performance v3 data, AccumulatedProfitLoss present: %s",
-                "AccumulatedProfitLoss"
-                in performance_data.get("BalancePerformance", {}),
-            )
-            v3_ok = True
-        except Exception as perf_e:
-            _LOGGER.debug(
-                "Could not fetch performance v3 data: %s",
-                type(perf_e).__name__,
-            )
-
-        # v4 batch — four periods in one call
-        try:
-            await asyncio.sleep(API_REQUEST_DELAY)
-            now = dt_util.now()
-            v4_batch = await client.get_performance_v4_batch(
-                client_key,
-                ytd_from=f"{now.year:04d}-01-01",
-                ytd_to=now.date().isoformat(),
-            )
-            result.update(self._extract_v4_batch_metrics(v4_batch))
-            _LOGGER.debug(
-                "Retrieved batched performance v4 data - periods: %s, "
-                "YTD currency metrics present: %s",
-                sorted(v4_batch.keys()),
-                result.get("ytd_profit_loss") is not None,
-            )
-            v4_ok = True
-        except Exception as perf_v4_e:
-            _LOGGER.debug(
-                "Could not fetch batched performance v4 data: %s",
-                type(perf_v4_e).__name__,
-            )
-
-        return v3_ok and v4_ok
-
-    @staticmethod
-    def _current_year_bucket(series: list[dict[str, Any]]) -> float | None:
-        """Value of the calendar-year bucket matching the current year.
-
-        ``YearlyProfitLoss`` returns one bucket per calendar year. Match on the
-        year rather than assuming a single-element list, so a response spanning
-        a year boundary cannot select the wrong bucket.
-        """
-        current_year = str(dt_util.now().year)
-        for point in series:
-            if str(point.get("Date", "")).startswith(current_year):
-                value = point.get("Value")
-                if isinstance(value, int | float):
-                    return float(value)
-        return None
-
-    @staticmethod
-    def _last_series_value(series: list[dict[str, Any]]) -> float | None:
-        """Last numeric value of a TimeValuePair series, or None."""
-        for point in reversed(series):
-            value = point.get("Value")
-            if isinstance(value, int | float):
-                return float(value)
-        return None
-
-    @staticmethod
-    def _extract_v4_batch_metrics(
-        v4_batch: dict[str, dict[str, Any]],
-    ) -> dict[str, Any]:
-        """Parse the v4 performance batch into flat metrics."""
-        metrics: dict[str, Any] = {}
-
-        alltime = v4_batch.get("alltime", {})
-        alltime_return = alltime.get("KeyFigures", {}).get("ReturnFraction", 0.0)
-        metrics["investment_performance_percentage"] = alltime_return * 100.0
-
-        cash_transfer_list = alltime.get("Balance", {}).get("CashTransfer", [])
-        if cash_transfer_list:
-            metrics["cash_transfer_balance"] = cash_transfer_list[-1].get("Value", 0.0)
-
-        for period_key, result_key in (
-            ("ytd", "ytd_investment_performance_percentage"),
-            ("month", "month_investment_performance_percentage"),
-            ("quarter", "quarter_investment_performance_percentage"),
-        ):
-            period_return = (
-                v4_batch.get(period_key, {})
-                .get("KeyFigures", {})
-                .get("ReturnFraction", 0.0)
-            )
-            metrics[result_key] = period_return * 100.0
-
-        # Currency-denominated YTD metrics, from the Jan-1 anchored window.
-        # These default to None rather than 0.0: on a money sensor a zero reads
-        # as "you earned nothing this year" rather than "no data".
-        ytd_balance = v4_batch.get("ytd", {}).get("Balance", {})
-        metrics["ytd_profit_loss"] = SaxoCoordinator._current_year_bucket(
-            ytd_balance.get("YearlyProfitLoss", [])
-        )
-        metrics["ytd_cash_transfer"] = SaxoCoordinator._last_series_value(
-            ytd_balance.get("CashTransfer", [])
-        )
-
-        return metrics
-
-    async def _fetch_positions_data_safely(
-        self, client: SaxoApiClient
-    ) -> dict[str, PositionData]:
-        """Fetch positions data with graceful error handling.
-
-        This method wraps positions fetching with error handling. If the fetch
-        fails, an empty dictionary is returned instead of raising an exception.
-
-        Args:
-            client: The Saxo API client to use for requests
-
-        Returns:
-            Dictionary mapping position IDs to PositionData objects
-
-        """
-        if not self._enable_position_sensors:
-            _LOGGER.debug("Position sensors disabled, skipping fetch")
-            return {}
-
-        try:
-            # Add delay before positions call to prevent rate limiting
-            await asyncio.sleep(API_REQUEST_DELAY)
-
-            positions_response = await client.get_net_positions()
-            raw_positions = positions_response.get("Data", [])
-
-            _LOGGER.debug(
-                "Fetched %d raw positions from API, response keys: %s",
-                len(raw_positions) if raw_positions else 0,
-                list(positions_response.keys()),
-            )
-
-            if raw_positions:
-                self._check_market_data_access(raw_positions[0])
-            else:
-                _LOGGER.debug(
-                    "No positions in portfolio - cannot determine market data access status"
-                )
-
-            positions: dict[str, PositionData] = {}
-            for raw_position in raw_positions:
-                parsed = self._parse_single_position(raw_position)
-                if parsed is not None:
-                    slug, position_data = parsed
-                    positions[slug] = position_data
-
-            self._update_positions_cache(positions)
-            return positions
-
-        except Exception as e:
-            _LOGGER.debug(
-                "Positions data fetch failed: %s, returning cached/empty",
-                type(e).__name__,
-            )
-            return self._positions_cache.positions
-
-    def _check_market_data_access(self, first_position: dict[str, Any]) -> None:
-        """Determine market-data access from the first raw position.
-
-        Sets ``self._has_market_data_access`` and logs a one-shot warning when
-        access is unavailable.
-        """
-        _LOGGER.debug(
-            "Processing positions for market data access check",
-        )
-
-        first_view = first_position.get("NetPositionView", {})
-        current_price_type = first_view.get("CurrentPriceType", "")
-        calc_reliability = first_view.get("CalculationReliability", "")
-
-        _LOGGER.debug(
-            "Market data access check - CurrentPriceType: %r, CalculationReliability: %r",
-            current_price_type,
-            calc_reliability,
-        )
-
-        has_market_access = not (
-            current_price_type == "None"
-            or calc_reliability in ("NoMarketAccess", "ApproximatedPrice")
-        )
-        self._has_market_data_access = has_market_access
-
-        _LOGGER.debug(
-            "Market data access determined: %s",
-            "Available" if has_market_access else "Unavailable",
-        )
-
-        if not has_market_access and not self._position_market_data_warning_logged:
-            _LOGGER.warning(
-                "Market data access not available for positions API. "
-                "Position prices are calculated from P/L data and may not "
-                "reflect real-time values. Real-time market data may require "
-                "a separate market data subscription on your Saxo account. "
-                "Contact Saxo support for more information"
-            )
-            self._position_market_data_warning_logged = True
-
-    def _parse_single_position(
-        self, raw_position: dict[str, Any]
-    ) -> tuple[str, PositionData] | None:
-        """Parse a single raw position dict into a (slug, PositionData) pair.
-
-        Returns None and logs the error if parsing fails, or if the position
-        has no symbol.
-        """
-        try:
-            _LOGGER.debug(
-                "Raw position keys: %s",
-                list(raw_position.keys()),
-            )
-
-            net_position_base = raw_position.get("NetPositionBase", {})
-            net_position_view = raw_position.get("NetPositionView", {})
-            display_and_format = raw_position.get("DisplayAndFormat", {})
-
-            position_id = raw_position.get("NetPositionId", "")
-            uic = net_position_base.get("Uic", 0)
-            asset_type = net_position_base.get("AssetType", "Unknown")
-            amount = net_position_base.get("Amount", 0.0)
-
-            symbol = display_and_format.get("Symbol", "")
-            description = display_and_format.get("Description", "")
-            currency = display_and_format.get("Currency", "USD")
-
-            # Skip if no symbol
-            if not symbol:
-                _LOGGER.debug("Skipping position without symbol")
-                return None
-
-            profit_loss = (
-                net_position_view.get("ProfitLossOnTrade")
-                or net_position_view.get("ProfitLossOnTradeInBaseCurrency")
-                or 0.0
-            )
-
-            # MarketValueOpen is the cost basis (negative = money spent)
-            # Current market value = abs(cost basis) + profit/loss
-            market_value_open = net_position_view.get("MarketValueOpen", 0.0)
-            if market_value_open != 0.0:
-                market_value = abs(market_value_open) + profit_loss
-            else:
-                market_value = net_position_view.get("Exposure", 0.0)
-
-            current_price = net_position_view.get("CurrentPrice", 0.0)
-            if current_price == 0.0 and market_value != 0.0 and amount != 0.0:
-                current_price = market_value / abs(amount)
-                _LOGGER.debug("Calculated price for %s from cost basis and P/L", symbol)
-
-            slug = PositionData.generate_slug(symbol, asset_type)
-            position_data = PositionData(
-                position_id=position_id,
-                symbol=symbol,
-                description=description,
-                asset_type=asset_type,
-                amount=amount,
-                current_price=current_price,
-                market_value=market_value,
-                profit_loss=profit_loss,
-                uic=uic,
-                currency=currency,
-            )
-
-            _LOGGER.debug("Parsed position: %s (%s)", symbol, asset_type)
-            return slug, position_data
-
-        except Exception as pos_error:
-            _LOGGER.debug(
-                "Error parsing position: %s",
-                type(pos_error).__name__,
-            )
-            return None
-
-    def _update_positions_cache(self, positions: dict[str, PositionData]) -> None:
-        """Persist parsed positions to cache and log the summary."""
-        self._positions_cache.positions = positions
-        self._positions_cache.position_ids = list(positions.keys())
-        self._positions_cache.last_updated = datetime.now()
-        _LOGGER.debug("%d positions parsed, positions cache updated", len(positions))
 
     def _is_market_hours(self) -> bool:
         """Check if current time is during market hours.
@@ -927,23 +394,19 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
             fetch_start_time = datetime.now()
 
             # STEP 1: Fetch balance data (REQUIRED)
-            balance_data = await self._fetch_balance_with_logging(client)
+            balance = await self._fetch_balance_with_logging(client)
 
             # STEP 2: Fetch performance data (OPTIONAL - graceful degradation)
-            performance_data = await self._fetch_performance_data_safely(client)
+            await self._performance.async_update(client)
 
             # STEP 3: Fetch positions data (OPTIONAL - only if enabled)
-            await self._fetch_positions_data_safely(client)
+            await self._positions.async_fetch(client)
 
             # STEP 4: Combine balance and performance data
             result = SaxoPortfolioData(
-                balance=BalanceData.from_api(balance_data),
-                performance=self._to_performance_data(performance_data),
-                client=ClientInfo(
-                    client_id=str(performance_data.get("client_id", UNKNOWN)),
-                    account_id=str(performance_data.get("account_id", UNKNOWN)),
-                    client_name=str(performance_data.get("client_name", UNKNOWN)),
-                ),
+                balance=balance,
+                performance=self._performance.metrics,
+                client=self._performance.client,
                 last_updated=datetime.now(),
             )
 
@@ -998,30 +461,6 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
             _LOGGER.exception("Unexpected error fetching portfolio data")
             raise UpdateFailed("Unexpected error") from e
 
-    @staticmethod
-    def _to_performance_data(values: dict[str, Any]) -> PerformanceData:
-        """Build typed performance data from the cached performance values."""
-        return PerformanceData(
-            ytd_earnings_percentage=numeric_or_none(
-                values.get("ytd_earnings_percentage")
-            ),
-            investment_performance_percentage=numeric_or_none(
-                values.get("investment_performance_percentage")
-            ),
-            ytd_investment_performance_percentage=numeric_or_none(
-                values.get("ytd_investment_performance_percentage")
-            ),
-            month_investment_performance_percentage=numeric_or_none(
-                values.get("month_investment_performance_percentage")
-            ),
-            quarter_investment_performance_percentage=numeric_or_none(
-                values.get("quarter_investment_performance_percentage")
-            ),
-            cash_transfer_balance=numeric_or_none(values.get("cash_transfer_balance")),
-            ytd_profit_loss=numeric_or_none(values.get("ytd_profit_loss")),
-            ytd_cash_transfer=numeric_or_none(values.get("ytd_cash_transfer")),
-        )
-
     async def _apply_initial_stagger_offset(self) -> None:
         """Sleep the one-shot stagger offset on the first scheduled update.
 
@@ -1036,10 +475,8 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
             await asyncio.sleep(self._initial_update_offset)
             self._initial_update_offset = 0  # Only apply once
 
-    async def _fetch_balance_with_logging(
-        self, client: SaxoApiClient
-    ) -> dict[str, Any]:
-        """Fetch the balance endpoint, logging timing and stripping noisy fields."""
+    async def _fetch_balance_with_logging(self, client: SaxoApiClient) -> BalanceData:
+        """Fetch and parse the balance endpoint, logging timing and field names."""
         _LOGGER.debug(
             "About to fetch balance from: %s%s",
             client.base_url,
@@ -1055,11 +492,9 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
             list(balance_data.keys()) if balance_data else "No balance data",
         )
 
-        # Remove detailed margin info to reduce log noise
-        if "MarginCollateralNotAvailableDetail" in balance_data:
-            del balance_data["MarginCollateralNotAvailableDetail"]
-
-        return balance_data
+        # Only the typed fields are kept; noisy extras such as
+        # MarginCollateralNotAvailableDetail are dropped here.
+        return BalanceData.from_api(balance_data)
 
     def _log_portfolio_timeout(self, fetch_start_time: datetime | None) -> None:
         """Log a portfolio-fetch timeout, rate-limiting repeats to debug level."""
@@ -1218,7 +653,7 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
     @property
     def performance_last_updated(self) -> datetime | None:
         """Return when performance data was last fetched, if ever."""
-        return self._performance_last_updated
+        return self._performance.last_updated
 
     @property
     def client_info(self) -> ClientInfo:
@@ -1232,7 +667,7 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
             Dictionary mapping position slugs to PositionData objects
 
         """
-        return self._positions_cache.positions
+        return self._positions.cache.positions
 
     def get_position(self, slug: str) -> PositionData | None:
         """Get a specific position by slug.
@@ -1244,7 +679,7 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
             PositionData for the position, or None if not found
 
         """
-        return self._positions_cache.positions.get(slug)
+        return self._positions.cache.positions.get(slug)
 
     def get_position_ids(self) -> list[str]:
         """Get list of all position slugs.
@@ -1253,7 +688,7 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
             List of position slugs
 
         """
-        return self._positions_cache.position_ids
+        return self._positions.cache.position_ids
 
     def has_market_data_access(self) -> bool | None:
         """Check if the API has access to real-time market data.
@@ -1264,7 +699,7 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
             None if not yet determined (no positions fetched)
 
         """
-        return self._has_market_data_access
+        return self._positions.has_market_data_access
 
     @property
     def position_sensors_enabled(self) -> bool:
@@ -1274,7 +709,7 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
             True if position sensors are enabled
 
         """
-        return bool(self._enable_position_sensors)
+        return self._positions.enabled
 
     def mark_sensors_initialized(self) -> None:
         """Mark that sensors have been successfully initialized.

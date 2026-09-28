@@ -15,7 +15,7 @@ from custom_components.saxo_portfolio.const import (
     CONF_ENABLE_POSITION_SENSORS,
     CONF_TIMEZONE,
 )
-from custom_components.saxo_portfolio.coordinator import PositionData
+from custom_components.saxo_portfolio.positions import PositionData
 
 
 @pytest.mark.integration

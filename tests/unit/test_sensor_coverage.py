@@ -14,7 +14,8 @@ from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import EntityCategory
 from homeassistant.util import dt as dt_util
 
-from custom_components.saxo_portfolio.coordinator import PositionData, SaxoCoordinator
+from custom_components.saxo_portfolio.coordinator import SaxoCoordinator
+from custom_components.saxo_portfolio.positions import PositionData
 from custom_components.saxo_portfolio.data import (
     BalanceData,
     ClientInfo,

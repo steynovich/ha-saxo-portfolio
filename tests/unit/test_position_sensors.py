@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from custom_components.saxo_portfolio.coordinator import PositionData
+from custom_components.saxo_portfolio.positions import PositionData
 
 
 class TestPositionDataSlugGeneration:
