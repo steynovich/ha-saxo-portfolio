@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Position sensor names are translatable**: position sensors now take their name from the `position` translation key with the symbol as a placeholder (e.g. "Position AAPL", "Positie AAPL" in Dutch) instead of a hard-coded English string. Entity IDs and unique IDs are unchanged.
 
+### Fixed
+- **YTD Investment Performance `time_period` attribute** now reads `YearToDate` instead of `Year`. Since 2.9.0-beta.3 the sensor uses a 1 January-anchored window rather than `StandardPeriod=Year` (a trailing 12 months), so `Year` was misleading. Automations or templates matching `time_period == "Year"` need updating.
+
 ## [2.9.0-beta.4] - 2026-09-28
 
 ### Changed

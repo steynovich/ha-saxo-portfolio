@@ -150,7 +150,11 @@ The integration automatically creates **eighteen entities** using your Saxo Clie
 ### Entity Attributes
 - **Currency**: Portfolio currency (EUR, USD, etc.) - automatically detected
 - **Last Updated**: Timestamp of last data refresh (balance sensors use balance API timestamp, performance sensors use performance API timestamp)
-- **Time Period**: Performance sensors include the StandardPeriod value ("AllTime", "Year", "Month", or "Quarter") used in API calls
+- **Time Period**: Performance sensors include a `time_period` attribute naming the window the value covers:
+  - Investment Performance: `AllTime` (the `StandardPeriod=AllTime` API window)
+  - YTD Investment Performance: `YearToDate`, an explicit 1 January-to-today window (Saxo's `StandardPeriod=Year` is a trailing 12 months, so it is not used)
+  - Month Investment Performance: `Month` (the `StandardPeriod=Month` API window)
+  - Quarter Investment Performance: `Quarter` (the `StandardPeriod=Quarter` API window)
 - **From/Thru Dates**: Performance sensors include calculated date ranges showing the period covered by each sensor
 - **Performance Metrics**: Historical profit/loss and return calculations with clear time period identification
 - **Attribution**: Data source identification

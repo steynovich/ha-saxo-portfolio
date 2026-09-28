@@ -574,8 +574,8 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
         time_period = self._get_time_period()
         now = dt_util.now()
 
-        if time_period == "Year":
-            # Year-to-date: January 1st to today
+        if time_period == "YearToDate":
+            # Year-to-date: January 1st to today (explicit FromDate/ToDate)
             from_date = date(now.year, 1, 1)
             thru_date = now.date()
         elif time_period == "Month":
@@ -728,8 +728,12 @@ class SaxoYTDInvestmentPerformanceSensor(SaxoPerformanceSensorBase):
         return self.coordinator.get_ytd_investment_performance_percentage()
 
     def _get_time_period(self) -> str:
-        """Get the time period for this sensor."""
-        return "Year"
+        """Get the time period for this sensor.
+
+        Not a StandardPeriod: ``StandardPeriod=Year`` is a trailing 12-month
+        window, so this sensor requests an explicit 1 January-to-today range.
+        """
+        return "YearToDate"
 
 
 class SaxoMonthInvestmentPerformanceSensor(SaxoPerformanceSensorBase):

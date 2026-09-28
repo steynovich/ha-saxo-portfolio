@@ -372,7 +372,7 @@ class TestPerformanceSensors:
                 SaxoYTDInvestmentPerformanceSensor,
                 "get_ytd_investment_performance_percentage",
                 8.76,
-                "Year",
+                "YearToDate",
             ),
             (
                 SaxoMonthInvestmentPerformanceSensor,
@@ -439,12 +439,18 @@ class TestPerformanceSensors:
         assert attrs["from"] == "inception"
 
     def test_ytd_period_dates(self, coord):
+        """YTD reports the 1 January-anchored window, not StandardPeriod=Year."""
         sensor = SaxoYTDInvestmentPerformanceSensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
-        attrs = sensor.extra_state_attributes
-        assert attrs["time_period"] == "Year"
-        assert "from" in attrs
-        assert "thru" in attrs
+        fixed_now = datetime(2026, 8, 4, 10, 0, tzinfo=dt_util.UTC)
+        with patch(
+            "custom_components.saxo_portfolio.sensor.dt_util.now",
+            return_value=fixed_now,
+        ):
+            attrs = sensor.extra_state_attributes
+        assert attrs["time_period"] == "YearToDate"
+        assert attrs["from"] == "2026-01-01"
+        assert attrs["thru"] == "2026-08-04"
 
     def test_month_period_dates(self, coord):
         sensor = SaxoMonthInvestmentPerformanceSensor(coord)
