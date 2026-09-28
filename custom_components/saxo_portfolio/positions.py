@@ -138,7 +138,7 @@ def parse_position(raw_position: dict[str, Any]) -> tuple[str, PositionData] | N
         current_price = net_position_view.get("CurrentPrice", 0.0)
         if current_price == 0.0 and market_value != 0.0 and amount != 0.0:
             current_price = market_value / abs(amount)
-            _LOGGER.debug("Calculated price for %s from cost basis and P/L", symbol)
+            _LOGGER.debug("Calculated position price from cost basis and P/L")
 
         slug = PositionData.generate_slug(symbol, asset_type)
         position_data = PositionData(
@@ -154,7 +154,7 @@ def parse_position(raw_position: dict[str, Any]) -> tuple[str, PositionData] | N
             currency=currency,
         )
 
-        _LOGGER.debug("Parsed position: %s (%s)", symbol, asset_type)
+        _LOGGER.debug("Parsed position (asset type %s)", asset_type)
         return slug, position_data
 
     except Exception as pos_error:

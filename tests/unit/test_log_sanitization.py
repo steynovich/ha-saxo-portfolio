@@ -106,6 +106,8 @@ FORBIDDEN = [
     ACCOUNT_KEY,
     CLIENT_NAME,
     "NPID-FIXTURE-4455",
+    "AAPL",
+    "aapl",
     "12345.67",
     "98765.43",
     "86419.76",

@@ -157,8 +157,8 @@ def _get_entity_inventory(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, 
 
     Derived from the entity registry rather than a hard-coded list, so it
     reflects YTD sensors, optional position sensors and diagnostic sensors
-    exactly as created. Per-position translation keys embed the symbol, so
-    positions are counted but not listed.
+    exactly as created. Positions are counted but not listed, because
+    their unique IDs embed the holding's symbol.
     """
     registry = er.async_get(hass)
     entries = er.async_entries_for_config_entry(registry, entry.entry_id)

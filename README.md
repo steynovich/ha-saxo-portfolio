@@ -236,7 +236,7 @@ The integration uses a single coordinator for all data fetching. Balance data is
 ### Manual Refresh
 
 - **Refresh button** (`button.saxo_123456_refresh`): press it to fetch data immediately for that account.
-- **`saxo_portfolio.refresh_data` service**: refreshes every configured Saxo Portfolio account at once; it takes no parameters and can be called from automations or scripts.
+- **`saxo_portfolio.refresh_data` service**: refreshes every loaded Saxo Portfolio account at once, or only one when you pass the optional `config_entry_id`. It can be called from automations or scripts; calling it when no matching account is loaded raises an error.
 
 A manual refresh fetches balance data straight away. Performance data still honours its 2-hour cache and is only fetched again when that cache has expired.
 
