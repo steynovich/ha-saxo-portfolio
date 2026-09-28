@@ -15,9 +15,11 @@ import json
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+from homeassistant.const import EntityCategory
 
 from custom_components.saxo_portfolio.const import (
     DEFAULT_TIMEZONE,
@@ -35,6 +37,19 @@ from custom_components.saxo_portfolio.diagnostics import (
     _load_manifest_version,
     async_get_config_entry_diagnostics,
 )
+
+
+@pytest.fixture(autouse=True)
+def _mock_entity_registry():
+    """Provide an (empty by default) entity registry for mock hass."""
+    with (
+        patch("custom_components.saxo_portfolio.diagnostics.er.async_get"),
+        patch(
+            "custom_components.saxo_portfolio.diagnostics.er.async_entries_for_config_entry",
+            return_value=[],
+        ),
+    ):
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -291,12 +306,16 @@ class TestGetDataSnapshot:
         assert _get_data_snapshot({}) == {}
 
     def test_full_data(self):
-        """Full data should populate all snapshot fields."""
+        """Flat coordinator data populates all snapshot fields."""
         data = {
-            "balance": {"CashAvailableForTrading": 1000},
-            "performance": {"returns": 0.05},
-            "client": {"ClientId": "12345"},
+            "cash_balance": 1000.0,
+            "total_value": 5000.0,
+            "non_margin_positions_value": 4000.0,
             "currency": "EUR",
+            "investment_performance_percentage": 5.0,
+            "client_id": "12345",
+            "account_id": "A1",
+            "client_name": "Someone",
         }
         result = _get_data_snapshot(data)
 
@@ -304,35 +323,30 @@ class TestGetDataSnapshot:
         assert result["has_performance_data"] is True
         assert result["has_client_data"] is True
         assert result["currency"] == "EUR"
-        assert set(result["data_keys"]) == {
-            "balance",
-            "performance",
-            "client",
-            "currency",
-        }
-        assert result["balance_fields"] == ["CashAvailableForTrading"]
+        assert set(result["data_keys"]) == set(data)
+        # Only key names and flags - never the values
+        assert "12345" not in str(result)
+        assert "5000.0" not in str(result)
 
     def test_partial_data_no_balance(self):
-        """Data without balance should report has_balance_data as False."""
-        data = {"performance": {"returns": 0.05}, "currency": "USD"}
+        """Data without balance keys reports has_balance_data as False."""
+        data = {"investment_performance_percentage": 1.5, "currency": "USD"}
         result = _get_data_snapshot(data)
 
         assert result["has_balance_data"] is False
         assert result["has_performance_data"] is True
         assert result["has_client_data"] is False
-        assert "balance_fields" not in result
 
-    def test_balance_not_dict(self):
-        """If balance is not a dict, balance_fields should say so."""
-        data = {"balance": "unexpected_string"}
+    def test_non_numeric_balance_is_not_balance_data(self):
+        """Non-numeric balance values do not count as balance data."""
+        data = {"cash_balance": "unexpected_string", "total_value": None}
         result = _get_data_snapshot(data)
 
-        assert result["has_balance_data"] is True
-        assert result["balance_fields"] == "Not a dict"
+        assert result["has_balance_data"] is False
 
     def test_default_currency(self):
         """Missing currency key should default to 'Unknown'."""
-        data = {"balance": {}}
+        data = {"cash_balance": 1.0}
         result = _get_data_snapshot(data)
 
         assert result["currency"] == "Unknown"
@@ -395,6 +409,7 @@ class TestRedactKeys:
             "current_time_iso",
             "token_issued_at",
             "token_type",
+            "title",
         }
         assert expected == REDACT_KEYS
 
@@ -452,7 +467,8 @@ class TestAsyncGetConfigEntryDiagnostics:
         config = result["config"]
         assert config["entry_id"] == "test_entry_123"
         assert config["domain"] == "saxo_portfolio"
-        assert config["title"] == "Saxo Portfolio"
+        # Title embeds the ClientId once known, so it is redacted
+        assert config["title"] == "**REDACTED**"
         assert "has_token" in config
         assert "has_redirect_uri" in config
 
@@ -516,9 +532,9 @@ class TestAsyncGetConfigEntryDiagnostics:
 
         integration = result["integration"]
         assert "version" in integration
-        assert integration["sensors_configured"] == 16
-        assert isinstance(integration["sensor_types"], list)
-        assert len(integration["sensor_types"]) == 16
+        # No registered entities (e.g. sensor setup skipped) -> zero, not 16
+        assert integration["sensors_configured"] == 0
+        assert integration["sensor_types"] == []
 
     @pytest.mark.asyncio
     async def test_market_config_for_known_timezone(self, mock_hass, mock_config_entry):
@@ -558,3 +574,149 @@ class TestAsyncGetConfigEntryDiagnostics:
         result = await async_get_config_entry_diagnostics(mock_hass, mock_config_entry)
 
         assert result["data_snapshot"] == {}
+
+
+# ---------------------------------------------------------------------------
+# Real data availability and sensor inventory (issue #17)
+# ---------------------------------------------------------------------------
+
+
+async def _updated_coordinator(mock_hass, mock_config_entry, mock_oauth_session):
+    """Run a real coordinator update against fixture API responses."""
+    from custom_components.saxo_portfolio.coordinator import SaxoCoordinator
+
+    from .test_log_sanitization import _fake_session
+
+    mock_config_entry.options = {"enable_position_sensors": True}
+    coordinator = SaxoCoordinator(mock_hass, mock_config_entry, mock_oauth_session)
+    coordinator.config_entry = mock_config_entry
+    with (
+        patch(
+            "custom_components.saxo_portfolio.coordinator.async_get_clientsession",
+            return_value=_fake_session(),
+        ),
+        patch(
+            "custom_components.saxo_portfolio.coordinator.asyncio.sleep",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "custom_components.saxo_portfolio.api.saxo_client.asyncio.sleep",
+            new_callable=AsyncMock,
+        ),
+    ):
+        coordinator.data = await coordinator._async_update_data()
+    coordinator.last_update_success = True
+    return coordinator
+
+
+async def _created_sensor_entities(mock_hass, mock_config_entry, coordinator):
+    """Collect the entities the sensor platform actually creates."""
+    from custom_components.saxo_portfolio.sensor import async_setup_entry
+
+    mock_config_entry.runtime_data = MagicMock()
+    mock_config_entry.runtime_data.coordinator = coordinator
+    # The position listener would schedule real refreshes; not needed here.
+    coordinator.async_add_listener = MagicMock(return_value=lambda: None)
+    created: list = []
+    await async_setup_entry(
+        mock_hass, mock_config_entry, lambda ents, *_: created.extend(ents)
+    )
+    return created
+
+
+def _registry_entries_for(entities: list) -> list[MagicMock]:
+    """Mimic entity-registry entries for created entities (plus a button)."""
+    entries = []
+    for entity in entities:
+        entry = MagicMock()
+        entry.domain = "sensor"
+        entry.translation_key = entity.translation_key
+        entry.entity_category = entity.entity_category
+        entry.disabled_by = None
+        entries.append(entry)
+    button = MagicMock()
+    button.domain = "button"
+    button.translation_key = "refresh"
+    button.entity_category = None
+    button.disabled_by = None
+    entries.append(button)
+    return entries
+
+
+class TestRealDataAvailability:
+    """Flags and sensor inventory reflect what the integration really has."""
+
+    @pytest.mark.asyncio
+    async def test_healthy_entry_flags_and_sensor_inventory(
+        self, mock_hass, mock_config_entry, mock_oauth_session
+    ):
+        """A healthy entry reports true flags and the real sensor inventory."""
+        from .test_log_sanitization import FORBIDDEN
+
+        coordinator = await _updated_coordinator(
+            mock_hass, mock_config_entry, mock_oauth_session
+        )
+        entities = await _created_sensor_entities(
+            mock_hass, mock_config_entry, coordinator
+        )
+        mock_config_entry.title = f"Saxo Portfolio ({coordinator.get_client_id()})"
+
+        with patch(
+            "custom_components.saxo_portfolio.diagnostics.er.async_entries_for_config_entry",
+            return_value=_registry_entries_for(entities),
+        ):
+            result = await async_get_config_entry_diagnostics(
+                mock_hass, mock_config_entry
+            )
+
+        snapshot = result["data_snapshot"]
+        assert snapshot["has_balance_data"] is True
+        assert snapshot["has_performance_data"] is True
+        assert snapshot["has_client_data"] is True
+        assert snapshot["position_count"] == 1
+
+        integration = result["integration"]
+        assert integration["sensors_configured"] == len(entities)
+        expected_diagnostic = sum(
+            1 for e in entities if e.entity_category == EntityCategory.DIAGNOSTIC
+        )
+        assert expected_diagnostic > 0
+        assert integration["diagnostic_sensors"] == expected_diagnostic
+        assert integration["position_sensors"] == 1
+        types = integration["sensor_types"]
+        assert "ytd_profit_loss" in types
+        assert "ytd_cash_transfer" in types
+        assert "cash_balance" in types
+        # Per-position keys (which embed symbols) are counted, not listed.
+        assert not any(t.startswith("position") for t in types)
+        assert len(types) == len(entities) - 1
+        assert "refresh" not in types
+
+        # Still fully redacted: no fixture identifiers, balances or tokens.
+        result_str = str(result)
+        leaked = [v for v in FORBIDDEN if v in result_str]
+        assert not leaked, f"Diagnostics leaked: {leaked}"
+
+    def test_flags_false_without_performance_or_client_data(self):
+        """Balance-only data (performance never fetched) is reported honestly."""
+        data = {
+            "cash_balance": 1.0,
+            "currency": "EUR",
+            "total_value": 2.0,
+            "non_margin_positions_value": 1.0,
+            "investment_performance_percentage": None,
+            "ytd_earnings_percentage": None,
+            "client_id": "unknown",
+            "account_id": "unknown",
+            "client_name": "unknown",
+        }
+        result = _get_data_snapshot(data)
+        assert result["has_balance_data"] is True
+        assert result["has_performance_data"] is False
+        assert result["has_client_data"] is False
+
+    def test_flags_false_without_balance(self):
+        """Data without balance keys reports has_balance_data False."""
+        result = _get_data_snapshot({"client_id": "C1", "currency": "EUR"})
+        assert result["has_balance_data"] is False
+        assert result["has_client_data"] is True
