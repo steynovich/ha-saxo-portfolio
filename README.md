@@ -6,17 +6,18 @@
 [![HACS Action](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hacs.yml/badge.svg)](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hacs.yml)
 [![Hassfest](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hassfest.yml/badge.svg)](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hassfest.yml)
 
-A **Platinum-grade** Home Assistant integration for monitoring your Saxo Bank portfolio through their OpenAPI. Features OAuth 2.0 authentication, intelligent update scheduling based on market hours, automatic entity naming based on your Saxo Client ID, and comprehensive portfolio monitoring with eleven dedicated sensors and seven diagnostic entities.
+A **Platinum-grade** Home Assistant integration for monitoring your Saxo Bank portfolio through their OpenAPI. Features OAuth 2.0 authentication, intelligent update scheduling based on market hours, automatic entity naming based on your Saxo Client ID, and comprehensive portfolio monitoring with eleven dedicated sensors, up to eight diagnostic sensors, and a manual refresh button.
 
 ## Features
 
 - 🔐 **Enterprise-Grade Security**: OAuth 2.0 with Home Assistant credential management, encrypted token storage, and comprehensive data masking
 - 💰 **Eleven Portfolio Sensors**: Real-time balance, performance metrics, and cash transfer tracking from multiple Saxo API endpoints
-- 📊 **Seven Diagnostic Sensors**: Built-in monitoring for integration health, account identification, token expiry, and market status
-- ⚡ **Smart Performance Caching**: Performance data updates hourly while balance data remains real-time for optimal API usage
+- 📊 **Eight Diagnostic Sensors**: Built-in monitoring for integration health, account identification, token expiry, and market status (seven always present, plus Market Data Access when position sensors are enabled)
+- ⚡ **Smart Performance Caching**: Performance data refreshes every 2 hours while balance data remains real-time for optimal API usage
 - 📈 **Long-Term Statistics**: Performance sensors support Home Assistant statistics for historical tracking and trend analysis
 - 🏷️ **Automatic Entity Naming**: Entity names auto-generated using your Saxo Client ID (e.g., `saxo_123456_cash_balance`)
 - 🕒 **Intelligent Scheduling**: Configurable market timezone with dynamic update intervals (5 min during market hours, 30 min after hours)
+- 🔄 **Manual Refresh**: Refresh button entity and `saxo_portfolio.refresh_data` service for on-demand updates
 - 📊 **Performance Analytics**: All-time profit/loss, investment returns, and cash transfer balance tracking
 - 🏭 **Production Ready**: Uses production Saxo API endpoints for live data
 - 🔄 **Robust API Handling**: Advanced rate limiting, exponential backoff, and automatic retry logic
@@ -49,18 +50,20 @@ The integration provides **eleven comprehensive sensors** that automatically use
 - Statistical analysis with min, max, and mean values
 - Support for both positive and negative performance values
 
+**YTD Net Transfers reset**: The YTD Net Transfers sensor uses `state_class: total` with a `last_reset` anchored to 1 January (00:00 local time) of the current year. Its source window starts on 1 January, so the value returns to zero at the start of each year and long-term statistics start a new cycle at that point.
+
 ### Key Features
 - **API Endpoints Used**: `/port/v1/balances/me`, `/port/v1/clients/me`, `/port/v1/accounts/{AccountKey}`, `/hist/v3/perf/`, `/hist/v4/performance/timeseries`
 - **Currency Support**: Automatically detects and displays the appropriate currency unit
 - **Performance Metrics**: Investment returns as percentage (all-time and YTD), cash transfer balance tracking
-- **Smart Caching**: Performance and account data cached for 1 hour to optimize API usage while keeping balance data real-time
+- **Smart Caching**: Performance and account data cached for 2 hours to optimize API usage while keeping balance data real-time
 - **Client ID Integration**: Entity names automatically use your actual Saxo Client ID for unique identification
 
 ## Prerequisites
 
 1. **Saxo Bank Account**: You need an active Saxo Bank account
 2. **Developer Application**: Create an application in the [Saxo Developer Portal](https://www.developer.saxo/openapi/appmanagement)
-3. **Home Assistant**: Version 2025.1 or later
+3. **Home Assistant**: Version 2026.3 or later (the first release that runs on Python 3.14, which this integration requires)
 
 ## Installation
 
@@ -99,13 +102,18 @@ The integration provides **eleven comprehensive sensors** that automatically use
 
 ## Configuration Options
 
+Open **Settings → Devices & Services → Saxo Portfolio → Configure** to change these options:
+
 | Option | Description | Default |
 |--------|-------------|---------|
 | Market Timezone | Select your primary trading market for intelligent scheduling | America/New_York |
-| Update Interval (Market Hours) | How often to fetch balance data during market hours | 5 minutes |
-| Update Interval (After Hours) | How often to fetch balance data after market hours | 30 minutes |
-| Update Interval (Any Mode) | Fixed interval when "Any" timezone is selected | 15 minutes |
-| Performance Data Interval | How often performance metrics are refreshed | 1 hour |
+| Enable Position Sensors | Create one sensor per open position (current price, market value, profit/loss attributes) | Off |
+
+Update intervals are not configurable: balance data refreshes every 5 minutes during market hours and every 30 minutes after hours (every 15 minutes in "Any" mode), and performance data is cached for 2 hours. See [Market Hours Detection](#market-hours-detection).
+
+### Reconfigure (Re-authenticate)
+
+To sign in to Saxo again without removing the integration, open **Settings → Devices & Services → Saxo Portfolio**, click the three-dot menu and select **Reconfigure**. This runs the OAuth flow again and refreshes your tokens; settings, entity history and automations are preserved.
 
 ### Supported Market Timezones
 - **America/New_York**: NYSE/NASDAQ (9:30 AM - 4:00 PM ET)
@@ -123,7 +131,7 @@ The integration provides **eleven comprehensive sensors** that automatically use
 
 ## Entities Created
 
-The integration automatically creates **eighteen entities** using your Saxo Client ID:
+The integration automatically creates **nineteen entities** using your Saxo Client ID: eleven portfolio sensors, seven diagnostic sensors and a refresh button. Enabling position sensors adds the Market Data Access diagnostic sensor (eight diagnostic sensors in total) plus one sensor per open position.
 
 ### Portfolio Sensors (Example: Client ID "123456")
 - `sensor.saxo_123456_cash_balance` - Available cash balance
@@ -146,6 +154,10 @@ The integration automatically creates **eighteen entities** using your Saxo Clie
 - `sensor.saxo_123456_market_status` - Current market status (Open/Closed/Fixed Schedule)
 - `sensor.saxo_123456_last_update` - Last successful data update timestamp
 - `sensor.saxo_123456_timezone` - Configured timezone and market hours settings
+- `sensor.saxo_123456_market_data_access` - Whether the API has real-time market data access (only created when position sensors are enabled)
+
+### Buttons (Example: Client ID "123456")
+- `button.saxo_123456_refresh` - Manually refresh portfolio data (configuration entity)
 
 ### Entity Attributes
 - **Currency**: Portfolio currency (EUR, USD, etc.) - automatically detected
@@ -180,7 +192,7 @@ The integration intelligently adjusts update frequency based on your configured 
 - **"Any" Mode**: Fixed 15-minute updates regardless of time (no market hours detection)
 
 ### Performance Data (Cached)
-- **All Performance Sensors**: Updates every 1 hour regardless of market hours
+- **All Performance Sensors**: Updates every 2 hours regardless of market hours
 - **Smart Caching**: Reduces API calls while maintaining data freshness for slower-changing metrics
 - **Includes**: Investment performance, YTD performance, accumulated profit/loss, and cash transfers
 
@@ -198,6 +210,13 @@ The integration automatically handles daylight saving time transitions for all s
 
 The integration uses a single coordinator for all data fetching. Balance data is the primary update driver; performance and position data piggyback on balance refreshes but are independently cached to reduce API load.
 
+### Manual Refresh
+
+- **Refresh button** (`button.saxo_123456_refresh`): press it to fetch data immediately for that account.
+- **`saxo_portfolio.refresh_data` service**: refreshes every configured Saxo Portfolio account at once; it takes no parameters and can be called from automations or scripts.
+
+A manual refresh fetches balance data straight away. Performance data still honours its 2-hour cache and is only fetched again when that cache has expired.
+
 ## Troubleshooting
 
 ### Common Issues
@@ -209,7 +228,7 @@ The integration uses a single coordinator for all data fetching. Balance data is
 
 **Rate Limit Errors**
 - The integration automatically handles rate limiting with exponential backoff
-- Consider reducing update frequency if you have other applications using the same credentials
+- Update intervals are fixed; if other applications share the same credentials, they count toward the same rate limit
 
 **Missing Data**
 - Ensure your Saxo account has the required permissions for portfolio data
@@ -227,6 +246,7 @@ The integration provides comprehensive diagnostic sensors and data to help troub
 - **Market Status**: Displays current market state (Open/Closed) and update intervals
 - **Last Update**: Timestamp of the last successful data refresh
 - **Timezone**: Shows configured timezone and market hours settings
+- **Market Data Access**: Shows whether the API has real-time market data access (only created when position sensors are enabled)
 
 **Built-in Diagnostics**: Available via Settings → Devices & Services → Saxo Portfolio → Download Diagnostics
 - Timezone configuration and market hours detection
