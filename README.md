@@ -60,7 +60,7 @@ The integration provides **eleven comprehensive sensors** that automatically use
 
 1. **Saxo Bank Account**: You need an active Saxo Bank account
 2. **Developer Application**: Create an application in the [Saxo Developer Portal](https://www.developer.saxo/openapi/appmanagement)
-3. **Home Assistant**: Version 2023.1 or later
+3. **Home Assistant**: Version 2025.1 or later
 
 ## Installation
 
@@ -260,7 +260,7 @@ This integration maintains high code quality standards with comprehensive CI/CD:
 ### 🚀 **GitHub Actions Workflows**
 - **HACS Validation**: Ensures repository meets HACS standards for publication
 - **Hassfest**: Validates Home Assistant integration compliance and manifest structure
-- **Automated Testing**: Multi-version Python testing (3.13, 3.14) with dependency management
+- **Automated Testing**: Full pytest suite on Python 3.14, installed from the locked dependency set
 - **Code Quality**: Linting, formatting, and type checking with Ruff and MyPy
 
 ### 🧪 **Testing Framework**

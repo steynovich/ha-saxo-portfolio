@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.0-beta.4] - 2026-09-28
+
+### Changed
+- **Minimum Home Assistant version is now 2025.1** (`hacs.json` previously claimed 2023.1, which the integration no longer supported)
+- **Minimum Python version is now 3.14.2**, required by Home Assistant 2026.9
+- Tested against Home Assistant 2026.9.4; dependencies upgraded (aiohttp 3.14.3, ruff 0.16.9, mypy 2.3.1, pytest-homeassistant-custom-component 0.13.367)
+- Sensor `state_class` values use the `SensorStateClass` enum; the stored values (`total`, `measurement`) are unchanged, so long-term statistics are unaffected
+
+### Fixed
+- CI now enforces strict mypy and runs the full test suite; both were previously non-blocking
+
 ## [2.9.0-beta.3] - 2026-08-04
 
 ### Added

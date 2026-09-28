@@ -1158,7 +1158,7 @@ wheels = [
 
 [[package]]
 name = "ha-saxo-portfolio"
-version = "2.9.0b3"
+version = "2.9.0b4"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
