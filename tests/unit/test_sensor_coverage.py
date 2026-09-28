@@ -61,6 +61,7 @@ def coord():
     c.get_ytd_cash_transfer.return_value = 250.0
     c.get_account_id.return_value = "ACC456"
     c.last_update_success = True
+    c.last_exception = None
     c.data = {
         "cash_balance": 1000.50,
         "total_value": 50000.0,
@@ -78,9 +79,9 @@ def coord():
         "timezone": "Europe/Amsterdam",
     }
     c.update_interval = timedelta(minutes=5)
-    c._performance_last_updated = datetime(2026, 1, 1, 12, 0)
-    c._timezone = "Europe/Amsterdam"
-    c._is_market_hours.return_value = True
+    c.performance_last_updated = datetime(2026, 1, 1, 12, 0)
+    c.timezone = "Europe/Amsterdam"
+    c.is_market_hours = True
     c.position_sensors_enabled = True
     c.get_position_ids.return_value = ["aapl_stock"]
     c.get_positions.return_value = {}
@@ -211,13 +212,6 @@ class TestSaxoSensorBase:
     def test_available_no_last_success_time(self, coord):
         coord.last_update_success = False
         coord.last_successful_update_time = None
-        sensor = SaxoCashBalanceSensor(coord)
-        type(sensor).coordinator = PropertyMock(return_value=coord)
-        assert sensor.available is True
-
-    def test_available_no_last_successful_update_attr(self, coord):
-        coord.last_update_success = False
-        del coord.last_successful_update_time
         sensor = SaxoCashBalanceSensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.available is True
@@ -625,19 +619,19 @@ class TestTokenExpirySensor:
 
 class TestMarketStatusSensor:
     def test_open(self, coord):
-        coord._is_market_hours.return_value = True
+        coord.is_market_hours = True
         sensor = SaxoMarketStatusSensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == "Market Open"
 
     def test_closed(self, coord):
-        coord._is_market_hours.return_value = False
+        coord.is_market_hours = False
         sensor = SaxoMarketStatusSensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == "After Hours"
 
     def test_fixed_schedule(self, coord):
-        coord._timezone = "any"
+        coord.timezone = "any"
         sensor = SaxoMarketStatusSensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == "Fixed Schedule"
@@ -691,7 +685,7 @@ class TestTimezoneSensor:
         assert sensor.native_value == "Europe/Amsterdam"
 
     def test_value_any(self, coord):
-        coord._timezone = "any"
+        coord.timezone = "any"
         sensor = SaxoTimezoneSensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
         assert sensor.native_value == "Any (Fixed Schedule)"
@@ -705,7 +699,7 @@ class TestTimezoneSensor:
         assert attrs["market_hours_detection"] is True
 
     def test_extra_attrs_any_timezone(self, coord):
-        coord._timezone = "any"
+        coord.timezone = "any"
         sensor = SaxoTimezoneSensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes
@@ -713,7 +707,7 @@ class TestTimezoneSensor:
         assert attrs["market_hours_detection"] is False
 
     def test_extra_attrs_unknown_timezone(self, coord):
-        coord._timezone = "Unknown"
+        coord.timezone = "Unknown"
         sensor = SaxoTimezoneSensor(coord)
         type(sensor).coordinator = PropertyMock(return_value=coord)
         attrs = sensor.extra_state_attributes

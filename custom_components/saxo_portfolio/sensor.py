@@ -144,11 +144,6 @@ class SaxoSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
 
         # If we have data but the current update is failing, check if it's a sustained failure
         # We have data (checked above), so we should stay available unless there's a sustained failure
-        if not hasattr(self.coordinator, "last_successful_update_time"):
-            # If we have data but no successful update time tracking, stay available
-            # This ensures compatibility with older coordinators and first updates
-            return True
-
         last_success = self.coordinator.last_successful_update_time
         if last_success is None:
             # No successful update time recorded yet but we have data, stay available
@@ -537,13 +532,9 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
         attrs["time_period"] = self._get_time_period()
 
         # Add last updated timestamp from performance cache, fallback to general timestamp
-        if (
-            hasattr(self.coordinator, "_performance_last_updated")
-            and self.coordinator._performance_last_updated
-        ):
-            attrs["last_updated"] = (
-                self.coordinator._performance_last_updated.isoformat()
-            )
+        performance_last_updated = self.coordinator.performance_last_updated
+        if performance_last_updated:
+            attrs["last_updated"] = performance_last_updated.isoformat()
 
         # Add From and Thru attributes based on time period
         period_dates = self._get_period_dates()
@@ -942,18 +933,10 @@ class SaxoMarketStatusSensor(SaxoDiagnosticSensorBase):
     @property
     def native_value(self) -> str:
         """Return the market status."""
-        timezone = getattr(self.coordinator, "_timezone", "Unknown")
-
-        if timezone == "any":
+        if self.coordinator.timezone == "any":
             return "Fixed Schedule"
 
-        is_market_hours = (
-            self.coordinator._is_market_hours()
-            if hasattr(self.coordinator, "_is_market_hours")
-            else False
-        )
-
-        if is_market_hours:
+        if self.coordinator.is_market_hours:
             return "Market Open"
         else:
             return "After Hours"
@@ -968,12 +951,10 @@ class SaxoMarketStatusSensor(SaxoDiagnosticSensorBase):
             DEFAULT_UPDATE_INTERVAL_ANY,
         )
 
-        timezone = getattr(self.coordinator, "_timezone", "Unknown")
-        attrs = {
+        timezone = self.coordinator.timezone
+        attrs: dict[str, Any] = {
             "timezone": timezone,
-            "update_interval": str(self.coordinator.update_interval)
-            if hasattr(self.coordinator, "update_interval")
-            else None,
+            "update_interval": str(self.coordinator.update_interval),
         }
 
         if timezone != "any" and timezone in MARKET_HOURS:
@@ -986,14 +967,9 @@ class SaxoMarketStatusSensor(SaxoDiagnosticSensorBase):
             )
             attrs["trading_days"] = market_info["weekdays"]
 
-            is_market_hours = (
-                self.coordinator._is_market_hours()
-                if hasattr(self.coordinator, "_is_market_hours")
-                else False
-            )
             attrs["interval_active"] = str(
                 DEFAULT_UPDATE_INTERVAL_MARKET_HOURS
-                if is_market_hours
+                if self.coordinator.is_market_hours
                 else DEFAULT_UPDATE_INTERVAL_AFTER_HOURS
             )
         elif timezone == "any":
@@ -1028,30 +1004,17 @@ class SaxoLastUpdateSensor(SaxoDiagnosticSensorBase):
     def native_value(self) -> datetime | None:
         """Return the last update time."""
         # Use our custom property that tracks successful updates
-        if (
-            hasattr(self.coordinator, "last_successful_update_time")
-            and self.coordinator.last_successful_update_time is not None
-        ):
-            return self.coordinator.last_successful_update_time
-
-        return None
+        return self.coordinator.last_successful_update_time
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
         attrs: dict[str, Any] = {
-            "update_success": self.coordinator.last_update_success
-            if hasattr(self.coordinator, "last_update_success")
-            else None,
-            "has_data": self.coordinator.data is not None
-            if hasattr(self.coordinator, "data")
-            else False,
+            "update_success": self.coordinator.last_update_success,
+            "has_data": self.coordinator.data is not None,
         }
 
-        if (
-            hasattr(self.coordinator, "last_exception")
-            and self.coordinator.last_exception
-        ):
+        if self.coordinator.last_exception:
             attrs["last_error"] = str(self.coordinator.last_exception)
 
         return attrs
@@ -1083,7 +1046,7 @@ class SaxoTimezoneSensor(SaxoDiagnosticSensorBase):
     @property
     def native_value(self) -> str:
         """Return the configured timezone."""
-        timezone = getattr(self.coordinator, "_timezone", "Unknown")
+        timezone = self.coordinator.timezone
 
         if timezone == "any":
             return "Any (Fixed Schedule)"
@@ -1102,7 +1065,7 @@ class SaxoTimezoneSensor(SaxoDiagnosticSensorBase):
         )
 
         assert self.coordinator.config_entry is not None
-        timezone = getattr(self.coordinator, "_timezone", "Unknown")
+        timezone = self.coordinator.timezone
         attrs: dict[str, Any] = {
             "configured_timezone": timezone,
             "config_entry_timezone": self.coordinator.config_entry.data.get(
@@ -1129,12 +1092,9 @@ class SaxoTimezoneSensor(SaxoDiagnosticSensorBase):
             attrs["update_interval_after"] = str(DEFAULT_UPDATE_INTERVAL_AFTER_HOURS)
 
             # Show current market status
-            is_market_hours = (
-                self.coordinator._is_market_hours()
-                if hasattr(self.coordinator, "_is_market_hours")
-                else False
+            attrs["current_market_status"] = (
+                "Open" if self.coordinator.is_market_hours else "Closed"
             )
-            attrs["current_market_status"] = "Open" if is_market_hours else "Closed"
         else:
             attrs["mode"] = "Unknown configuration"
             attrs["error"] = f"Unknown timezone: {timezone}"
@@ -1180,7 +1140,7 @@ class SaxoMarketDataAccessSensor(SaxoDiagnosticSensorBase):
         """Return additional attributes."""
         has_access = self.coordinator.has_market_data_access()
 
-        attrs = {
+        attrs: dict[str, Any] = {
             "has_real_time_prices": has_access if has_access is not None else "unknown",
         }
 

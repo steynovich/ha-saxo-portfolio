@@ -1037,6 +1037,62 @@ class TestIsMarketHours:
             assert result is False
 
 
+class TestPublicAccessors:
+    """Tests for the public read-only coordinator accessors used by sensors."""
+
+    def test_timezone(self):
+        coord = _bare_coordinator()
+        coord._timezone = "Europe/Amsterdam"
+        assert coord.timezone == "Europe/Amsterdam"
+
+    def test_timezone_is_read_only(self):
+        coord = _bare_coordinator()
+        with pytest.raises(AttributeError):
+            coord.timezone = "any"  # type: ignore[misc]
+
+    def test_is_market_hours_delegates(self):
+        coord = _bare_coordinator()
+        with patch.object(coord, "_is_market_hours", return_value=True):
+            assert coord.is_market_hours is True
+        with patch.object(coord, "_is_market_hours", return_value=False):
+            assert coord.is_market_hours is False
+
+    def test_is_market_hours_any_timezone(self):
+        coord = _bare_coordinator()
+        coord._timezone = "any"
+        assert coord.is_market_hours is False
+
+    def test_performance_last_updated(self):
+        coord = _bare_coordinator()
+        assert coord.performance_last_updated is None
+        stamp = datetime(2026, 1, 1, 12, 0)
+        coord._performance_last_updated = stamp
+        assert coord.performance_last_updated == stamp
+
+
+class TestApiRequestDelay:
+    """The inter-request rate-limit delay is one named constant."""
+
+    def test_constant_value(self):
+        from custom_components.saxo_portfolio.const import API_REQUEST_DELAY
+
+        assert API_REQUEST_DELAY == 0.5
+
+    def test_no_literal_delays_in_source(self):
+        """No module sleeps on a hard-coded 0.5 literal."""
+        import pathlib
+
+        import custom_components.saxo_portfolio as pkg
+
+        root = pathlib.Path(pkg.__file__).parent
+        offenders = [
+            str(path.relative_to(root))
+            for path in root.rglob("*.py")
+            if "asyncio.sleep(0.5)" in path.read_text()
+        ]
+        assert offenders == []
+
+
 # ---------------------------------------------------------------------------
 # _ensure_token_valid
 # ---------------------------------------------------------------------------

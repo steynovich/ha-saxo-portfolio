@@ -49,6 +49,8 @@ DEFAULT_CURRENCY: Final = "USD"
 # Rate limiting
 API_RATE_LIMIT_PER_MINUTE: Final = 120
 API_RATE_LIMIT_WINDOW: Final = 60  # seconds
+# Delay between consecutive batched API calls to avoid request bursts
+API_REQUEST_DELAY: Final = 0.5  # seconds
 MAX_RETRIES: Final = 3
 RETRY_BACKOFF_FACTOR: Final = 2
 

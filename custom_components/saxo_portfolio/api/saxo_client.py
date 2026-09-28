@@ -22,6 +22,7 @@ from ..const import (
     API_PERFORMANCE_V4_ENDPOINT,
     API_RATE_LIMIT_PER_MINUTE,
     API_RATE_LIMIT_WINDOW,
+    API_REQUEST_DELAY,
     API_TIMEOUT_TOTAL,
     ERROR_AUTH_FAILED,
     ERROR_NETWORK_ERROR,
@@ -545,7 +546,7 @@ class SaxoApiClient:
 
                 # Add delay between calls (except after last one) to prevent rate limiting
                 if i < len(specs) - 1:
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(API_REQUEST_DELAY)
 
             except AuthenticationError, RateLimitError:
                 raise
