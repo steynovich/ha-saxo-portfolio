@@ -130,7 +130,27 @@
   "services": {
     "refresh_data": {
       "name": "Oppdater porteføljedata",
-      "description": "Oppdater porteføljedata manuelt fra Saxo Bank API."
+      "description": "Oppdater porteføljedata manuelt fra Saxo Bank API.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Konfigurasjonsoppføring",
+          "description": "Saxo Portfolio-oppføringen som skal oppdateres. La stå tomt for å oppdatere alle lastede oppføringer."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "refresh_failed": {
+      "message": "Kunne ikke oppdatere porteføljedata: {error}"
+    },
+    "no_loaded_entries": {
+      "message": "Ingen Saxo Portfolio-oppføringer er lastet. Sett opp integrasjonen, eller autentiser på nytt eller aktiver en eksisterende oppføring igjen, før du oppdaterer data."
+    },
+    "entry_not_found": {
+      "message": "Konfigurasjonsoppføringen {entry_id} ble ikke funnet eller tilhører ikke Saxo Portfolio."
+    },
+    "entry_not_loaded": {
+      "message": "Saxo Portfolio-oppføringen {title} er ikke lastet. Sjekk statusen under Enheter og tjenester og prøv igjen."
     }
   }
 }

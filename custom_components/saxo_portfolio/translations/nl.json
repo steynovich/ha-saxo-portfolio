@@ -130,7 +130,27 @@
   "services": {
     "refresh_data": {
       "name": "Portefeuillegegevens vernieuwen",
-      "description": "Portefeuillegegevens handmatig vernieuwen van de Saxo Bank API."
+      "description": "Portefeuillegegevens handmatig vernieuwen van de Saxo Bank API.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Configuratievermelding",
+          "description": "De Saxo Portfolio-vermelding die vernieuwd moet worden. Laat leeg om alle geladen vermeldingen te vernieuwen."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "refresh_failed": {
+      "message": "Vernieuwen van portefeuillegegevens mislukt: {error}"
+    },
+    "no_loaded_entries": {
+      "message": "Er zijn geen Saxo Portfolio-vermeldingen geladen. Stel de integratie in, of authenticeer opnieuw of schakel een bestaande vermelding weer in, voordat u gegevens vernieuwt."
+    },
+    "entry_not_found": {
+      "message": "Configuratievermelding {entry_id} is niet gevonden of hoort niet bij Saxo Portfolio."
+    },
+    "entry_not_loaded": {
+      "message": "De Saxo Portfolio-vermelding {title} is niet geladen. Controleer de status onder Apparaten & diensten en probeer het opnieuw."
     }
   }
 }

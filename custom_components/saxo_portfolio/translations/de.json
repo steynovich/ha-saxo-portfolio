@@ -130,7 +130,27 @@
   "services": {
     "refresh_data": {
       "name": "Portfoliodaten aktualisieren",
-      "description": "Portfoliodaten manuell von der Saxo Bank API aktualisieren."
+      "description": "Portfoliodaten manuell von der Saxo Bank API aktualisieren.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Konfigurationseintrag",
+          "description": "Der zu aktualisierende Saxo Portfolio-Eintrag. Leer lassen, um alle geladenen Einträge zu aktualisieren."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "refresh_failed": {
+      "message": "Portfoliodaten konnten nicht aktualisiert werden: {error}"
+    },
+    "no_loaded_entries": {
+      "message": "Es sind keine Saxo Portfolio-Einträge geladen. Richten Sie die Integration ein oder authentifizieren bzw. aktivieren Sie einen vorhandenen Eintrag erneut, bevor Sie Daten aktualisieren."
+    },
+    "entry_not_found": {
+      "message": "Der Konfigurationseintrag {entry_id} wurde nicht gefunden oder gehört nicht zu Saxo Portfolio."
+    },
+    "entry_not_loaded": {
+      "message": "Der Saxo Portfolio-Eintrag {title} ist nicht geladen. Prüfen Sie seinen Status unter Geräte & Dienste und versuchen Sie es erneut."
     }
   }
 }

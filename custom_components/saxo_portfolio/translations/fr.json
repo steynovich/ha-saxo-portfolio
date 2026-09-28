@@ -130,7 +130,27 @@
   "services": {
     "refresh_data": {
       "name": "Actualiser les données du portefeuille",
-      "description": "Actualiser manuellement les données du portefeuille depuis l'API Saxo Bank."
+      "description": "Actualiser manuellement les données du portefeuille depuis l'API Saxo Bank.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Entrée de configuration",
+          "description": "L'entrée Saxo Portfolio à actualiser. Laissez vide pour actualiser toutes les entrées chargées."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "refresh_failed": {
+      "message": "Échec de l'actualisation des données du portefeuille : {error}"
+    },
+    "no_loaded_entries": {
+      "message": "Aucune entrée Saxo Portfolio n'est chargée. Configurez l'intégration, ou réauthentifiez ou réactivez une entrée existante, avant d'actualiser les données."
+    },
+    "entry_not_found": {
+      "message": "L'entrée de configuration {entry_id} est introuvable ou n'appartient pas à Saxo Portfolio."
+    },
+    "entry_not_loaded": {
+      "message": "L'entrée Saxo Portfolio {title} n'est pas chargée. Vérifiez son état dans Appareils et services, puis réessayez."
     }
   }
 }

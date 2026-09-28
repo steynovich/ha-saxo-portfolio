@@ -130,7 +130,27 @@
   "services": {
     "refresh_data": {
       "name": "Opdater porteføljedata",
-      "description": "Opdater porteføljedata manuelt fra Saxo Bank API."
+      "description": "Opdater porteføljedata manuelt fra Saxo Bank API.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Konfigurationspost",
+          "description": "Den Saxo Portfolio-post, der skal opdateres. Lad feltet være tomt for at opdatere alle indlæste poster."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "refresh_failed": {
+      "message": "Kunne ikke opdatere porteføljedata: {error}"
+    },
+    "no_loaded_entries": {
+      "message": "Ingen Saxo Portfolio-poster er indlæst. Opsæt integrationen, eller genautentificer eller genaktiver en eksisterende post, før du opdaterer data."
+    },
+    "entry_not_found": {
+      "message": "Konfigurationsposten {entry_id} blev ikke fundet eller tilhører ikke Saxo Portfolio."
+    },
+    "entry_not_loaded": {
+      "message": "Saxo Portfolio-posten {title} er ikke indlæst. Kontroller dens status under Enheder og tjenester, og prøv igen."
     }
   }
 }

@@ -134,7 +134,27 @@
   "services": {
     "refresh_data": {
       "name": "Refresh Portfolio Data",
-      "description": "Manually refresh portfolio data from Saxo Bank API."
+      "description": "Manually refresh portfolio data from Saxo Bank API.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Config entry",
+          "description": "The Saxo Portfolio entry to refresh. Leave empty to refresh all loaded entries."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "refresh_failed": {
+      "message": "Failed to refresh portfolio data: {error}"
+    },
+    "no_loaded_entries": {
+      "message": "No Saxo Portfolio entries are loaded. Set up the integration, or reauthenticate or re-enable an existing entry, before refreshing data."
+    },
+    "entry_not_found": {
+      "message": "Config entry {entry_id} was not found or does not belong to Saxo Portfolio."
+    },
+    "entry_not_loaded": {
+      "message": "The Saxo Portfolio entry {title} is not loaded. Check its status in Devices & services and try again."
     }
   }
 }

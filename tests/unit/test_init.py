@@ -1,7 +1,8 @@
 """Unit tests for custom_components/saxo_portfolio/__init__.py.
 
 Covers async_setup_entry, async_unload_entry, async_options_updated,
-async_migrate_entry, async_reload_entry, and the refresh_data service handler.
+async_migrate_entry, async_reload_entry, async_setup and the refresh_data
+service handler.
 """
 
 from __future__ import annotations
@@ -10,15 +11,21 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+from homeassistant.exceptions import (
+    ConfigEntryNotReady,
+    HomeAssistantError,
+    ServiceValidationError,
+)
 
 from custom_components.saxo_portfolio import (
     SaxoRuntimeData,
+    _async_handle_refresh_data,
     async_migrate_entry,
     async_options_updated,
     async_reload_entry,
+    async_setup,
     async_setup_entry,
     async_unload_entry,
 )
@@ -94,7 +101,7 @@ class TestAsyncSetupEntry:
 
     @pytest.mark.asyncio
     async def test_success(self) -> None:
-        """Successful setup creates coordinator, forwards platforms, and registers service."""
+        """Successful setup creates coordinator and forwards platforms."""
         hass = _make_hass()
         entry = _make_entry()
 
@@ -116,33 +123,13 @@ class TestAsyncSetupEntry:
         hass.config_entries.async_forward_entry_setups.assert_awaited_once_with(
             entry, PLATFORMS
         )
-        # Service registered
-        hass.services.async_register.assert_called_once()
+        # Services are registered in async_setup, not per entry
+        hass.services.async_register.assert_not_called()
         # runtime_data assigned
         assert isinstance(entry.runtime_data, SaxoRuntimeData)
         assert entry.runtime_data.coordinator is mock_coordinator
         # Update listener registered
         entry.async_on_unload.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_service_not_re_registered_if_already_exists(self) -> None:
-        """Service is not registered again when it already exists."""
-        hass = _make_hass(service_registered=True)
-        entry = _make_entry()
-
-        mock_coordinator = MagicMock()
-        mock_coordinator.async_refresh = AsyncMock()
-        mock_coordinator.mark_setup_complete = MagicMock()
-
-        with (
-            patch(SETUP_PATCHES, return_value=AsyncMock()),
-            patch(OAUTH_SESSION_PATH),
-            patch(COORDINATOR_PATH, return_value=mock_coordinator),
-        ):
-            result = await async_setup_entry(hass, entry)
-
-        assert result is True
-        hass.services.async_register.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_auth_error_raises_config_entry_not_ready(self) -> None:
@@ -262,8 +249,8 @@ class TestAsyncUnloadEntry:
         mock_coordinator.async_shutdown.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_service_removed_when_last_entry(self) -> None:
-        """Service is removed when the last config entry is unloaded."""
+    async def test_service_kept_when_last_entry_unloaded(self) -> None:
+        """Service stays registered when the last config entry is unloaded."""
         hass = _make_hass(existing_entries=[])
         hass.services.has_service.return_value = True
         entry = _make_entry()
@@ -273,7 +260,7 @@ class TestAsyncUnloadEntry:
 
         await async_unload_entry(hass, entry)
 
-        hass.services.async_remove.assert_called_once_with(DOMAIN, SERVICE_REFRESH_DATA)
+        hass.services.async_remove.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_service_not_removed_when_other_entries_remain(self) -> None:
@@ -409,137 +396,139 @@ class TestAsyncReloadEntry:
 # ---------------------------------------------------------------------------
 
 
-class TestHandleRefreshData:
-    """Tests for the handle_refresh_data service handler."""
+class TestAsyncSetup:
+    """Tests for the integration-level async_setup."""
 
     @pytest.mark.asyncio
-    async def test_refreshes_all_entries(self) -> None:
-        """Service refreshes coordinators for every loaded config entry."""
+    async def test_registers_refresh_service_once(self) -> None:
+        """async_setup registers the refresh_data service with a schema."""
         hass = _make_hass()
-        entry = _make_entry()
 
-        coord1 = MagicMock()
-        coord1.async_refresh = AsyncMock()
-        coord1.mark_setup_complete = MagicMock()
+        assert await async_setup(hass, {}) is True
 
+        hass.services.async_register.assert_called_once()
+        args, kwargs = hass.services.async_register.call_args
+        assert args[:2] == (DOMAIN, SERVICE_REFRESH_DATA)
+        assert kwargs["schema"] is not None
+
+
+def _make_call(hass: MagicMock, data: dict | None = None) -> MagicMock:
+    call = MagicMock(spec=ServiceCall)
+    call.hass = hass
+    call.data = data or {}
+    return call
+
+
+class TestHandleRefreshData:
+    """Tests for the refresh_data service handler."""
+
+    @pytest.mark.asyncio
+    async def test_refreshes_all_loaded_entries(self) -> None:
+        """Without a target, every loaded config entry is refreshed."""
+        hass = _make_hass()
+        coord1 = MagicMock(async_refresh=AsyncMock())
+        coord2 = MagicMock(async_refresh=AsyncMock())
         entry1 = _make_entry(entry_id="e1")
         entry1.runtime_data = SaxoRuntimeData(coordinator=coord1)
-
-        coord2 = MagicMock()
-        coord2.async_refresh = AsyncMock()
-        coord2.mark_setup_complete = MagicMock()
-
         entry2 = _make_entry(entry_id="e2")
         entry2.runtime_data = SaxoRuntimeData(coordinator=coord2)
+        hass.config_entries.async_loaded_entries = MagicMock(
+            return_value=[entry1, entry2]
+        )
 
-        hass.config_entries.async_entries.return_value = [entry1, entry2]
+        await _async_handle_refresh_data(_make_call(hass))
 
-        # We need to register the service, then extract and call the handler
-        mock_coordinator = MagicMock()
-        mock_coordinator.async_refresh = AsyncMock()
-        mock_coordinator.mark_setup_complete = MagicMock()
-
-        with (
-            patch(SETUP_PATCHES, return_value=AsyncMock()),
-            patch(OAUTH_SESSION_PATH),
-            patch(COORDINATOR_PATH, return_value=mock_coordinator),
-        ):
-            await async_setup_entry(hass, entry)
-
-        # Extract the registered handler
-        handler = hass.services.async_register.call_args[0][2]
-
-        # Now make hass return our two entries with coordinators
-        hass.config_entries.async_entries.return_value = [entry1, entry2]
-
-        call = MagicMock(spec=ServiceCall)
-        await handler(call)
-
+        hass.config_entries.async_loaded_entries.assert_called_once_with(DOMAIN)
         coord1.async_refresh.assert_awaited_once()
         coord2.async_refresh.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_skips_entries_without_runtime_data(self) -> None:
-        """Service skips entries that have no runtime_data."""
+    async def test_no_loaded_entries_raises_validation_error(self) -> None:
+        """With nothing loaded, a translated ServiceValidationError is raised."""
         hass = _make_hass()
-        entry = _make_entry()
+        hass.config_entries.async_loaded_entries = MagicMock(return_value=[])
 
-        entry_no_data = _make_entry(entry_id="e_no_data")
-        entry_no_data.runtime_data = None
+        with pytest.raises(ServiceValidationError) as exc_info:
+            await _async_handle_refresh_data(_make_call(hass))
 
-        hass.config_entries.async_entries.return_value = [entry_no_data]
+        assert exc_info.value.translation_domain == DOMAIN
+        assert exc_info.value.translation_key == "no_loaded_entries"
 
-        mock_coordinator = MagicMock()
-        mock_coordinator.async_refresh = AsyncMock()
-        mock_coordinator.mark_setup_complete = MagicMock()
+    @pytest.mark.asyncio
+    async def test_targets_single_entry(self) -> None:
+        """With config_entry_id, only that loaded entry is refreshed."""
+        hass = _make_hass()
+        coord = MagicMock(async_refresh=AsyncMock())
+        entry = _make_entry(entry_id="e1")
+        entry.state = ConfigEntryState.LOADED
+        entry.runtime_data = SaxoRuntimeData(coordinator=coord)
+        hass.config_entries.async_get_entry = MagicMock(return_value=entry)
+        hass.config_entries.async_loaded_entries = MagicMock()
 
-        with (
-            patch(SETUP_PATCHES, return_value=AsyncMock()),
-            patch(OAUTH_SESSION_PATH),
-            patch(COORDINATOR_PATH, return_value=mock_coordinator),
-        ):
-            await async_setup_entry(hass, entry)
+        await _async_handle_refresh_data(_make_call(hass, {"config_entry_id": "e1"}))
 
-        handler = hass.services.async_register.call_args[0][2]
-        hass.config_entries.async_entries.return_value = [entry_no_data]
+        hass.config_entries.async_get_entry.assert_called_once_with("e1")
+        hass.config_entries.async_loaded_entries.assert_not_called()
+        coord.async_refresh.assert_awaited_once()
 
-        call = MagicMock(spec=ServiceCall)
-        # Should not raise
-        await handler(call)
+    @pytest.mark.asyncio
+    async def test_target_other_domain_entry_raises(self) -> None:
+        """An entry id belonging to another integration is rejected."""
+        hass = _make_hass()
+        entry = _make_entry(entry_id="e1")
+        entry.domain = "other"
+        hass.config_entries.async_get_entry = MagicMock(return_value=entry)
+
+        with pytest.raises(ServiceValidationError) as exc_info:
+            await _async_handle_refresh_data(
+                _make_call(hass, {"config_entry_id": "e1"})
+            )
+        assert exc_info.value.translation_key == "entry_not_found"
+
+    @pytest.mark.asyncio
+    async def test_target_not_loaded_entry_raises(self) -> None:
+        """A targeted entry that is not loaded is rejected."""
+        hass = _make_hass()
+        entry = _make_entry(entry_id="e1")
+        entry.state = ConfigEntryState.SETUP_RETRY
+        hass.config_entries.async_get_entry = MagicMock(return_value=entry)
+
+        with pytest.raises(ServiceValidationError) as exc_info:
+            await _async_handle_refresh_data(
+                _make_call(hass, {"config_entry_id": "e1"})
+            )
+        assert exc_info.value.translation_key == "entry_not_loaded"
 
     @pytest.mark.asyncio
     async def test_refresh_error_raises_ha_error(self) -> None:
-        """Service wraps coordinator errors in HomeAssistantError."""
+        """Coordinator errors are wrapped in a translated HomeAssistantError."""
         hass = _make_hass()
-        entry = _make_entry()
+        coord = MagicMock(async_refresh=AsyncMock(side_effect=Exception("API down")))
+        entry = _make_entry(entry_id="e1")
+        entry.runtime_data = SaxoRuntimeData(coordinator=coord)
+        hass.config_entries.async_loaded_entries = MagicMock(return_value=[entry])
 
-        coord = MagicMock()
-        coord.async_refresh = AsyncMock(side_effect=Exception("API down"))
-        coord.mark_setup_complete = MagicMock()
+        with pytest.raises(HomeAssistantError) as exc_info:
+            await _async_handle_refresh_data(_make_call(hass))
+        assert exc_info.value.translation_key == "refresh_failed"
 
-        entry_with_coord = _make_entry(entry_id="e1")
-        entry_with_coord.runtime_data = SaxoRuntimeData(coordinator=coord)
 
-        mock_coordinator = MagicMock()
-        mock_coordinator.async_refresh = AsyncMock()
-        mock_coordinator.mark_setup_complete = MagicMock()
+def test_service_exceptions_are_translated_everywhere() -> None:
+    """refresh_data exception keys exist in strings.json and every translation."""
+    import json
+    from pathlib import Path
 
-        with (
-            patch(SETUP_PATCHES, return_value=AsyncMock()),
-            patch(OAUTH_SESSION_PATH),
-            patch(COORDINATOR_PATH, return_value=mock_coordinator),
+    base = Path(__file__).parents[2] / "custom_components" / "saxo_portfolio"
+    files = [base / "strings.json", *sorted((base / "translations").glob("*.json"))]
+    assert len(files) > 1
+    for path in files:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        for key in (
+            "refresh_failed",
+            "no_loaded_entries",
+            "entry_not_found",
+            "entry_not_loaded",
         ):
-            await async_setup_entry(hass, entry)
-
-        handler = hass.services.async_register.call_args[0][2]
-        hass.config_entries.async_entries.return_value = [entry_with_coord]
-
-        call = MagicMock(spec=ServiceCall)
-        with pytest.raises(HomeAssistantError):
-            await handler(call)
-
-    @pytest.mark.asyncio
-    async def test_skips_entries_without_runtime_data_attr(self) -> None:
-        """Service handles entries where runtime_data attribute does not exist."""
-        hass = _make_hass()
-        entry = _make_entry()
-
-        entry_no_attr = _make_entry(entry_id="e_no_attr")
-        del entry_no_attr.runtime_data
-
-        mock_coordinator = MagicMock()
-        mock_coordinator.async_refresh = AsyncMock()
-        mock_coordinator.mark_setup_complete = MagicMock()
-
-        with (
-            patch(SETUP_PATCHES, return_value=AsyncMock()),
-            patch(OAUTH_SESSION_PATH),
-            patch(COORDINATOR_PATH, return_value=mock_coordinator),
-        ):
-            await async_setup_entry(hass, entry)
-
-        handler = hass.services.async_register.call_args[0][2]
-        hass.config_entries.async_entries.return_value = [entry_no_attr]
-
-        call = MagicMock(spec=ServiceCall)
-        await handler(call)  # Should not raise
+            assert data["exceptions"][key]["message"], f"{path.name}: {key}"
+        fields = data["services"]["refresh_data"]["fields"]
+        assert fields["config_entry_id"]["name"], path.name

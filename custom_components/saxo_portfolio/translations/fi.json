@@ -130,7 +130,27 @@
   "services": {
     "refresh_data": {
       "name": "Päivitä salkkutiedot",
-      "description": "Päivitä salkkutiedot manuaalisesti Saxo Bank API:sta."
+      "description": "Päivitä salkkutiedot manuaalisesti Saxo Bank API:sta.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Määritysmerkintä",
+          "description": "Päivitettävä Saxo Portfolio -merkintä. Jätä tyhjäksi päivittääksesi kaikki ladatut merkinnät."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "refresh_failed": {
+      "message": "Salkkutietojen päivitys epäonnistui: {error}"
+    },
+    "no_loaded_entries": {
+      "message": "Yhtään Saxo Portfolio -merkintää ei ole ladattu. Määritä integraatio tai todenna tai ota käyttöön olemassa oleva merkintä uudelleen ennen tietojen päivittämistä."
+    },
+    "entry_not_found": {
+      "message": "Määritysmerkintää {entry_id} ei löytynyt tai se ei kuulu Saxo Portfoliolle."
+    },
+    "entry_not_loaded": {
+      "message": "Saxo Portfolio -merkintää {title} ei ole ladattu. Tarkista sen tila kohdasta Laitteet ja palvelut ja yritä uudelleen."
     }
   }
 }

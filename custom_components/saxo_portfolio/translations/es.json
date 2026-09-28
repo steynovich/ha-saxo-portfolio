@@ -130,7 +130,27 @@
   "services": {
     "refresh_data": {
       "name": "Actualizar datos de la cartera",
-      "description": "Actualizar manualmente los datos de la cartera desde la API de Saxo Bank."
+      "description": "Actualizar manualmente los datos de la cartera desde la API de Saxo Bank.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Entrada de configuración",
+          "description": "La entrada de Saxo Portfolio que se va a actualizar. Déjelo vacío para actualizar todas las entradas cargadas."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "refresh_failed": {
+      "message": "No se pudieron actualizar los datos de la cartera: {error}"
+    },
+    "no_loaded_entries": {
+      "message": "No hay entradas de Saxo Portfolio cargadas. Configure la integración, o vuelva a autenticar o habilite una entrada existente, antes de actualizar los datos."
+    },
+    "entry_not_found": {
+      "message": "No se encontró la entrada de configuración {entry_id} o no pertenece a Saxo Portfolio."
+    },
+    "entry_not_loaded": {
+      "message": "La entrada de Saxo Portfolio {title} no está cargada. Compruebe su estado en Dispositivos y servicios e inténtelo de nuevo."
     }
   }
 }
