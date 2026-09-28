@@ -123,34 +123,8 @@ class SaxoPortfolioFlowHandler(
         if "token" in data and "token_issued_at" not in data["token"]:
             data["token"]["token_issued_at"] = datetime.now().timestamp()
 
-        # Check if this is a reauth flow
-        if self._reauth_entry:
-            # Update existing entry with new token
-            _LOGGER.info(
-                "Reauth successful, updating config entry: %s",
-                self._reauth_entry.title,
-            )
-
-            # Preserve existing configuration (timezone, etc.) and update only the token
-            new_data = {**self._reauth_entry.data}
-            new_data["token"] = data["token"]
-
-            # Preserve redirect_uri if available in new OAuth data
-            if "redirect_uri" in data:
-                new_data["redirect_uri"] = data["redirect_uri"]
-
-            self.hass.config_entries.async_update_entry(
-                self._reauth_entry,
-                data=new_data,
-            )
-
-            # Reload the integration to use the new token
-            await self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
-
-            return self.async_abort(reason="reauth_successful")
-
-        # Not a reauth flow — validate credentials and check uniqueness
-        # before proceeding to timezone configuration (test-before-configure)
+        # Validate the new token against the API before touching any entry
+        # (test-before-configure) and identify which Saxo account it belongs to.
         access_token = data.get("token", {}).get("access_token", "")
         session = async_get_clientsession(self.hass)
         client = SaxoApiClient(
@@ -174,7 +148,12 @@ class SaxoPortfolioFlowHandler(
         client_key = client_details["ClientKey"]
         client_id = client_details.get("ClientId")
 
-        # Set unique ID based on ClientKey to prevent duplicate entries
+        # Check if this is a reauth flow
+        if self._reauth_entry:
+            return await self._async_finish_reauth(self._reauth_entry, data, client_key)
+
+        # Not a reauth flow — set unique ID based on ClientKey to prevent
+        # duplicate entries before proceeding to timezone configuration
         await self.async_set_unique_id(client_key)
         self._abort_if_unique_id_configured()
 
@@ -184,6 +163,51 @@ class SaxoPortfolioFlowHandler(
 
         self._oauth_data = data
         return await self.async_step_timezone()
+
+    async def _async_finish_reauth(
+        self,
+        entry: config_entries.ConfigEntry,
+        data: dict[str, Any],
+        client_key: str,
+    ) -> ConfigFlowResult:
+        """Store a validated reauth token on the existing entry.
+
+        Aborts without touching the entry when the token belongs to a
+        different Saxo account than the one the entry was created for.
+        """
+        if entry.unique_id is not None and entry.unique_id != client_key:
+            # A different Saxo login was used; never repoint the entry
+            # (and its entities/history) at another account.
+            _LOGGER.warning(
+                "Reauth aborted for config entry %s: authenticated Saxo "
+                "account does not match the configured account",
+                entry.title,
+            )
+            return self.async_abort(reason="reauth_account_mismatch")
+
+        _LOGGER.info("Reauth successful, updating config entry: %s", entry.title)
+
+        # Preserve existing configuration (timezone, etc.) and update only the token
+        new_data = {**entry.data}
+        new_data["token"] = data["token"]
+
+        # Preserve redirect_uri if available in new OAuth data
+        if "redirect_uri" in data:
+            new_data["redirect_uri"] = data["redirect_uri"]
+
+        if entry.unique_id is None:
+            # Legacy entry without unique ID: backfill it so future
+            # reauths can be checked against the account.
+            self.hass.config_entries.async_update_entry(
+                entry, data=new_data, unique_id=client_key
+            )
+        else:
+            self.hass.config_entries.async_update_entry(entry, data=new_data)
+
+        # Reload the integration to use the new token
+        await self.hass.config_entries.async_reload(entry.entry_id)
+
+        return self.async_abort(reason="reauth_successful")
 
     async def async_step_timezone(
         self, user_input: dict[str, Any] | None = None

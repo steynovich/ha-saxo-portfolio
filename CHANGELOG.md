@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Reauthentication must use the same Saxo account** (#16): the new token is validated against the API, and reauth is aborted with a translated "account mismatch" message if the token belongs to a different account than the entry. Previously, signing in with another Saxo login silently repointed the entry, its entities and history at that account. Entries created before unique IDs existed get theirs filled in on the next reauth.
+
 ## [2.9.0-beta.4] - 2026-09-28
 
 ### Changed

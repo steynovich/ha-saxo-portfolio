@@ -145,6 +145,7 @@ class TestOAuthAuthenticationFlow:
         }
         mock_entry.title = "Saxo Portfolio"
         mock_entry.entry_id = "existing_entry"
+        mock_entry.unique_id = "test_key_123"
 
         config_flow._reauth_entry = mock_entry
         config_flow.hass.config_entries.async_update_entry = Mock()
@@ -159,7 +160,22 @@ class TestOAuthAuthenticationFlow:
             },
         }
 
-        result = await config_flow.async_oauth_create_entry(new_oauth_data)
+        mock_client = AsyncMock()
+        mock_client.get_client_details = AsyncMock(
+            return_value={"ClientKey": "test_key_123", "ClientId": "test_id"}
+        )
+
+        with (
+            patch(
+                "custom_components.saxo_portfolio.config_flow.async_get_clientsession",
+                return_value=Mock(),
+            ),
+            patch(
+                "custom_components.saxo_portfolio.config_flow.SaxoApiClient",
+                return_value=mock_client,
+            ),
+        ):
+            result = await config_flow.async_oauth_create_entry(new_oauth_data)
 
         assert result["type"] == "abort"
         assert result["reason"] == "reauth_successful"

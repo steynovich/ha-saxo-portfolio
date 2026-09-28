@@ -36,7 +36,8 @@
     },
     "abort": {
       "missing_credentials": "**Applikasjonslegitimasjon påkrevd**\n\nFør du setter opp Saxo Portfolio, må du konfigurere applikasjonslegitimasjon.\n\n**Trinn:**\n1. Gå til [Saxo Developer Portal]({developer_portal_url})\n2. Opprett en produksjonsapplikasjon med omdirigerings-URI: `{redirect_uri}`\n3. Gå til [Applikasjonslegitimasjon]({setup_url}) i Home Assistant\n4. Legg til legitimasjon for {domain} med din App Key og Secret\n5. Gå tilbake hit for å fullføre oppsettet\n\n**Produksjons OAuth-endepunkter:**\n• Autoriser: {authorize_url}\n• Token: {token_url}",
-      "reauth_successful": "Reautentisering med Saxo Bank vellykket. Integrasjonen din vil nå fungere med de nye legitimasjonene."
+      "reauth_successful": "Reautentisering med Saxo Bank vellykket. Integrasjonen din vil nå fungere med de nye legitimasjonene.",
+      "reauth_account_mismatch": "Du logget inn med en annen Saxo-konto enn den som er konfigurert for denne oppføringen. Autentiser på nytt med den opprinnelige Saxo-kontoen. For å overvåke en annen konto, legg den til som en ny integrasjonsoppføring i stedet."
     }
   },
   "options": {
