@@ -173,7 +173,7 @@ Market Status, Token Expiry and Market Data Access are enum sensors. Their state
 
 A sensor whose status cannot be determined reports Home Assistant's standard `unknown` state.
 
-> **Breaking change after 2.9.0-beta.4:** up to and including 2.9.0-beta.4 these sensors reported English text such as `Market Open`, `After Hours`, `Fixed Schedule`, `Critical - < 1 minute`, `Warning - 4.2 minutes`, `45 minutes`, `2.3 hours`, `Available`, `Unavailable` and `Unknown`. Automations or templates matching the old strings must be updated to the values above.
+> **Breaking change in 2.9.0:** before 2.9.0 (and up to 2.9.0-beta.4) these sensors reported English text such as `Market Open`, `After Hours`, `Fixed Schedule`, `Critical - < 1 minute`, `Warning - 4.2 minutes`, `45 minutes`, `2.3 hours`, `Available`, `Unavailable` and `Unknown`. Automations or templates matching the old strings must be updated to the values above.
 
 ### Buttons (example: Client ID "123456")
 - `button.saxo_123456_refresh` - Refresh portfolio data now (configuration entity)

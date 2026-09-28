@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-09-28
+
+Stable release of the 2.9.0 betas. This section summarises what changed since 2.8.0; the beta sections below have the details.
+
+### ⚠️ Check before upgrading
+- **Minimum Home Assistant version is 2026.3** (Python 3.14.2). Older versions can't load the integration.
+- **Diagnostic sensor states are now fixed, translated values.** Update automations or templates that match the old English text:
+  - Market Status: `market_open`, `after_hours`, `fixed_schedule`
+  - Token Expiry: `expired`, `critical`, `warning`, `valid` (the countdown is still in the `expires_in_seconds` attribute)
+  - Market Data Access: `available`, `not_available`
+- **YTD Investment Performance now measures year-to-date** (from 1 January) instead of the trailing 12 months, so its value changes and long-term statistics show a jump at the upgrade. Its `time_period` attribute reads `YearToDate` instead of `Year`.
+- **Month and Quarter Investment Performance `from`/`thru` attributes** now show the windows Saxo actually uses (the last 28 and 90 days). The values are unchanged.
+- **Token Expiry no longer has an `expires_at` attribute.** Use `expires_in_seconds`.
+- **`saxo_portfolio.refresh_data` raises an error** when no matching entry is loaded, instead of doing nothing.
+- **Reauthentication must use the same Saxo account** the entry was created with.
+
+### Added
+- **Reauthenticate button** to start reauthentication yourself.
+- **YTD Profit/Loss** and **YTD Net Transfers** sensors.
+- **`config_entry_id` option for `saxo_portfolio.refresh_data`** to refresh one account.
+- **Translations in 11 languages** for entity names, diagnostic sensor states, position sensor names, setup, options and errors.
+- **Proactive refresh-token rotation** with more retries, so short Saxo outages no longer force reauthentication.
+- **Home Assistant Quality Scale Platinum**: strict typing, shared HTTP session, `runtime_data`, entity and icon translations, validation during setup.
+
+### Fixed
+- **Logs no longer contain identifiers or financial figures**, so debug logs are safe to share.
+- **Failed performance fetches are retried on the next update** instead of being cached for 2 hours. Performance sensors start as *unknown* instead of 0.0.
+- **Diagnostics are accurate**: data availability, last update time, position count and sensor inventory. The entry title and token timing are redacted.
+- **Market hours**: closing time counts as closed, and token-age maths is correct across daylight-saving changes.
+- **README** matches the code: options, cache duration, refresh button, service and Reconfigure.
+
+### Removed
+- **Unused `saxo-openapi` dependency.**
+
+### Documentation
+- **Why the OAuth flow doesn't use PKCE** (#23). A live test on SIM showed Saxo ignores PKCE for Code-grant apps; see `SECURITY.md`.
+
 ## [2.9.0-beta.6] - 2026-09-28
 
 ### Added
