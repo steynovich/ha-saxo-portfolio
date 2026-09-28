@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from freezegun import freeze_time
 import pytest
 from syrupy.assertion import SnapshotAssertion
+from syrupy.extensions.amber import AmberSnapshotExtension
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -170,6 +171,18 @@ async def _diagnostics(harness: _Harness) -> dict[str, Any]:
         "coordinator": result["coordinator"],
         "data_snapshot": result["data_snapshot"],
     }
+
+
+@pytest.fixture
+def snapshot(snapshot: SnapshotAssertion) -> SnapshotAssertion:
+    """Pin syrupy's Amber extension (stored under ``__snapshots__``).
+
+    pytest-homeassistant-custom-component also defines a ``snapshot`` fixture
+    (``snapshots/`` directory, HA serializer). Which plugin's fixture wins
+    depends on plugin load order, which differs between environments, so the
+    extension is pinned here to make the lookup deterministic.
+    """
+    return snapshot.use_extension(AmberSnapshotExtension)
 
 
 @pytest.fixture
