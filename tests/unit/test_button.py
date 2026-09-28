@@ -4,6 +4,7 @@ Tests cover:
 - async_setup_entry with valid and unknown client names
 - SaxoRefreshButton initialization, unique_id, device_info
 - async_press success and error handling
+- SaxoReauthButton starting a reauth flow for its config entry
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.saxo_portfolio.button import (
     PARALLEL_UPDATES,
+    SaxoReauthButton,
     SaxoRefreshButton,
     async_setup_entry,
 )
@@ -68,8 +70,9 @@ class TestAsyncSetupEntry:
 
         async_add_entities.assert_called_once()
         entities = async_add_entities.call_args[0][0]
-        assert len(entities) == 1
+        assert len(entities) == 2
         assert isinstance(entities[0], SaxoRefreshButton)
+        assert isinstance(entities[1], SaxoReauthButton)
 
     @pytest.mark.asyncio
     async def test_unknown_client_name_skips_setup(self, mock_hass, mock_config_entry):
@@ -198,6 +201,49 @@ class TestSaxoRefreshButtonAsyncPress:
             await btn.async_press()
 
         assert exc_info.value.__cause__ is original
+
+
+# ---------------------------------------------------------------------------
+# SaxoReauthButton
+# ---------------------------------------------------------------------------
+
+
+class TestSaxoReauthButton:
+    """Tests for the button that forces reauthentication."""
+
+    def test_unique_id_format(self):
+        """unique_id should follow the saxo_{client_id}_reauthenticate pattern."""
+        coordinator = _make_coordinator(client_id="ABC123")
+        btn = SaxoReauthButton(coordinator)
+        assert btn._attr_unique_id == "saxo_abc123_reauthenticate"
+
+    def test_instance_attributes(self):
+        """The button is a translated configuration entity without device class."""
+        btn = SaxoReauthButton(_make_coordinator())
+        assert btn._attr_has_entity_name is True
+        assert btn._attr_translation_key == "reauthenticate"
+        assert btn._attr_entity_category == EntityCategory.CONFIG
+        assert btn.device_class is None
+
+    def test_shares_device_with_refresh_button(self):
+        """Both buttons belong to the same portfolio device."""
+        coordinator = _make_coordinator(client_id="99999", entry_id="entry_abc")
+        assert (
+            SaxoReauthButton(coordinator).device_info
+            == SaxoRefreshButton(coordinator).device_info
+        )
+
+    @pytest.mark.asyncio
+    async def test_async_press_starts_reauth_for_entry(self):
+        """Pressing starts HA's reauth flow for this button's config entry."""
+        coordinator = _make_coordinator()
+        btn = SaxoReauthButton(coordinator)
+        btn.hass = MagicMock()
+
+        await btn.async_press()
+
+        coordinator.config_entry.async_start_reauth.assert_called_once_with(btn.hass)
+        coordinator.async_refresh.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

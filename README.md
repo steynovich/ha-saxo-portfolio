@@ -6,7 +6,7 @@
 [![HACS Action](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hacs.yml/badge.svg)](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hacs.yml)
 [![Hassfest](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hassfest.yml/badge.svg)](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hassfest.yml)
 
-A Home Assistant integration that monitors your Saxo Bank portfolio through the Saxo OpenAPI. It meets the Platinum tier of the Home Assistant Quality Scale. It signs in with OAuth 2.0, updates more often while your market is open, and names entities after your Saxo Client ID. You get eleven portfolio sensors, up to eight diagnostic sensors and a manual refresh button.
+A Home Assistant integration that monitors your Saxo Bank portfolio through the Saxo OpenAPI. It meets the Platinum tier of the Home Assistant Quality Scale. It signs in with OAuth 2.0, updates more often while your market is open, and names entities after your Saxo Client ID. You get eleven portfolio sensors, up to eight diagnostic sensors, a manual refresh button and a reauthenticate button.
 
 ## Features
 
@@ -102,7 +102,7 @@ The integration creates eleven sensors, each with your Saxo Client ID in its ent
 
 ### Reauthentication
 
-When your tokens expire, Home Assistant shows a **Reauthenticate** prompt for the entry. You can also start it yourself via the entry's menu → **Reconfigure**. Sign in again and the new token is stored on the existing entry. Your settings, entities, history and automations stay as they are.
+When your tokens expire, Home Assistant shows a **Reauthenticate** prompt for the entry. You can also start it yourself by pressing the **Reauthenticate** button on the device (`button.saxo_123456_reauthenticate`), or via the entry's menu → **Reconfigure**. Until you sign in again, the integration keeps using the current token. Sign in again and the new token is stored on the existing entry. Your settings, entities, history and automations stay as they are.
 
 Reauthentication must use the **same Saxo account** the entry was created with. The integration checks the account you signed in with against the entry. If it is a different account, reauthentication is aborted with an "account mismatch" message and the entry is left unchanged. To monitor another Saxo account, add it as a new integration entry.
 
@@ -137,7 +137,7 @@ Entity prefixes come from your Saxo Client ID, so there is nothing to configure 
 
 ## Entities created
 
-The integration creates **nineteen entities**, named with your Saxo Client ID: eleven portfolio sensors, seven diagnostic sensors and a refresh button. Enabling position sensors adds the Market Data Access diagnostic sensor (eight diagnostic sensors in total) plus one sensor per open position.
+The integration creates **twenty entities**, named with your Saxo Client ID: eleven portfolio sensors, seven diagnostic sensors, a refresh button and a reauthenticate button. Enabling position sensors adds the Market Data Access diagnostic sensor (eight diagnostic sensors in total) plus one sensor per open position.
 
 ### Portfolio sensors (example: Client ID "123456")
 - `sensor.saxo_123456_cash_balance` - Available cash balance
@@ -177,6 +177,7 @@ A sensor whose status cannot be determined reports Home Assistant's standard `un
 
 ### Buttons (example: Client ID "123456")
 - `button.saxo_123456_refresh` - Refresh portfolio data now (configuration entity)
+- `button.saxo_123456_reauthenticate` - Start reauthentication with Saxo (configuration entity); see [Reauthentication](#reauthentication)
 
 ### Entity attributes
 - **Currency**: portfolio currency (EUR, USD, etc.), taken from the account

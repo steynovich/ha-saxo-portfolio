@@ -41,26 +41,24 @@ async def async_setup_entry(
         )
         return
 
-    async_add_entities([SaxoRefreshButton(coordinator)])
-    _LOGGER.debug("Added Saxo Portfolio refresh button")
+    async_add_entities([SaxoRefreshButton(coordinator), SaxoReauthButton(coordinator)])
+    _LOGGER.debug("Added Saxo Portfolio refresh and reauthenticate buttons")
 
 
-class SaxoRefreshButton(CoordinatorEntity[SaxoCoordinator], ButtonEntity):
-    """Button to manually refresh Saxo Portfolio data."""
+class SaxoButtonEntity(CoordinatorEntity[SaxoCoordinator], ButtonEntity):
+    """Base class for Saxo Portfolio buttons on the portfolio device."""
 
     _attr_has_entity_name = True
-    _attr_translation_key = "refresh"
-    _attr_device_class = ButtonDeviceClass.UPDATE
     _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator: SaxoCoordinator) -> None:
-        """Initialize the refresh button."""
+        """Initialize the button with a unique ID from its translation key."""
         super().__init__(coordinator)
 
         client_id = coordinator.client_info.client_id
         entity_prefix = f"saxo_{client_id}".lower()
 
-        self._attr_unique_id = f"{entity_prefix}_refresh"
+        self._attr_unique_id = f"{entity_prefix}_{self._attr_translation_key}"
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -78,6 +76,13 @@ class SaxoRefreshButton(CoordinatorEntity[SaxoCoordinator], ButtonEntity):
             sw_version=None,
         )
 
+
+class SaxoRefreshButton(SaxoButtonEntity):
+    """Button to manually refresh Saxo Portfolio data."""
+
+    _attr_translation_key = "refresh"
+    _attr_device_class = ButtonDeviceClass.UPDATE
+
     async def async_press(self) -> None:
         """Handle the button press."""
         _LOGGER.debug("Refresh button pressed, triggering coordinator update")
@@ -89,3 +94,23 @@ class SaxoRefreshButton(CoordinatorEntity[SaxoCoordinator], ButtonEntity):
                 translation_key="refresh_failed",
                 translation_placeholders={"error": str(err)},
             ) from err
+
+
+class SaxoReauthButton(SaxoButtonEntity):
+    """Button that forces reauthentication with Saxo.
+
+    Starts Home Assistant's reauth flow for this entry, the same flow that
+    runs when Saxo rejects the refresh token. The current token stays in use
+    until the user completes the new sign-in.
+    """
+
+    _attr_translation_key = "reauthenticate"
+
+    async def async_press(self) -> None:
+        """Start the reauth flow for this config entry."""
+        assert self.coordinator.config_entry is not None
+        _LOGGER.info(
+            "Reauthenticate button pressed for config entry %s",
+            self.coordinator.config_entry.entry_id,
+        )
+        self.coordinator.config_entry.async_start_reauth(self.hass)

@@ -59,6 +59,9 @@
     "button": {
       "refresh": {
         "name": "Refresh"
+      },
+      "reauthenticate": {
+        "name": "Erneut authentifizieren"
       }
     },
     "sensor": {

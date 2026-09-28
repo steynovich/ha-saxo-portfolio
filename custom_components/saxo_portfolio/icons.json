@@ -3,6 +3,9 @@
     "button": {
       "refresh": {
         "default": "mdi:refresh"
+      },
+      "reauthenticate": {
+        "default": "mdi:account-key"
       }
     },
     "sensor": {
