@@ -142,10 +142,24 @@ The integration automatically creates **eighteen entities** using your Saxo Clie
 - `sensor.saxo_123456_client_id` - Saxo Client ID identifier for troubleshooting
 - `sensor.saxo_123456_account_id` - Saxo Account ID from account details API
 - `sensor.saxo_123456_name` - Client name from client details API
-- `sensor.saxo_123456_token_expiry` - OAuth token expiration countdown and status
-- `sensor.saxo_123456_market_status` - Current market status (Open/Closed/Fixed Schedule)
+- `sensor.saxo_123456_token_expiry` - OAuth token expiration status (seconds remaining in the `expires_in_seconds` attribute)
+- `sensor.saxo_123456_market_status` - Current market status
 - `sensor.saxo_123456_last_update` - Last successful data update timestamp
 - `sensor.saxo_123456_timezone` - Configured timezone and market hours settings
+- `sensor.saxo_123456_market_data_access` - Whether the API has real-time market data access (only with position sensors enabled)
+
+#### Diagnostic sensor states
+Market Status, Token Expiry and Market Data Access are enum sensors: their states are fixed values that Home Assistant shows translated into your language. Automations and templates should match on these values:
+
+| Sensor | States |
+|---|---|
+| Market Status | `market_open`, `after_hours`, `fixed_schedule` |
+| Token Expiry | `valid`, `warning` (≤ 5 minutes left), `critical` (≤ 1 minute left), `expired` |
+| Market Data Access | `available`, `not_available` |
+
+A sensor whose status cannot be determined reports Home Assistant's standard `unknown` state.
+
+> **Breaking change after 2.9.0-beta.4:** up to and including 2.9.0-beta.4 these sensors reported English text such as `Market Open`, `After Hours`, `Fixed Schedule`, `Critical - < 1 minute`, `Warning - 4.2 minutes`, `45 minutes`, `2.3 hours`, `Available`, `Unavailable` and `Unknown`. Automations or templates matching the old strings must be updated to the values above.
 
 ### Entity Attributes
 - **Currency**: Portfolio currency (EUR, USD, etc.) - automatically detected
@@ -337,7 +351,7 @@ automation:
     condition:
       - condition: state
         entity_id: sensor.saxo_123456_token_expiry
-        state: "WARNING"
+        state: "warning"
     action:
       - service: notify.mobile_app
         data:

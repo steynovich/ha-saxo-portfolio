@@ -104,10 +104,21 @@
         "name": "Name"
       },
       "token_expiry": {
-        "name": "Token Expiry"
+        "name": "Token Expiry",
+        "state": {
+          "valid": "Geldig",
+          "warning": "Verloopt binnen 5 minuten",
+          "critical": "Verloopt binnen 1 minuut",
+          "expired": "Verlopen"
+        }
       },
       "market_status": {
-        "name": "Market Status"
+        "name": "Market Status",
+        "state": {
+          "market_open": "Markt open",
+          "after_hours": "Na sluitingstijd",
+          "fixed_schedule": "Vast schema"
+        }
       },
       "last_update": {
         "name": "Last Update"
@@ -116,7 +127,11 @@
         "name": "Timezone"
       },
       "market_data_access": {
-        "name": "Market Data Access"
+        "name": "Market Data Access",
+        "state": {
+          "available": "Beschikbaar",
+          "not_available": "Niet beschikbaar"
+        }
       },
       "position": {
         "name": "Positie {symbol}"

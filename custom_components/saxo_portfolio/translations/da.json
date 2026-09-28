@@ -104,10 +104,21 @@
         "name": "Name"
       },
       "token_expiry": {
-        "name": "Token Expiry"
+        "name": "Token Expiry",
+        "state": {
+          "valid": "Gyldig",
+          "warning": "Udløber inden for 5 minutter",
+          "critical": "Udløber inden for 1 minut",
+          "expired": "Udløbet"
+        }
       },
       "market_status": {
-        "name": "Market Status"
+        "name": "Market Status",
+        "state": {
+          "market_open": "Marked åben",
+          "after_hours": "Efter lukketid",
+          "fixed_schedule": "Fast tidsplan"
+        }
       },
       "last_update": {
         "name": "Last Update"
@@ -116,7 +127,11 @@
         "name": "Timezone"
       },
       "market_data_access": {
-        "name": "Market Data Access"
+        "name": "Market Data Access",
+        "state": {
+          "available": "Tilgængelig",
+          "not_available": "Ikke tilgængelig"
+        }
       },
       "position": {
         "name": "Position {symbol}"

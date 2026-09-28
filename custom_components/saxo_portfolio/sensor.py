@@ -857,12 +857,15 @@ class SaxoNameSensor(SaxoDiagnosticSensorBase):
 class SaxoTokenExpirySensor(SaxoDiagnosticSensorBase):
     """Representation of a Saxo Token Expiry diagnostic sensor."""
 
+    _attr_options = ["valid", "warning", "critical", "expired"]
+
     def __init__(self, coordinator: SaxoCoordinator) -> None:
         """Initialize the sensor."""
         super().__init__(
             coordinator,
             "token_expiry",
         )
+        self._attr_device_class = SensorDeviceClass.ENUM
 
         _LOGGER.debug(
             "Initialized token expiry sensor with unique_id: %s, translation_key: %s",
@@ -876,22 +879,18 @@ class SaxoTokenExpirySensor(SaxoDiagnosticSensorBase):
         assert self.coordinator.config_entry is not None
         token_data = self.coordinator.config_entry.data.get("token", {})
         if not token_data or "expires_at" not in token_data:
-            return "Unknown"
+            return None
 
-        expires_at = token_data["expires_at"]
-        current_time = time.time()
-        time_until_expiry = expires_at - current_time
+        # The exact countdown is exposed as the expires_in_seconds attribute
+        time_until_expiry = token_data["expires_at"] - time.time()
 
         if time_until_expiry <= 0:
-            return "Expired"
-        elif time_until_expiry <= 60:
-            return "Critical - < 1 minute"
-        elif time_until_expiry <= 300:
-            return f"Warning - {round(time_until_expiry / 60, 1)} minutes"
-        elif time_until_expiry <= 3600:
-            return f"{round(time_until_expiry / 60)} minutes"
-        else:
-            return f"{round(time_until_expiry / 3600, 1)} hours"
+            return "expired"
+        if time_until_expiry <= 60:
+            return "critical"
+        if time_until_expiry <= 300:
+            return "warning"
+        return "valid"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -924,12 +923,15 @@ class SaxoTokenExpirySensor(SaxoDiagnosticSensorBase):
 class SaxoMarketStatusSensor(SaxoDiagnosticSensorBase):
     """Representation of a Saxo Market Status diagnostic sensor."""
 
+    _attr_options = ["market_open", "after_hours", "fixed_schedule"]
+
     def __init__(self, coordinator: SaxoCoordinator) -> None:
         """Initialize the sensor."""
         super().__init__(
             coordinator,
             "market_status",
         )
+        self._attr_device_class = SensorDeviceClass.ENUM
 
         _LOGGER.debug(
             "Initialized market status sensor with unique_id: %s, translation_key: %s",
@@ -941,12 +943,11 @@ class SaxoMarketStatusSensor(SaxoDiagnosticSensorBase):
     def native_value(self) -> str:
         """Return the market status."""
         if self.coordinator.timezone == "any":
-            return "Fixed Schedule"
+            return "fixed_schedule"
 
         if self.coordinator.is_market_hours:
-            return "Market Open"
-        else:
-            return "After Hours"
+            return "market_open"
+        return "after_hours"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -1117,12 +1118,16 @@ class SaxoTimezoneSensor(SaxoDiagnosticSensorBase):
 class SaxoMarketDataAccessSensor(SaxoDiagnosticSensorBase):
     """Diagnostic sensor showing if API has access to real-time market data."""
 
+    # Not "unavailable": that is HA's reserved state for unavailable entities
+    _attr_options = ["available", "not_available"]
+
     def __init__(self, coordinator: SaxoCoordinator) -> None:
         """Initialize the sensor."""
         super().__init__(
             coordinator,
             "market_data_access",
         )
+        self._attr_device_class = SensorDeviceClass.ENUM
 
         _LOGGER.debug(
             "Initialized real-time market data access sensor with unique_id: %s, translation_key: %s",
@@ -1131,16 +1136,13 @@ class SaxoMarketDataAccessSensor(SaxoDiagnosticSensorBase):
         )
 
     @property
-    def native_value(self) -> str:
-        """Return market data access status."""
+    def native_value(self) -> str | None:
+        """Return market data access status (None until it has been checked)."""
         has_access = self.coordinator.has_market_data_access()
 
         if has_access is None:
-            return "Unknown"
-        elif has_access:
-            return "Available"
-        else:
-            return "Unavailable"
+            return None
+        return "available" if has_access else "not_available"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

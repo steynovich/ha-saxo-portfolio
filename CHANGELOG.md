@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **BREAKING: Diagnostic sensor states are now translated enum values.** Market Status, Token Expiry and Market Data Access use `SensorDeviceClass.ENUM` with fixed states that Home Assistant displays in the user's language. Automations or templates matching the old English strings must be updated:
+  - Market Status: `Market Open` → `market_open`, `After Hours` → `after_hours`, `Fixed Schedule` → `fixed_schedule`
+  - Token Expiry: `Expired` → `expired`, `Critical - < 1 minute` → `critical`, `Warning - N minutes` → `warning`, `N minutes` / `N hours` → `valid`; the exact countdown remains available in the `expires_in_seconds` attribute
+  - Market Data Access: `Available` → `available`, `Unavailable` → `not_available`
+  - `Unknown` (Token Expiry, Market Data Access) → Home Assistant's standard `unknown` state
 - **Position sensor names are translatable**: position sensors now take their name from the `position` translation key with the symbol as a placeholder (e.g. "Position AAPL", "Positie AAPL" in Dutch) instead of a hard-coded English string. Entity IDs and unique IDs are unchanged.
 
 ### Fixed

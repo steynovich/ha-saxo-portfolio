@@ -104,10 +104,21 @@
         "name": "Name"
       },
       "token_expiry": {
-        "name": "Token Expiry"
+        "name": "Token Expiry",
+        "state": {
+          "valid": "Valido",
+          "warning": "Scade entro 5 minuti",
+          "critical": "Scade entro 1 minuto",
+          "expired": "Scaduto"
+        }
       },
       "market_status": {
-        "name": "Market Status"
+        "name": "Market Status",
+        "state": {
+          "market_open": "Mercato aperto",
+          "after_hours": "Fuori orario",
+          "fixed_schedule": "Programma fisso"
+        }
       },
       "last_update": {
         "name": "Last Update"
@@ -116,7 +127,11 @@
         "name": "Timezone"
       },
       "market_data_access": {
-        "name": "Market Data Access"
+        "name": "Market Data Access",
+        "state": {
+          "available": "Disponibile",
+          "not_available": "Non disponibile"
+        }
       },
       "position": {
         "name": "Posizione {symbol}"
