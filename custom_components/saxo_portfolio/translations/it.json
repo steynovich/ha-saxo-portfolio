@@ -117,6 +117,9 @@
       },
       "market_data_access": {
         "name": "Market Data Access"
+      },
+      "position": {
+        "name": "Posizione {symbol}"
       }
     }
   },

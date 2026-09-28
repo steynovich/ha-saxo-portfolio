@@ -1189,8 +1189,11 @@ class SaxoPositionSensor(SaxoSensorBase):
             unit_of_measurement=position.currency if position else "USD",
         )
 
-        # Position sensors use dynamic names (not translatable)
-        self._attr_name = f"Position {symbol}"
+        # All position sensors share one translation key; the symbol is a
+        # placeholder. The unique ID (set by the base class) keeps its
+        # per-position suffix, so registry entries are unchanged.
+        self._attr_translation_key = "position"
+        self._attr_translation_placeholders = {"symbol": symbol}
 
         self._attr_state_class = SensorStateClass.MEASUREMENT
 

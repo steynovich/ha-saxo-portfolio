@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Position sensor names are translatable**: position sensors now take their name from the `position` translation key with the symbol as a placeholder (e.g. "Position AAPL", "Positie AAPL" in Dutch) instead of a hard-coded English string. Entity IDs and unique IDs are unchanged.
+
 ## [2.9.0-beta.4] - 2026-09-28
 
 ### Changed

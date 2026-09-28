@@ -775,7 +775,9 @@ class TestPositionSensor:
 
     def test_name(self, coord):
         sensor = SaxoPositionSensor(coord, "aapl_stock")
-        assert sensor._attr_name == "Position AAPL"
+        assert sensor._attr_translation_key == "position"
+        assert sensor._attr_translation_placeholders == {"symbol": "AAPL"}
+        assert sensor._attr_unique_id == "saxo_test123_position_aapl_stock"
         assert sensor._attr_has_entity_name is True
 
 
