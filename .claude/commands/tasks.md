@@ -19,7 +19,7 @@ Given the context provided as an argument, do this:
    - Generate tasks based on what's available
 
 3. Generate tasks following the template:
-   - Use `/templates/tasks-template.md` as the base
+   - Use `templates/tasks-template.md` (repo root) as the base
    - Replace example tasks with actual tasks based on:
      * **Setup tasks**: Project init, dependencies, linting
      * **Test tasks [P]**: One per contract, one per integration scenario
@@ -45,7 +45,7 @@ Given the context provided as an argument, do this:
 
 6. Include parallel execution examples:
    - Group [P] tasks that can run together
-   - Show actual Task agent commands
+   - Show how each [P] group would be dispatched to parallel subagents
 
 7. Create FEATURE_DIR/tasks.md with:
    - Correct feature name from implementation plan
