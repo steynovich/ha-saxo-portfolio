@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Minimum Home Assistant version is now 2026.3** in `hacs.json`, the README and the `pyproject.toml` dependency (previously 2025.1). Home Assistant 2026.3 is the first release that runs on Python 3.14 (it requires Python 3.14.2), and older versions fail when importing the integration (#22)
+- README now matches the code (#22):
+  - The options table lists only the real options (Market Timezone, Enable Position Sensors); the configurable update-interval options it described do not exist
+  - Performance data cache is documented as 2 hours everywhere (some places said 1 hour)
+  - The refresh button, the `saxo_portfolio.refresh_data` service and the Reconfigure step are documented
+  - The diagnostic sensor count is now eight, including the Market Data Access sensor, which is only created when position sensors are enabled
+  - Documents that the YTD Net Transfers sensor's `last_reset` is anchored to 1 January
+
 ## [2.9.0-beta.4] - 2026-09-28
 
 ### Changed
