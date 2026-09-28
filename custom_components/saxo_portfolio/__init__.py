@@ -33,14 +33,14 @@ type SaxoConfigEntry = ConfigEntry[SaxoRuntimeData]
 
 async def async_setup_entry(hass: HomeAssistant, entry: SaxoConfigEntry) -> bool:
     """Set up Saxo Portfolio from a config entry."""
-    entity_prefix = entry.data.get(CONF_ENTITY_PREFIX, "unknown")
+    has_prefix = CONF_ENTITY_PREFIX in entry.data
     has_token = bool(entry.data.get("token", {}).get("access_token"))
 
+    # Title and entity prefix contain the Saxo ClientId - never log them.
     _LOGGER.debug(
-        "Setting up Saxo Portfolio integration - entry_id: %s, title: %s, prefix: %s, has_token: %s",
+        "Setting up Saxo Portfolio integration - entry_id: %s, has_prefix: %s, has_token: %s",
         entry.entry_id,
-        entry.title,
-        entity_prefix,
+        has_prefix,
         has_token,
     )
 

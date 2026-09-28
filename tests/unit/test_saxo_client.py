@@ -388,7 +388,7 @@ class TestMakeRequest:
 
     @pytest.mark.asyncio
     async def test_400_raises_api_error(self):
-        """400 should raise APIError with error text."""
+        """400 should raise APIError with a redacted body summary."""
         resp = _mock_response(400, text_data="Bad param")
         session = _session_with_response(resp)
         client = _make_client(session=session)
@@ -398,7 +398,9 @@ class TestMakeRequest:
                 "custom_components.saxo_portfolio.api.saxo_client.asyncio.timeout",
                 side_effect=_noop_timeout,
             ),
-            pytest.raises(APIError, match="HTTP 400 Bad Request: Bad param"),
+            pytest.raises(
+                APIError, match=r"HTTP 400 Bad Request \(error body redacted"
+            ),
         ):
             await client._make_request("/test")
 
@@ -548,7 +550,7 @@ class TestMakeRequest:
                 "custom_components.saxo_portfolio.api.saxo_client.asyncio.timeout",
                 side_effect=_noop_timeout,
             ),
-            pytest.raises(APIError, match="HTTP 503: Service Unavailable"),
+            pytest.raises(APIError, match="HTTP 503"),
         ):
             await client._make_request("/test")
 
@@ -603,12 +605,13 @@ class TestHandleResponseStatus:
 
     @pytest.mark.asyncio
     async def test_400_truncates_long_error(self):
-        """400 error text should be truncated to 500 chars in log."""
+        """A long 400 error body is never copied into the exception."""
         long_text = "x" * 1000
         resp = _mock_response(400, text_data=long_text)
         client = _make_client()
-        with pytest.raises(APIError):
+        with pytest.raises(APIError) as exc_info:
             await client._handle_response_status(resp, "https://api/test", 0)
+        assert long_text[:50] not in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_400_empty_error(self):

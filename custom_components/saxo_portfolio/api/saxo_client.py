@@ -7,8 +7,10 @@ from the Saxo OpenAPI endpoints.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
+import re
 import time
 from typing import Any
 
@@ -78,6 +80,29 @@ def _validate_balance_response(response: dict[str, Any]) -> None:
         raise APIError("TotalValue is not finite")
     if response["TotalValue"] < 0:
         raise APIError("TotalValue cannot be negative")
+
+
+_ERROR_CODE_RE = re.compile(r"^[A-Za-z0-9_.\-]{1,64}$")
+
+
+def _summarize_error_body(error_text: str | None) -> str:
+    """Reduce an API error body to a summary that is safe to log.
+
+    Saxo error bodies can echo request data (account keys, client keys,
+    amounts) in their free-text ``Message``. Only a well-formed ``ErrorCode``
+    identifier is kept; everything else is reduced to the body length.
+    """
+    if not error_text:
+        return "no error details"
+    try:
+        parsed = json.loads(error_text)
+    except ValueError:
+        parsed = None
+    if isinstance(parsed, dict):
+        error_code = parsed.get("ErrorCode")
+        if isinstance(error_code, str) and _ERROR_CODE_RE.match(error_code):
+            return f"ErrorCode={error_code}"
+    return f"error body redacted, {len(error_text)} chars"
 
 
 class RateLimiter:
@@ -248,7 +273,9 @@ class SaxoApiClient:
                 )
                 await asyncio.sleep(backoff_time)
 
-        raise APIError(f"Max retries ({MAX_RETRIES}) exceeded for {endpoint}")
+        raise APIError(
+            f"Max retries ({MAX_RETRIES}) exceeded for {mask_url_for_logging(endpoint)}"
+        )
 
     async def _handle_response_status(
         self, response: aiohttp.ClientResponse, url: str, attempt: int
@@ -281,19 +308,19 @@ class SaxoApiClient:
             raise AuthenticationError(ERROR_AUTH_FAILED)
 
         if response.status == 400:
-            error_text = await response.text()
+            summary = _summarize_error_body(await response.text())
             _LOGGER.error(
                 "400 Bad Request for %s: %s",
                 mask_url_for_logging(url),
-                error_text[:500] if error_text else "No error details",
+                summary,
             )
-            raise APIError(f"HTTP 400 Bad Request: {error_text}")
+            raise APIError(f"HTTP 400 Bad Request ({summary})")
 
         if response.status == 429:
             return self._handle_rate_limited(response, attempt)
 
-        error_text = await response.text()
-        raise APIError(f"HTTP {response.status}: {error_text}")
+        summary = _summarize_error_body(await response.text())
+        raise APIError(f"HTTP {response.status} ({summary})")
 
     def _log_unauthorized_details(self, response: aiohttp.ClientResponse) -> None:
         """Log diagnostic info for a 401 response (no secrets)."""
@@ -398,19 +425,11 @@ class SaxoApiClient:
                 _LOGGER.debug("Invalid client details response structure")
                 return None
 
-            # Extract ClientKey and ClientId
-            client_key = response.get("ClientKey")
-            client_id = response.get("ClientId")
-
-            if client_key:
-                _LOGGER.debug(
-                    "Found ClientKey from client details endpoint: %s",
-                    client_key[:10] + "..." if len(client_key) > 10 else client_key,
-                )
-            if client_id:
-                _LOGGER.debug(
-                    "Found ClientId from client details endpoint: %s", client_id
-                )
+            _LOGGER.debug(
+                "Client details received - ClientKey present: %s, ClientId present: %s",
+                bool(response.get("ClientKey")),
+                bool(response.get("ClientId")),
+            )
 
             return response
 

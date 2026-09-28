@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Logs no longer contain identifiers or financial figures** (#14): ClientId, ClientKey, account IDs, the account holder's name, balances, profit/loss, performance values and position details are no longer written to the log at any level, so debug logs can be shared safely. Raw API error bodies are reduced to the HTTP status and Saxo `ErrorCode`, and the ClientKey is masked in logged request URLs
+
 ## [2.9.0-beta.4] - 2026-09-28
 
 ### Changed

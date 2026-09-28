@@ -183,13 +183,13 @@ class SaxoSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
-        _LOGGER.debug("Sensor %s added to Home Assistant", self._attr_unique_id)
+        _LOGGER.debug("Sensor %s added to Home Assistant", self._attr_translation_key)
 
     async def async_will_remove_from_hass(self) -> None:
         """When entity will be removed from hass."""
         _LOGGER.debug(
             "Sensor %s being removed from Home Assistant",
-            self._attr_unique_id,
+            self._attr_translation_key,
         )
         await super().async_will_remove_from_hass()
 
@@ -230,9 +230,8 @@ class SaxoBalanceSensorBase(SaxoSensorBase):
             if isinstance(balance, int | float):
                 if not math.isfinite(balance):
                     _LOGGER.warning(
-                        "Invalid %s value: %s",
+                        "Invalid (non-finite) %s value",
                         self._attr_translation_key,
-                        balance,
                     )
                     return None
 
@@ -305,8 +304,7 @@ async def async_setup_entry(
         return
 
     _LOGGER.debug(
-        "Client name '%s' available - proceeding with sensor setup for entry %s",
-        client_name,
+        "Client name available - proceeding with sensor setup for entry %s",
         config_entry.entry_id,
     )
 
@@ -347,9 +345,8 @@ async def async_setup_entry(
             entities.append(SaxoPositionSensor(coordinator, position_slug))
 
     _LOGGER.info(
-        "Setting up %d Saxo Portfolio sensors for client '%s' (entry %s)",
+        "Setting up %d Saxo Portfolio sensors (entry %s)",
         len(entities),
-        client_name,
         config_entry.entry_id,
     )
     async_add_entities(entities, True)
@@ -417,13 +414,7 @@ class SaxoAccumulatedProfitLossSensor(SaxoSensorBase):
         if not self.coordinator.data:
             return None
 
-        accumulated_profit_loss = self.coordinator.get_ytd_earnings_percentage()
-        _LOGGER.debug(
-            "Accumulated profit/loss sensor %s returning value: %s",
-            self.entity_id,
-            accumulated_profit_loss,
-        )
-        return accumulated_profit_loss
+        return self.coordinator.get_ytd_earnings_percentage()
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -491,9 +482,8 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
             if isinstance(performance_percentage, int | float):
                 if not math.isfinite(performance_percentage):
                     _LOGGER.warning(
-                        "%s performance percentage is not finite: %s",
+                        "%s performance percentage is not finite",
                         self._attr_translation_key,
-                        performance_percentage,
                     )
                     return None
 
@@ -501,10 +491,9 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
                 return round(performance_percentage, 2)
             else:
                 _LOGGER.warning(
-                    "%s performance percentage is not numeric: %s (type: %s)",
+                    "%s performance percentage is not numeric (type: %s)",
                     self._attr_translation_key,
-                    performance_percentage,
-                    type(performance_percentage),
+                    type(performance_percentage).__name__,
                 )
                 return None
 
@@ -840,8 +829,7 @@ class SaxoNameSensor(SaxoDiagnosticSensorBase):
         )
 
         _LOGGER.debug(
-            "Initialized Name sensor - unique_id: %s, translation_key: %s",
-            self._attr_unique_id,
+            "Initialized Name sensor - translation_key: %s",
             self._attr_translation_key,
         )
 
@@ -867,8 +855,7 @@ class SaxoTokenExpirySensor(SaxoDiagnosticSensorBase):
         )
 
         _LOGGER.debug(
-            "Initialized token expiry sensor with unique_id: %s, translation_key: %s",
-            self._attr_unique_id,
+            "Initialized token expiry sensor - translation_key: %s",
             self._attr_translation_key,
         )
 
@@ -934,8 +921,7 @@ class SaxoMarketStatusSensor(SaxoDiagnosticSensorBase):
         )
 
         _LOGGER.debug(
-            "Initialized market status sensor with unique_id: %s, translation_key: %s",
-            self._attr_unique_id,
+            "Initialized market status sensor - translation_key: %s",
             self._attr_translation_key,
         )
 
@@ -1019,8 +1005,7 @@ class SaxoLastUpdateSensor(SaxoDiagnosticSensorBase):
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
 
         _LOGGER.debug(
-            "Initialized last update sensor with unique_id: %s, translation_key: %s",
-            self._attr_unique_id,
+            "Initialized last update sensor - translation_key: %s",
             self._attr_translation_key,
         )
 
@@ -1075,8 +1060,7 @@ class SaxoTimezoneSensor(SaxoDiagnosticSensorBase):
         )
 
         _LOGGER.debug(
-            "Initialized timezone sensor with unique_id: %s, translation_key: %s",
-            self._attr_unique_id,
+            "Initialized timezone sensor - translation_key: %s",
             self._attr_translation_key,
         )
 
@@ -1158,8 +1142,7 @@ class SaxoMarketDataAccessSensor(SaxoDiagnosticSensorBase):
         )
 
         _LOGGER.debug(
-            "Initialized real-time market data access sensor with unique_id: %s, translation_key: %s",
-            self._attr_unique_id,
+            "Initialized real-time market data access sensor - translation_key: %s",
             self._attr_translation_key,
         )
 

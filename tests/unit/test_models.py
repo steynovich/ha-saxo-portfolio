@@ -88,3 +88,18 @@ class TestMaskUrlForLogging:
         url = "https://api.example.com/v1?limit=10&offset=20"
         result = mask_url_for_logging(url)
         assert result == url
+
+    def test_client_key_in_v3_perf_path_is_masked(self) -> None:
+        """The v3 performance endpoint embeds the ClientKey in the path."""
+        url = "https://gateway.saxobank.com/openapi/hist/v3/perf/abcKEY123|x"
+        result = mask_url_for_logging(url)
+        assert "abcKEY123" not in result
+        assert result.endswith("/hist/v3/perf/**REDACTED**")
+
+    def test_client_and_account_key_query_masked(self) -> None:
+        """ClientKey / AccountKey query parameters are redacted."""
+        url = "https://api.example.com/v4?ClientKey=ck1&AccountKey=ak1&x=1"
+        result = mask_url_for_logging(url)
+        assert "ck1" not in result
+        assert "ak1" not in result
+        assert "x=1" in result

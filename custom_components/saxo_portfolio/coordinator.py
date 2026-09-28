@@ -323,19 +323,16 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.debug("No client details available")
                 return
 
-            _LOGGER.debug(
-                "Client details response keys: %s",
-                list(client_details.keys()),
-            )
             client_key = client_details.get("ClientKey")
             result["client_id"] = client_details.get("ClientId", "unknown")
             result["account_id"] = client_details.get("DefaultAccountId", "unknown")
             result["client_name"] = client_details.get("Name", "unknown")
             _LOGGER.debug(
-                "Extracted from client details - ClientId: %s, DefaultAccountId: %s, Name: '%s'",
-                result["client_id"],
-                result["account_id"],
-                result["client_name"],
+                "Client details fetched - ClientId present: %s, "
+                "DefaultAccountId present: %s, Name present: %s",
+                result["client_id"] != "unknown",
+                result["account_id"] != "unknown",
+                result["client_name"] != "unknown",
             )
 
             if not client_key:
@@ -348,9 +345,8 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._fetch_performance_metrics(client, client_key, result)
         except Exception as client_e:
             _LOGGER.debug(
-                "Could not fetch client details: %s - %s",
+                "Could not fetch client details: %s",
                 type(client_e).__name__,
-                str(client_e),
             )
 
     async def _fetch_performance_metrics(
@@ -369,8 +365,9 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ).get("AccumulatedProfitLoss", 0.0)
             result["ytd_earnings_percentage"] = accumulated_profit_loss
             _LOGGER.debug(
-                "Retrieved performance v3 data, AccumulatedProfitLoss: %s",
-                accumulated_profit_loss,
+                "Retrieved performance v3 data, AccumulatedProfitLoss present: %s",
+                "AccumulatedProfitLoss"
+                in performance_data.get("BalancePerformance", {}),
             )
         except Exception as perf_e:
             _LOGGER.debug(
@@ -389,12 +386,9 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             result.update(self._extract_v4_batch_metrics(v4_batch))
             _LOGGER.debug(
-                "Retrieved batched performance v4 data - AllTime: %s%%, YTD: %s%%, "
-                "Month: %s%%, Quarter: %s%%, YTD currency metrics present: %s",
-                result["investment_performance_percentage"],
-                result["ytd_investment_performance_percentage"],
-                result["month_investment_performance_percentage"],
-                result["quarter_investment_performance_percentage"],
+                "Retrieved batched performance v4 data - periods: %s, "
+                "YTD currency metrics present: %s",
+                sorted(v4_batch.keys()),
                 result.get("ytd_profit_loss") is not None,
             )
         except Exception as perf_v4_e:
@@ -533,10 +527,6 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.debug(
             "Processing positions for market data access check",
         )
-        _LOGGER.debug(
-            "First raw position structure: %s",
-            first_position,
-        )
 
         first_view = first_position.get("NetPositionView", {})
         current_price_type = first_view.get("CurrentPriceType", "")
@@ -586,13 +576,6 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             net_position_base = raw_position.get("NetPositionBase", {})
             net_position_view = raw_position.get("NetPositionView", {})
             display_and_format = raw_position.get("DisplayAndFormat", {})
-            position_view = raw_position.get("PositionView", {})
-
-            _LOGGER.debug(
-                "Position data - NetPositionView: %s, PositionView: %s",
-                net_position_view,
-                position_view,
-            )
 
             position_id = raw_position.get("NetPositionId", "")
             uic = net_position_base.get("Uic", 0)
@@ -605,7 +588,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             # Skip if no symbol
             if not symbol:
-                _LOGGER.debug("Skipping position %s: no symbol", position_id)
+                _LOGGER.debug("Skipping position without symbol")
                 return None
 
             profit_loss = (
@@ -625,13 +608,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             current_price = net_position_view.get("CurrentPrice", 0.0)
             if current_price == 0.0 and market_value != 0.0 and amount != 0.0:
                 current_price = market_value / abs(amount)
-                _LOGGER.debug(
-                    "Calculated price: (cost=%s + pnl=%s) / amount=%s = %s",
-                    abs(market_value_open),
-                    profit_loss,
-                    amount,
-                    current_price,
-                )
+                _LOGGER.debug("Calculated price for %s from cost basis and P/L", symbol)
 
             slug = PositionData.generate_slug(symbol, asset_type)
             position_data = PositionData(
@@ -647,13 +624,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 currency=currency,
             )
 
-            _LOGGER.debug(
-                "Parsed position: %s (%s) - %s units @ %s",
-                symbol,
-                asset_type,
-                amount,
-                current_price,
-            )
+            _LOGGER.debug("Parsed position: %s (%s)", symbol, asset_type)
             return slug, position_data
 
         except Exception as pos_error:
@@ -668,11 +639,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._positions_cache.positions = positions
         self._positions_cache.position_ids = list(positions.keys())
         self._positions_cache.last_updated = datetime.now()
-        _LOGGER.debug(
-            "Updated positions cache with %d positions: %s",
-            len(positions),
-            list(positions.keys()),
-        )
+        _LOGGER.debug("%d positions parsed, positions cache updated", len(positions))
 
     def _is_market_hours(self) -> bool:
         """Check if current time is during market hours.
@@ -1115,9 +1082,10 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             # Debug logging to understand reload trigger
             _LOGGER.debug(
-                "Reload check - last_known: '%s', current: '%s', sensors_init: %s, setup_complete: %s",
-                self._last_known_client_name,
-                current_client_name,
+                "Reload check - last_known_name_set: %s, current_name_set: %s, "
+                "sensors_init: %s, setup_complete: %s",
+                self._last_known_client_name != "unknown",
+                current_client_name != "unknown",
                 self._sensors_initialized,
                 self._setup_complete,
             )
@@ -1136,8 +1104,8 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             if should_reload:
                 _LOGGER.info(
-                    "Client name is now available ('%s') after being unknown - scheduling config entry reload to initialize sensors",
-                    current_client_name,
+                    "Client name is now available after being unknown - "
+                    "scheduling config entry reload to initialize sensors"
                 )
                 self._last_known_client_name = current_client_name
 
@@ -1425,9 +1393,9 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "(" not in current_title and client_id not in current_title
         ):
             _LOGGER.info(
-                "Updating config entry title from '%s' to '%s' for better identification",
-                current_title,
-                expected_title,
+                "Updating config entry title to include the client identifier "
+                "for entry %s",
+                self.config_entry.entry_id,
             )
             self.hass.config_entries.async_update_entry(
                 self.config_entry,

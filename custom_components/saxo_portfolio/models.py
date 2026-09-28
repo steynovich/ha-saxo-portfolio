@@ -42,8 +42,5 @@ def mask_url_for_logging(url: str) -> str:
     if not url:
         return url
 
-    if "?" in url:
-        base_url, query_params = url.split("?", 1)
-        return f"{base_url}?{mask_sensitive_data(query_params)}"
-
-    return url
+    # Mask the whole URL: identifiers can live in the path as well as the query
+    return mask_sensitive_data(url)
