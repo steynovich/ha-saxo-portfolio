@@ -77,12 +77,11 @@ class SaxoPortfolioFlowHandler(
         )
 
         if implementations:
-            for impl_id, impl in implementations.items():
+            # Implementation IDs are derived from the OAuth client ID - don't log them
+            for impl in implementations.values():
                 _LOGGER.debug(
-                    "Available OAuth implementation - ID: %s, domain: %s, name: %s",
-                    impl_id,
+                    "Available OAuth implementation - domain: %s",
                     getattr(impl, "domain", "unknown"),
-                    getattr(impl, "name", "unknown"),
                 )
 
         if not implementations:
@@ -127,8 +126,8 @@ class SaxoPortfolioFlowHandler(
         if self._reauth_entry:
             # Update existing entry with new token
             _LOGGER.info(
-                "Reauth successful, updating config entry: %s",
-                self._reauth_entry.title,
+                "Reauth successful, updating config entry %s",
+                self._reauth_entry.entry_id,
             )
 
             # Preserve existing configuration (timezone, etc.) and update only the token
@@ -209,10 +208,7 @@ class SaxoPortfolioFlowHandler(
                     implementation = next(iter(implementations.values()))
                     if hasattr(implementation, "redirect_uri"):
                         data["redirect_uri"] = implementation.redirect_uri
-                        _LOGGER.debug(
-                            "Stored redirect_uri from OAuth implementation: %s",
-                            implementation.redirect_uri,
-                        )
+                        _LOGGER.debug("Stored redirect_uri from OAuth implementation")
                     else:
                         _LOGGER.debug(
                             "OAuth implementation has no redirect_uri property, will retrieve dynamically during refresh"
@@ -227,19 +223,17 @@ class SaxoPortfolioFlowHandler(
                     type(e).__name__,
                 )
 
-            # Debug OAuth data structure (without sensitive info)
-            debug_data = {k: v for k, v in data.items() if k != "token"}
-            if "token" in data:
-                token_info = data["token"]
-                debug_token = {
-                    "has_access_token": bool(token_info.get("access_token")),
-                    "has_refresh_token": bool(token_info.get("refresh_token")),
-                    "token_type": token_info.get("token_type"),
-                    "expires_at": token_info.get("expires_at"),
-                }
-                debug_data["token_info"] = debug_token
-
-            _LOGGER.debug("OAuth data structure with timezone: %s", debug_data)
+            # Debug OAuth data structure: key names and presence flags only.
+            # Values (entity prefix = ClientId, implementation id, tokens) are
+            # never logged.
+            token_info = data.get("token", {})
+            _LOGGER.debug(
+                "OAuth data structure - keys: %s, has_access_token: %s, "
+                "has_refresh_token: %s",
+                sorted(data.keys()),
+                bool(token_info.get("access_token")),
+                bool(token_info.get("refresh_token")),
+            )
 
             # Create entry with simple title - ClientId will be determined from API
             title = "Saxo Portfolio"
@@ -274,10 +268,7 @@ class SaxoPortfolioFlowHandler(
         entry_id = self.context.get("entry_id")
         if entry_id:
             self._reauth_entry = self.hass.config_entries.async_get_entry(entry_id)
-            _LOGGER.info(
-                "Starting reauth flow for config entry: %s",
-                self._reauth_entry.title if self._reauth_entry else "unknown",
-            )
+            _LOGGER.info("Starting reauth flow for config entry %s", entry_id)
         else:
             _LOGGER.warning("Reauth triggered but no entry_id in context")
 
@@ -311,8 +302,7 @@ class SaxoPortfolioFlowHandler(
         self._reauth_entry = reconfigure_entry
 
         _LOGGER.info(
-            "Reconfigure flow for config entry: %s (entry_id: %s)",
-            reconfigure_entry.title,
+            "Reconfigure flow for config entry %s",
             reconfigure_entry.entry_id,
         )
 

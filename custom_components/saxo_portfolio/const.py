@@ -199,6 +199,9 @@ SENSITIVE_URL_PATTERNS: Final = [
     r"(Authorization:\s*Bearer\s+)[^\s]*",  # authorization headers
     r"(app_key=)[^&\s]*",  # app key parameters
     r"(app_secret=)[^&\s]*",  # app secret parameters
+    r"(ClientKey=)[^&\s]*",  # client key query parameters
+    r"(AccountKey=)[^&\s]*",  # account key query parameters
+    r"(/hist/v3/perf/)[^/?&\s]+",  # client key embedded in the v3 perf path
 ]
 
 # Diagnostics redaction placeholder

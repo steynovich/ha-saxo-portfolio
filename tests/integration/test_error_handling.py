@@ -272,8 +272,8 @@ class TestErrorHandlingAndRecovery:
             assert result["total_value"] == 125000.00
             assert result["currency"] == "USD"
 
-            # Performance data should fall back to defaults (0.0)
-            assert result["investment_performance_percentage"] == 0.0
+            # Never-fetched performance data is unknown (None), not 0.0
+            assert result["investment_performance_percentage"] is None
             assert result["client_id"] == "unknown"
             assert "last_updated" in result
 

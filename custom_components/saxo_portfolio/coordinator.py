@@ -235,6 +235,11 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         This ensures that balance data can be returned successfully even when
         the performance API is slow or unresponsive.
 
+        Only a *complete* fetch (client details, v3 and v4 all succeeded)
+        refreshes the cache timestamp. A failed or partial fetch keeps the last
+        known good value for every field that could not be fetched, and leaves
+        the timestamp alone so the next coordinator update retries.
+
         Args:
             client: The Saxo API client to use for requests
 
@@ -255,9 +260,13 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 result = dict(defaults)
                 # Delay before client details call to prevent burst
                 await asyncio.sleep(0.5)
-                await self._populate_performance_result(client, result)
+                complete = await self._populate_performance_result(client, result)
+
+            if complete:
                 self._update_performance_cache(result)
-                return result
+            else:
+                self._store_partial_performance_result(result)
+            return result
 
         except TimeoutError:
             _LOGGER.warning(
@@ -281,20 +290,22 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Build the performance-data defaults dict from the current cache."""
         cache = self._performance_data_cache
         return {
-            "ytd_earnings_percentage": cache.get("ytd_earnings_percentage", 0.0),
+            # Never-fetched metrics are None ("unknown"), not 0.0: a zero would
+            # be recorded as a real measurement in long-term statistics.
+            "ytd_earnings_percentage": cache.get("ytd_earnings_percentage"),
             "investment_performance_percentage": cache.get(
-                "investment_performance_percentage", 0.0
+                "investment_performance_percentage"
             ),
             "ytd_investment_performance_percentage": cache.get(
-                "ytd_investment_performance_percentage", 0.0
+                "ytd_investment_performance_percentage"
             ),
             "month_investment_performance_percentage": cache.get(
-                "month_investment_performance_percentage", 0.0
+                "month_investment_performance_percentage"
             ),
             "quarter_investment_performance_percentage": cache.get(
-                "quarter_investment_performance_percentage", 0.0
+                "quarter_investment_performance_percentage"
             ),
-            "cash_transfer_balance": cache.get("cash_transfer_balance", 0.0),
+            "cash_transfer_balance": cache.get("cash_transfer_balance"),
             "ytd_profit_loss": cache.get("ytd_profit_loss"),
             "ytd_cash_transfer": cache.get("ytd_cash_transfer"),
             "client_id": cache.get("client_id", "unknown"),
@@ -309,58 +320,80 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.debug("Updated performance data cache")
         self._update_config_entry_title_if_needed(result["client_id"])
 
+    def _store_partial_performance_result(self, result: dict[str, Any]) -> None:
+        """Keep the values from a partial fetch without refreshing the timestamp.
+
+        ``result`` started as the cached values, so fields that failed to
+        fetch still hold their last known good value. The cache timestamp is
+        deliberately left untouched so the next update retries the fetch.
+        """
+        self._performance_data_cache = result.copy()
+        _LOGGER.debug(
+            "Performance data fetch incomplete, keeping last known values; "
+            "will retry on next update"
+        )
+        self._update_config_entry_title_if_needed(result["client_id"])
+
     async def _populate_performance_result(
         self, client: SaxoApiClient, result: dict[str, Any]
-    ) -> None:
+    ) -> bool:
         """Populate ``result`` in-place with client details and performance metrics.
 
         Any exception in the client-details path is caught so the caller falls
         back to the ``result`` populated so far (which starts as the defaults).
+
+        Returns:
+            True only if client details, v3 and v4 performance all succeeded.
+
         """
         try:
             client_details = await client.get_client_details()
             if not client_details:
                 _LOGGER.debug("No client details available")
-                return
+                return False
 
-            _LOGGER.debug(
-                "Client details response keys: %s",
-                list(client_details.keys()),
-            )
             client_key = client_details.get("ClientKey")
             result["client_id"] = client_details.get("ClientId", "unknown")
             result["account_id"] = client_details.get("DefaultAccountId", "unknown")
             result["client_name"] = client_details.get("Name", "unknown")
             _LOGGER.debug(
-                "Extracted from client details - ClientId: %s, DefaultAccountId: %s, Name: '%s'",
-                result["client_id"],
-                result["account_id"],
-                result["client_name"],
+                "Client details fetched - ClientId present: %s, "
+                "DefaultAccountId present: %s, Name present: %s",
+                result["client_id"] != "unknown",
+                result["account_id"] != "unknown",
+                result["client_name"] != "unknown",
             )
 
             if not client_key:
                 _LOGGER.debug("No ClientKey found from client details endpoint")
-                return
+                return False
 
             _LOGGER.debug(
                 "Found ClientKey from client details, attempting performance fetch"
             )
-            await self._fetch_performance_metrics(client, client_key, result)
+            return await self._fetch_performance_metrics(client, client_key, result)
         except Exception as client_e:
             _LOGGER.debug(
-                "Could not fetch client details: %s - %s",
+                "Could not fetch client details: %s",
                 type(client_e).__name__,
-                str(client_e),
             )
+            return False
 
     async def _fetch_performance_metrics(
         self, client: SaxoApiClient, client_key: str, result: dict[str, Any]
-    ) -> None:
+    ) -> bool:
         """Fetch v3 and batched v4 performance metrics into ``result`` in-place.
 
         Each endpoint is wrapped in its own graceful-degradation try/except, so
         a failure on one does not prevent the other from updating ``result``.
+
+        Returns:
+            True if both the v3 and the v4 fetch succeeded.
+
         """
+        v3_ok = False
+        v4_ok = False
+
         # v3 performance — AccumulatedProfitLoss only
         try:
             performance_data = await client.get_performance(client_key)
@@ -369,9 +402,11 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ).get("AccumulatedProfitLoss", 0.0)
             result["ytd_earnings_percentage"] = accumulated_profit_loss
             _LOGGER.debug(
-                "Retrieved performance v3 data, AccumulatedProfitLoss: %s",
-                accumulated_profit_loss,
+                "Retrieved performance v3 data, AccumulatedProfitLoss present: %s",
+                "AccumulatedProfitLoss"
+                in performance_data.get("BalancePerformance", {}),
             )
+            v3_ok = True
         except Exception as perf_e:
             _LOGGER.debug(
                 "Could not fetch performance v3 data: %s",
@@ -389,19 +424,19 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             result.update(self._extract_v4_batch_metrics(v4_batch))
             _LOGGER.debug(
-                "Retrieved batched performance v4 data - AllTime: %s%%, YTD: %s%%, "
-                "Month: %s%%, Quarter: %s%%, YTD currency metrics present: %s",
-                result["investment_performance_percentage"],
-                result["ytd_investment_performance_percentage"],
-                result["month_investment_performance_percentage"],
-                result["quarter_investment_performance_percentage"],
+                "Retrieved batched performance v4 data - periods: %s, "
+                "YTD currency metrics present: %s",
+                sorted(v4_batch.keys()),
                 result.get("ytd_profit_loss") is not None,
             )
+            v4_ok = True
         except Exception as perf_v4_e:
             _LOGGER.debug(
                 "Could not fetch batched performance v4 data: %s",
                 type(perf_v4_e).__name__,
             )
+
+        return v3_ok and v4_ok
 
     @staticmethod
     def _current_year_bucket(series: list[dict[str, Any]]) -> float | None:
@@ -533,10 +568,6 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.debug(
             "Processing positions for market data access check",
         )
-        _LOGGER.debug(
-            "First raw position structure: %s",
-            first_position,
-        )
 
         first_view = first_position.get("NetPositionView", {})
         current_price_type = first_view.get("CurrentPriceType", "")
@@ -586,13 +617,6 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             net_position_base = raw_position.get("NetPositionBase", {})
             net_position_view = raw_position.get("NetPositionView", {})
             display_and_format = raw_position.get("DisplayAndFormat", {})
-            position_view = raw_position.get("PositionView", {})
-
-            _LOGGER.debug(
-                "Position data - NetPositionView: %s, PositionView: %s",
-                net_position_view,
-                position_view,
-            )
 
             position_id = raw_position.get("NetPositionId", "")
             uic = net_position_base.get("Uic", 0)
@@ -605,7 +629,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             # Skip if no symbol
             if not symbol:
-                _LOGGER.debug("Skipping position %s: no symbol", position_id)
+                _LOGGER.debug("Skipping position without symbol")
                 return None
 
             profit_loss = (
@@ -625,13 +649,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             current_price = net_position_view.get("CurrentPrice", 0.0)
             if current_price == 0.0 and market_value != 0.0 and amount != 0.0:
                 current_price = market_value / abs(amount)
-                _LOGGER.debug(
-                    "Calculated price: (cost=%s + pnl=%s) / amount=%s = %s",
-                    abs(market_value_open),
-                    profit_loss,
-                    amount,
-                    current_price,
-                )
+                _LOGGER.debug("Calculated price for %s from cost basis and P/L", symbol)
 
             slug = PositionData.generate_slug(symbol, asset_type)
             position_data = PositionData(
@@ -647,13 +665,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 currency=currency,
             )
 
-            _LOGGER.debug(
-                "Parsed position: %s (%s) - %s units @ %s",
-                symbol,
-                asset_type,
-                amount,
-                current_price,
-            )
+            _LOGGER.debug("Parsed position: %s (%s)", symbol, asset_type)
             return slug, position_data
 
         except Exception as pos_error:
@@ -668,11 +680,7 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._positions_cache.positions = positions
         self._positions_cache.position_ids = list(positions.keys())
         self._positions_cache.last_updated = datetime.now()
-        _LOGGER.debug(
-            "Updated positions cache with %d positions: %s",
-            len(positions),
-            list(positions.keys()),
-        )
+        _LOGGER.debug("%d positions parsed, positions cache updated", len(positions))
 
     def _is_market_hours(self) -> bool:
         """Check if current time is during market hours.
@@ -1115,9 +1123,10 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             # Debug logging to understand reload trigger
             _LOGGER.debug(
-                "Reload check - last_known: '%s', current: '%s', sensors_init: %s, setup_complete: %s",
-                self._last_known_client_name,
-                current_client_name,
+                "Reload check - last_known_name_set: %s, current_name_set: %s, "
+                "sensors_init: %s, setup_complete: %s",
+                self._last_known_client_name != "unknown",
+                current_client_name != "unknown",
                 self._sensors_initialized,
                 self._setup_complete,
             )
@@ -1136,8 +1145,8 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             if should_reload:
                 _LOGGER.info(
-                    "Client name is now available ('%s') after being unknown - scheduling config entry reload to initialize sensors",
-                    current_client_name,
+                    "Client name is now available after being unknown - "
+                    "scheduling config entry reload to initialize sensors"
                 )
                 self._last_known_client_name = current_client_name
 
@@ -1207,16 +1216,21 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return str(self.data.get("currency", "USD"))
         return "USD"
 
-    def get_ytd_earnings_percentage(self) -> float:
+    def _optional_float(self, key: str) -> float | None:
+        """Return a numeric data value as float, or None when unknown."""
+        if not self.data:
+            return None
+        value = self.data.get(key)
+        return float(value) if isinstance(value, int | float) else None
+
+    def get_ytd_earnings_percentage(self) -> float | None:
         """Get YTD earnings percentage from performance data.
 
         Returns:
-            YTD earnings percentage or 0.0 if not available
+            YTD earnings percentage or None if not (yet) available
 
         """
-        if not self.data:
-            return 0.0
-        return float(self.data.get("ytd_earnings_percentage", 0.0))
+        return self._optional_float("ytd_earnings_percentage")
 
     def get_client_id(self) -> str:
         """Get ClientId from client details.
@@ -1229,27 +1243,23 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return "unknown"
         return str(self.data.get("client_id", "unknown"))
 
-    def get_investment_performance_percentage(self) -> float:
+    def get_investment_performance_percentage(self) -> float | None:
         """Get investment performance percentage from v4 performance API.
 
         Returns:
-            Investment performance percentage (ReturnFraction * 100) or 0.0 if not available
+            Investment performance percentage (ReturnFraction * 100) or None if not available
 
         """
-        if not self.data:
-            return 0.0
-        return float(self.data.get("investment_performance_percentage", 0.0))
+        return self._optional_float("investment_performance_percentage")
 
-    def get_cash_transfer_balance(self) -> float:
+    def get_cash_transfer_balance(self) -> float | None:
         """Get latest cash transfer balance from v4 performance API.
 
         Returns:
-            Latest cash transfer balance value or 0.0 if not available
+            Latest cash transfer balance value or None if not available
 
         """
-        if not self.data:
-            return 0.0
-        return float(self.data.get("cash_transfer_balance", 0.0))
+        return self._optional_float("cash_transfer_balance")
 
     def get_ytd_profit_loss(self) -> float | None:
         """Get year-to-date profit/loss in the account's base currency.
@@ -1275,38 +1285,32 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         value = self.data.get("ytd_cash_transfer")
         return float(value) if isinstance(value, int | float) else None
 
-    def get_ytd_investment_performance_percentage(self) -> float:
+    def get_ytd_investment_performance_percentage(self) -> float | None:
         """Get YTD investment performance percentage from v4 performance API.
 
         Returns:
-            YTD investment performance percentage (ReturnFraction * 100) or 0.0 if not available
+            YTD investment performance percentage (ReturnFraction * 100) or None if not available
 
         """
-        if not self.data:
-            return 0.0
-        return float(self.data.get("ytd_investment_performance_percentage", 0.0))
+        return self._optional_float("ytd_investment_performance_percentage")
 
-    def get_month_investment_performance_percentage(self) -> float:
+    def get_month_investment_performance_percentage(self) -> float | None:
         """Get Month investment performance percentage from v4 performance API.
 
         Returns:
-            Month investment performance percentage (ReturnFraction * 100) or 0.0 if not available
+            Month investment performance percentage (ReturnFraction * 100) or None if not available
 
         """
-        if not self.data:
-            return 0.0
-        return float(self.data.get("month_investment_performance_percentage", 0.0))
+        return self._optional_float("month_investment_performance_percentage")
 
-    def get_quarter_investment_performance_percentage(self) -> float:
+    def get_quarter_investment_performance_percentage(self) -> float | None:
         """Get Quarter investment performance percentage from v4 performance API.
 
         Returns:
-            Quarter investment performance percentage (ReturnFraction * 100) or 0.0 if not available
+            Quarter investment performance percentage (ReturnFraction * 100) or None if not available
 
         """
-        if not self.data:
-            return 0.0
-        return float(self.data.get("quarter_investment_performance_percentage", 0.0))
+        return self._optional_float("quarter_investment_performance_percentage")
 
     def get_account_id(self) -> str:
         """Get AccountId from account data.
@@ -1413,9 +1417,9 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             client_id: The Saxo Client ID to include in the title
 
         """
-        assert self.config_entry is not None
         if client_id == "unknown":
             return
+        assert self.config_entry is not None
 
         current_title = self.config_entry.title
         expected_title = f"Saxo Portfolio ({client_id})"
@@ -1425,9 +1429,9 @@ class SaxoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "(" not in current_title and client_id not in current_title
         ):
             _LOGGER.info(
-                "Updating config entry title from '%s' to '%s' for better identification",
-                current_title,
-                expected_title,
+                "Updating config entry title to include the client identifier "
+                "for entry %s",
+                self.config_entry.entry_id,
             )
             self.hass.config_entries.async_update_entry(
                 self.config_entry,

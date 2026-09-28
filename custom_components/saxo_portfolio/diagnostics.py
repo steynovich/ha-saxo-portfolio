@@ -10,7 +10,9 @@ from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
     CONF_TIMEZONE,
@@ -38,6 +40,8 @@ REDACT_KEYS = {
     "current_time_iso",
     "token_issued_at",
     "token_type",
+    # The entry title embeds the Saxo ClientId once it is known
+    "title",
 }
 
 
@@ -140,26 +144,77 @@ def _format_token_status(token_data: dict[str, Any]) -> dict[str, Any]:
     return token_status
 
 
+# Flat keys the coordinator populates (see SaxoCoordinator._fetch_portfolio_data)
+_BALANCE_KEYS = ("cash_balance", "total_value", "non_margin_positions_value")
+_PERFORMANCE_KEYS = (
+    "ytd_earnings_percentage",
+    "investment_performance_percentage",
+    "ytd_investment_performance_percentage",
+    "month_investment_performance_percentage",
+    "quarter_investment_performance_percentage",
+    "cash_transfer_balance",
+    "ytd_profit_loss",
+    "ytd_cash_transfer",
+)
+_CLIENT_KEYS = ("client_id", "account_id", "client_name")
+
+
+def _has_numeric(data: dict[str, Any], keys: tuple[str, ...]) -> bool:
+    """Return True if any of ``keys`` holds a number (None means not fetched)."""
+    return any(
+        isinstance(data.get(key), int | float) and not isinstance(data.get(key), bool)
+        for key in keys
+    )
+
+
 def _get_data_snapshot(coordinator_data: dict[str, Any] | None) -> dict[str, Any]:
-    """Return a non-sensitive snapshot of the coordinator's latest data."""
+    """Return a non-sensitive snapshot of the coordinator's latest data.
+
+    Only key names and presence flags are reported, never values.
+    """
     if not coordinator_data:
         return {}
 
-    snapshot: dict[str, Any] = {
-        "has_balance_data": bool(coordinator_data.get("balance")),
-        "has_performance_data": bool(coordinator_data.get("performance")),
-        "has_client_data": bool(coordinator_data.get("client")),
+    return {
+        "has_balance_data": _has_numeric(coordinator_data, _BALANCE_KEYS),
+        "has_performance_data": _has_numeric(coordinator_data, _PERFORMANCE_KEYS),
+        "has_client_data": any(
+            coordinator_data.get(key) not in (None, "", "unknown")
+            for key in _CLIENT_KEYS
+        ),
         "currency": coordinator_data.get("currency", "Unknown"),
         "data_keys": list(coordinator_data.keys()),
     }
 
-    if "balance" in coordinator_data:
-        balance = coordinator_data["balance"]
-        snapshot["balance_fields"] = (
-            list(balance.keys()) if isinstance(balance, dict) else "Not a dict"
-        )
 
-    return snapshot
+def _get_entity_inventory(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
+    """Describe the sensors this entry actually registered.
+
+    Derived from the entity registry rather than a hard-coded list, so it
+    reflects YTD sensors, optional position sensors and diagnostic sensors
+    exactly as created. Per-position translation keys embed the symbol, so
+    positions are counted but not listed.
+    """
+    registry = er.async_get(hass)
+    entries = er.async_entries_for_config_entry(registry, entry.entry_id)
+    sensors = [e for e in entries if e.domain == "sensor"]
+
+    position_sensors = [
+        e for e in sensors if str(e.translation_key or "").startswith("position")
+    ]
+    other_sensors = [e for e in sensors if e not in position_sensors]
+
+    return {
+        "sensors_configured": len(sensors),
+        "sensor_types": sorted(
+            str(e.translation_key) for e in other_sensors if e.translation_key
+        ),
+        "position_sensors": len(position_sensors),
+        "diagnostic_sensors": sum(
+            1 for e in sensors if e.entity_category == EntityCategory.DIAGNOSTIC
+        ),
+        "disabled_sensors": sum(1 for e in sensors if e.disabled_by is not None),
+    }
 
 
 def _load_manifest_version() -> str:
@@ -170,29 +225,6 @@ def _load_manifest_version() -> str:
         return str(manifest.get("version", "unknown"))
     except FileNotFoundError, json.JSONDecodeError:
         return "unknown"
-
-
-_INTEGRATION_INFO_STATIC: dict[str, Any] = {
-    "sensors_configured": 16,
-    "sensor_types": [
-        "cash_balance",
-        "total_value",
-        "non_margin_positions_value",
-        "accumulated_profit_loss",
-        "investment_performance",
-        "ytd_investment_performance",
-        "month_investment_performance",
-        "quarter_investment_performance",
-        "cash_transfer_balance",
-        "client_id",
-        "account_id",
-        "name",
-        "token_expiry",
-        "market_status",
-        "last_update",
-        "timezone",
-    ],
-}
 
 
 async def async_get_config_entry_diagnostics(
@@ -216,17 +248,22 @@ async def async_get_config_entry_diagnostics(
         _format_token_status(entry.data["token"]) if "token" in entry.data else {}
     )
 
+    data_snapshot = _get_data_snapshot(
+        coordinator.data if hasattr(coordinator, "data") else None
+    )
+    get_positions = getattr(coordinator, "get_positions", None)
+    if data_snapshot and callable(get_positions):
+        data_snapshot["position_count"] = len(get_positions())
+
     diagnostics = {
         "config": config_data,
         "coordinator": _get_coordinator_status(coordinator),
-        "data_snapshot": _get_data_snapshot(
-            coordinator.data if hasattr(coordinator, "data") else None
-        ),
+        "data_snapshot": data_snapshot,
         "market_configuration": _get_market_config(configured_tz),
         "token_status": token_status,
         "integration": {
             "version": _load_manifest_version(),
-            **_INTEGRATION_INFO_STATIC,
+            **_get_entity_inventory(hass, entry),
         },
     }
 
