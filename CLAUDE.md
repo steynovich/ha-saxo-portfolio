@@ -24,7 +24,7 @@
 
 ### Entity conventions
 - All entities use `_attr_has_entity_name = True` with `_attr_translation_key`; user-facing strings live in `strings.json` and icons in `icons.json`.
-- Balance sensors: `state_class="total"`. Performance sensors: `state_class="measurement"` so HA records long-term statistics (`sensor.py`).
+- Balance sensors: `SensorStateClass.TOTAL`. Performance sensors: `SensorStateClass.MEASUREMENT` so HA records long-term statistics (`sensor.py`).
 - Position sensors are opt-in via the options flow.
 
 ## OAuth

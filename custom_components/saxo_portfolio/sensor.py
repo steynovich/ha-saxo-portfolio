@@ -8,7 +8,11 @@ import math
 import time
 from typing import Any
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
@@ -207,7 +211,7 @@ class SaxoBalanceSensorBase(SaxoSensorBase):
             unit_of_measurement=coordinator.get_currency(),
         )
         self._coordinator_method = coordinator_method
-        self._attr_state_class = "total"
+        self._attr_state_class = SensorStateClass.TOTAL
 
     @property
     def native_value(self) -> StateType:
@@ -404,7 +408,7 @@ class SaxoAccumulatedProfitLossSensor(SaxoSensorBase):
             "accumulated_profit_loss",
             unit_of_measurement=coordinator.get_currency(),
         )
-        self._attr_state_class = "measurement"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_suggested_display_precision = 2
 
     @property
@@ -467,7 +471,7 @@ class SaxoPerformanceSensorBase(SaxoSensorBase):
             unit_of_measurement="%",
         )
         self._data_key = data_key
-        self._attr_state_class = "measurement"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_suggested_display_precision = 2
 
     @property
@@ -654,7 +658,7 @@ class SaxoYTDProfitLossSensor(SaxoSensorBase):
             "ytd_profit_loss",
             unit_of_measurement=coordinator.get_currency(),
         )
-        self._attr_state_class = "measurement"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_suggested_display_precision = 2
 
     @property
@@ -1228,7 +1232,7 @@ class SaxoPositionSensor(SaxoSensorBase):
         # Position sensors use dynamic names (not translatable)
         self._attr_name = f"Position {symbol}"
 
-        self._attr_state_class = "measurement"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
 
     @property
     def native_value(self) -> StateType:
