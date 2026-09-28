@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`saxo_portfolio.refresh_data` is registered once at integration setup** (#19), following the HA quality-scale `action-setup` rule. It stays available while entries are unloaded and reloaded. It now takes an optional `config_entry_id` to refresh a single entry; leave it out to refresh all loaded entries. Calling it when no entry is loaded, or targeting an unknown or unloaded entry, raises a translated validation error. Previously such a call silently did nothing.
+
+### Documentation
+- **Recorded why the OAuth flow does not use PKCE** (#23). Saxo documents PKCE as a separate grant type for public clients without a secret, and it requires the `code_verifier` again on every refresh. It does not document combining PKCE with a client secret. The integration keeps the confidential Authorization Code Grant with the App Secret. The original spec's FR-003 ("with PKCE") has been amended, and `SECURITY.md` and the README explain the decision. Config-flow tests now assert that no PKCE parameters are sent. No behaviour change.
+
 ### Fixed
 - **Minimum Home Assistant version is now 2026.3** in `hacs.json`, the README and the `pyproject.toml` dependency (previously 2025.1). Home Assistant 2026.3 is the first release that runs on Python 3.14 (it requires Python 3.14.2), and older versions fail when importing the integration (#22)
 - README now matches the code (#22):
@@ -18,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Logs no longer contain identifiers or financial figures** (#14): ClientId, ClientKey, account IDs, the account holder's name, balances, profit/loss, performance values and position details are no longer written to the log at any level, so debug logs can be shared safely. Raw API error bodies are reduced to the HTTP status and Saxo `ErrorCode`, and the ClientKey is masked in logged request URLs
 - **Failed performance fetches are no longer cached for 2 hours** (#15): a failed or partial fetch (client details, v3 or v4 performance) is retried on the next update instead of pinning values until the cache expires. Sensors keep their last known good values; before the first successful fetch the performance sensors report *unknown* instead of 0.0, so no false zeros are recorded in long-term statistics. Balance data still updates when performance calls fail
 - **Diagnostics report real data availability** (#17): `has_balance_data`, `has_performance_data` and `has_client_data` are derived from the data the coordinator actually holds (they were always false), a position count is included, and the sensor inventory is taken from the entity registry (including YTD, position and diagnostic sensors) instead of a hard-coded 16. The entry title, which contains the ClientId, is now redacted
+- **Reauthentication must use the same Saxo account** (#16): the new token is validated against the API, and reauth is aborted with a translated "account mismatch" message if the token belongs to a different account than the entry. Previously, signing in with another Saxo login silently repointed the entry, its entities and history at that account. Entries created before unique IDs existed get theirs filled in on the next reauth.
 
 ## [2.9.0-beta.4] - 2026-09-28
 

@@ -100,6 +100,12 @@ The integration provides **eleven comprehensive sensors** that automatically use
 4. Select your primary trading market timezone (or "Any" to disable intelligent scheduling)
 5. The integration will automatically fetch your Client ID and create appropriately named entities
 
+### Reauthentication
+
+When your tokens expire, Home Assistant shows a **Reauthenticate** prompt for the entry. You can also start it yourself via the entry's menu → **Reconfigure**. Sign in again and the new token is stored on the existing entry. Your settings, entities, history and automations stay as they are.
+
+Reauthentication must use the **same Saxo account** the entry was created with. The integration checks the account you signed in with against the entry. If it is a different account, reauthentication is aborted with an "account mismatch" message and the entry is left unchanged. To monitor another Saxo account, add it as a new integration entry.
+
 ## Configuration Options
 
 Open **Settings → Devices & Services → Saxo Portfolio → Configure** to change these options:
@@ -171,7 +177,7 @@ The integration automatically creates **nineteen entities** using your Saxo Clie
 
 This integration implements enterprise-grade security practices:
 
-- **🔐 Authentication**: OAuth 2.0 with Home Assistant's secure credential management system
+- **🔐 Authentication**: OAuth 2.0 Authorization Code Grant (confidential client, App Secret kept in Home Assistant's Application Credentials). PKCE is not used because Saxo offers it only as a separate grant for apps without a secret; see [SECURITY.md](SECURITY.md)
 - **🔒 Token Security**: Encrypted storage with automatic refresh and proper expiration handling  
 - **🌐 Network Security**: Mandatory HTTPS with explicit SSL certificate verification
 - **📝 Data Protection**: Comprehensive sensitive data masking in all log outputs

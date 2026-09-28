@@ -36,7 +36,8 @@
     },
     "abort": {
       "missing_credentials": "**Credenziali applicazione richieste**\n\nPrima di configurare Saxo Portfolio, devi configurare le credenziali dell'applicazione.\n\n**Passaggi:**\n1. Vai al [Portale sviluppatori Saxo]({developer_portal_url})\n2. Crea un'applicazione di produzione con URI di reindirizzamento: `{redirect_uri}`\n3. Vai a [Credenziali applicazione]({setup_url}) in Home Assistant\n4. Aggiungi le credenziali per {domain} con la tua chiave app e segreto\n5. Torna qui per completare la configurazione\n\n**Endpoint OAuth di produzione:**\n• Autorizza: {authorize_url}\n• Token: {token_url}",
-      "reauth_successful": "Riautenticazione con Saxo Bank riuscita. La tua integrazione ora funzionerà con le nuove credenziali."
+      "reauth_successful": "Riautenticazione con Saxo Bank riuscita. La tua integrazione ora funzionerà con le nuove credenziali.",
+      "reauth_account_mismatch": "Hai effettuato l'accesso con un account Saxo diverso da quello configurato per questa voce. Riautenticati con l'account Saxo originale. Per monitorare un altro account, aggiungilo invece come nuova voce dell'integrazione."
     }
   },
   "options": {
@@ -129,7 +130,27 @@
   "services": {
     "refresh_data": {
       "name": "Aggiorna dati del portafoglio",
-      "description": "Aggiorna manualmente i dati del portafoglio dall'API Saxo Bank."
+      "description": "Aggiorna manualmente i dati del portafoglio dall'API Saxo Bank.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Voce di configurazione",
+          "description": "La voce Saxo Portfolio da aggiornare. Lascia vuoto per aggiornare tutte le voci caricate."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "refresh_failed": {
+      "message": "Impossibile aggiornare i dati del portafoglio: {error}"
+    },
+    "no_loaded_entries": {
+      "message": "Nessuna voce Saxo Portfolio è caricata. Configura l'integrazione, oppure riautentica o riattiva una voce esistente, prima di aggiornare i dati."
+    },
+    "entry_not_found": {
+      "message": "La voce di configurazione {entry_id} non è stata trovata o non appartiene a Saxo Portfolio."
+    },
+    "entry_not_loaded": {
+      "message": "La voce Saxo Portfolio {title} non è caricata. Controlla il suo stato in Dispositivi e servizi e riprova."
     }
   }
 }

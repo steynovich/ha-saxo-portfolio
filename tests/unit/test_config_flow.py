@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, PropertyMock, patch
 
 import pytest
 from homeassistant.core import HomeAssistant
@@ -51,30 +51,133 @@ class TestPickImplementation:
             mock_parent.assert_called_once()
 
 
+def _patch_client(details=None, side_effect=None):
+    """Patch SaxoApiClient in config_flow to return the given client details."""
+    mock_client = AsyncMock()
+    mock_client.get_client_details = AsyncMock(
+        return_value=details, side_effect=side_effect
+    )
+    return (
+        patch("custom_components.saxo_portfolio.config_flow.async_get_clientsession"),
+        patch(
+            "custom_components.saxo_portfolio.config_flow.SaxoApiClient",
+            return_value=mock_client,
+        ),
+    )
+
+
+def _reauth_entry(unique_id: str | None = "client_key_1") -> Mock:
+    mock_entry = Mock()
+    mock_entry.data = {
+        "token": {"access_token": "old"},
+        "timezone": "Europe/Amsterdam",
+    }
+    mock_entry.title = "Saxo"
+    mock_entry.entry_id = "e1"
+    mock_entry.unique_id = unique_id
+    return mock_entry
+
+
+NEW_TOKEN_DATA = {
+    "token": {"access_token": "new", "refresh_token": "r", "expires_at": 9e9},
+}
+
+
 class TestOAuthCreateEntryReauth:
-    @pytest.mark.asyncio
-    async def test_reauth_preserves_redirect_uri(self, flow):
-        """Line 144: redirect_uri preservation in reauth."""
-        mock_entry = Mock()
-        mock_entry.data = {
-            "token": {"access_token": "old"},
-            "timezone": "Europe/Amsterdam",
-        }
-        mock_entry.title = "Saxo"
-        mock_entry.entry_id = "e1"
-        flow._reauth_entry = mock_entry
+    @pytest.fixture(autouse=True)
+    def _setup(self, flow):
         flow.hass.config_entries.async_update_entry = Mock()
         flow.hass.config_entries.async_reload = AsyncMock()
 
-        new_data = {
-            "token": {"access_token": "new", "refresh_token": "r", "expires_at": 9e9},
-            "redirect_uri": "https://example.com/callback",
-        }
-        result = await flow.async_oauth_create_entry(new_data)
+    @pytest.mark.asyncio
+    async def test_reauth_preserves_redirect_uri(self, flow):
+        """redirect_uri from the new OAuth data is stored on reauth."""
+        flow._reauth_entry = _reauth_entry()
+        session_patch, client_patch = _patch_client({"ClientKey": "client_key_1"})
+        with session_patch, client_patch:
+            result = await flow.async_oauth_create_entry(
+                {
+                    "token": dict(NEW_TOKEN_DATA["token"]),
+                    "redirect_uri": "https://example.com/callback",
+                }
+            )
         assert result["type"] == "abort"
         assert result["reason"] == "reauth_successful"
         update_data = flow.hass.config_entries.async_update_entry.call_args[1]["data"]
         assert update_data["redirect_uri"] == "https://example.com/callback"
+
+    @pytest.mark.asyncio
+    async def test_reauth_same_account_updates_token_and_reloads(self, flow):
+        """Same Saxo account: token updated, entry reloaded, reauth_successful."""
+        flow._reauth_entry = _reauth_entry("client_key_1")
+        session_patch, client_patch = _patch_client({"ClientKey": "client_key_1"})
+        with session_patch, client_patch:
+            result = await flow.async_oauth_create_entry(
+                {"token": dict(NEW_TOKEN_DATA["token"])}
+            )
+        assert result["type"] == "abort"
+        assert result["reason"] == "reauth_successful"
+        update_data = flow.hass.config_entries.async_update_entry.call_args[1]["data"]
+        assert update_data["token"]["access_token"] == "new"
+        assert update_data["timezone"] == "Europe/Amsterdam"
+        flow.hass.config_entries.async_reload.assert_awaited_once_with("e1")
+
+    @pytest.mark.asyncio
+    async def test_reauth_different_account_aborts_without_touching_entry(self, flow):
+        """Different Saxo account: abort with reauth_account_mismatch, entry untouched."""
+        entry = _reauth_entry("client_key_1")
+        original_data = dict(entry.data)
+        flow._reauth_entry = entry
+        session_patch, client_patch = _patch_client({"ClientKey": "other_key"})
+        with session_patch, client_patch:
+            result = await flow.async_oauth_create_entry(
+                {"token": dict(NEW_TOKEN_DATA["token"])}
+            )
+        assert result["type"] == "abort"
+        assert result["reason"] == "reauth_account_mismatch"
+        flow.hass.config_entries.async_update_entry.assert_not_called()
+        flow.hass.config_entries.async_reload.assert_not_called()
+        assert entry.data == original_data
+
+    @pytest.mark.asyncio
+    async def test_reauth_legacy_entry_without_unique_id_backfills_it(self, flow):
+        """Entries without a unique ID cannot be compared; accept and store it."""
+        flow._reauth_entry = _reauth_entry(None)
+        session_patch, client_patch = _patch_client({"ClientKey": "client_key_1"})
+        with session_patch, client_patch:
+            result = await flow.async_oauth_create_entry(
+                {"token": dict(NEW_TOKEN_DATA["token"])}
+            )
+        assert result["reason"] == "reauth_successful"
+        kwargs = flow.hass.config_entries.async_update_entry.call_args[1]
+        assert kwargs["unique_id"] == "client_key_1"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("error", "details", "reason"),
+        [
+            ("auth", None, "invalid_auth"),
+            ("timeout", None, "cannot_connect"),
+            (None, {"Name": "no key"}, "api_validation_failed"),
+        ],
+    )
+    async def test_reauth_validation_failure_leaves_entry_untouched(
+        self, flow, error, details, reason
+    ):
+        """If the new token cannot be validated, reauth aborts and entry is untouched."""
+        from custom_components.saxo_portfolio.api.saxo_client import AuthenticationError
+
+        side_effect = {"auth": AuthenticationError, "timeout": TimeoutError}.get(
+            error or ""
+        )
+        flow._reauth_entry = _reauth_entry()
+        session_patch, client_patch = _patch_client(details, side_effect)
+        with session_patch, client_patch:
+            result = await flow.async_oauth_create_entry(
+                {"token": dict(NEW_TOKEN_DATA["token"])}
+            )
+        assert result["reason"] == reason
+        flow.hass.config_entries.async_update_entry.assert_not_called()
 
 
 class TestOAuthCreateEntryErrors:
@@ -322,3 +425,101 @@ class TestOptionsFlow:
         """Line 341: static method returns handler."""
         handler = SaxoPortfolioFlowHandler.async_get_options_flow(Mock())
         assert isinstance(handler, SaxoOptionsFlowHandler)
+
+
+def test_reauth_account_mismatch_is_translated_everywhere():
+    """The reauth_account_mismatch abort reason exists in strings.json and all translations."""
+    import json
+    from pathlib import Path
+
+    base = Path(__file__).parents[2] / "custom_components" / "saxo_portfolio"
+    files = [base / "strings.json", *sorted((base / "translations").glob("*.json"))]
+    assert len(files) > 1
+    for path in files:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert data["config"]["abort"].get("reauth_account_mismatch"), path.name
+
+
+def _fixed_redirect_uri():
+    return patch(
+        "custom_components.saxo_portfolio.application_credentials"
+        ".SaxoAuthImplementation.redirect_uri",
+        new_callable=PropertyMock,
+        return_value="https://example.com/cb",
+    )
+
+
+class TestOAuthWithoutPkce:
+    """#23: Saxo's confidential "Code" grant is used, without PKCE.
+
+    Saxo documents PKCE as a separate public-client grant (no AppSecret) whose
+    refresh requests must carry the original code_verifier. The integration
+    therefore uses the Authorization Code Grant with client secret and must not
+    send PKCE parameters. See specs/001-create-a-homeassistant/spec.md (FR-003).
+    """
+
+    @pytest.fixture
+    async def implementation(self, mock_hass):
+        from homeassistant.components.application_credentials import ClientCredential
+
+        from custom_components.saxo_portfolio.application_credentials import (
+            async_get_auth_implementation,
+        )
+
+        return await async_get_auth_implementation(
+            mock_hass, DOMAIN, ClientCredential("app_key", "app_secret")
+        )
+
+    @pytest.mark.asyncio
+    async def test_implementation_is_not_pkce(self, implementation):
+        """The Saxo implementation is a plain (confidential) local implementation."""
+        from homeassistant.helpers.config_entry_oauth2_flow import (
+            LocalOAuth2ImplementationWithPkce,
+        )
+
+        assert not isinstance(implementation, LocalOAuth2ImplementationWithPkce)
+        assert implementation.client_secret == "app_secret"
+        assert "code_challenge" not in implementation.extra_authorize_data
+
+    @pytest.mark.asyncio
+    async def test_authorize_url_has_no_code_challenge(self, flow, implementation):
+        """The authorize URL the flow sends users to carries no PKCE challenge."""
+        from urllib.parse import parse_qs, urlparse
+
+        flow.flow_impl = implementation
+        flow.flow_id = "flow_1"
+        flow.context = {}
+        with _fixed_redirect_uri():
+            result = await flow.async_step_auth()
+
+        assert result["type"] == "external"
+        query = parse_qs(urlparse(result["url"]).query)
+        assert query["response_type"] == ["code"]
+        assert query["client_id"] == ["app_key"]
+        assert query["scope"] == ["openapi"]
+        assert "code_challenge" not in query
+        assert "code_challenge_method" not in query
+
+    @pytest.mark.asyncio
+    async def test_code_exchange_and_refresh_send_no_code_verifier(
+        self, implementation
+    ):
+        """Token exchange and refresh rely on the client secret, not a verifier."""
+        implementation._token_request = AsyncMock(
+            return_value={"access_token": "a", "refresh_token": "r"}
+        )
+        with _fixed_redirect_uri():
+            await implementation.async_resolve_external_data(
+                {"code": "auth_code", "state": {"redirect_uri": "https://x/cb"}}
+            )
+            await implementation._async_refresh_token(
+                {"access_token": "a", "refresh_token": "r"}
+            )
+
+        exchange, refresh = (
+            c.args[0] for c in implementation._token_request.await_args_list
+        )
+        assert exchange["grant_type"] == "authorization_code"
+        assert refresh["grant_type"] == "refresh_token"
+        assert "code_verifier" not in exchange
+        assert "code_verifier" not in refresh

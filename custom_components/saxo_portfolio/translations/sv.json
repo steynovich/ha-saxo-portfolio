@@ -36,7 +36,8 @@
     },
     "abort": {
       "missing_credentials": "**Applikationsuppgifter krävs**\n\nInnan du ställer in Saxo Portfolio måste du konfigurera applikationsuppgifter.\n\n**Steg:**\n1. Gå till [Saxo Developer Portal]({developer_portal_url})\n2. Skapa en produktionsapplikation med omdirigerings-URI: `{redirect_uri}`\n3. Gå till [Applikationsuppgifter]({setup_url}) i Home Assistant\n4. Lägg till uppgifter för {domain} med din App Key och Secret\n5. Återvänd hit för att slutföra inställningen\n\n**Produktions OAuth-endpoints:**\n• Auktorisera: {authorize_url}\n• Token: {token_url}",
-      "reauth_successful": "Återautentisering med Saxo Bank lyckades. Din integration kommer nu att fungera med de nya uppgifterna."
+      "reauth_successful": "Återautentisering med Saxo Bank lyckades. Din integration kommer nu att fungera med de nya uppgifterna.",
+      "reauth_account_mismatch": "Du loggade in med ett annat Saxo-konto än det som är konfigurerat för den här posten. Autentisera igen med det ursprungliga Saxo-kontot. Om du vill övervaka ett annat konto lägger du i stället till det som en ny integrationspost."
     }
   },
   "options": {
@@ -129,7 +130,27 @@
   "services": {
     "refresh_data": {
       "name": "Uppdatera portföljdata",
-      "description": "Uppdatera portföljdata manuellt från Saxo Bank API."
+      "description": "Uppdatera portföljdata manuellt från Saxo Bank API.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Konfigurationspost",
+          "description": "Den Saxo Portfolio-post som ska uppdateras. Lämna tomt för att uppdatera alla inlästa poster."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "refresh_failed": {
+      "message": "Det gick inte att uppdatera portföljdata: {error}"
+    },
+    "no_loaded_entries": {
+      "message": "Inga Saxo Portfolio-poster är inlästa. Konfigurera integrationen, eller autentisera igen eller aktivera en befintlig post igen, innan du uppdaterar data."
+    },
+    "entry_not_found": {
+      "message": "Konfigurationsposten {entry_id} hittades inte eller tillhör inte Saxo Portfolio."
+    },
+    "entry_not_loaded": {
+      "message": "Saxo Portfolio-posten {title} är inte inläst. Kontrollera dess status under Enheter och tjänster och försök igen."
     }
   }
 }

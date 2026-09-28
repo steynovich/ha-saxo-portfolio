@@ -36,7 +36,8 @@
     },
     "abort": {
       "missing_credentials": "**Sovelluksen tunnistetiedot vaaditaan**\n\nEnnen Saxo Portfolion määrittämistä sinun on määritettävä sovelluksen tunnistetiedot.\n\n**Vaiheet:**\n1. Siirry [Saxo Developer Portal]({developer_portal_url})\n2. Luo tuotantosovellus uudelleenohjaus-URI:lla: `{redirect_uri}`\n3. Siirry [Sovelluksen tunnistetiedot]({setup_url}) Home Assistantissa\n4. Lisää tunnistetiedot domainille {domain} App Key ja Secret -tiedoillasi\n5. Palaa tänne viimeistelläksesi asennuksen\n\n**Tuotannon OAuth-päätepisteet:**\n• Valtuuta: {authorize_url}\n• Token: {token_url}",
-      "reauth_successful": "Uudelleentodennus Saxo Bankin kanssa onnistui. Integraatiosi toimii nyt uusilla tunnistetiedoilla."
+      "reauth_successful": "Uudelleentodennus Saxo Bankin kanssa onnistui. Integraatiosi toimii nyt uusilla tunnistetiedoilla.",
+      "reauth_account_mismatch": "Kirjauduit eri Saxo-tilillä kuin tälle merkinnälle on määritetty. Todenna uudelleen alkuperäisellä Saxo-tilillä. Jos haluat seurata toista tiliä, lisää se uutena integraatiomerkintänä."
     }
   },
   "options": {
@@ -129,7 +130,27 @@
   "services": {
     "refresh_data": {
       "name": "Päivitä salkkutiedot",
-      "description": "Päivitä salkkutiedot manuaalisesti Saxo Bank API:sta."
+      "description": "Päivitä salkkutiedot manuaalisesti Saxo Bank API:sta.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Määritysmerkintä",
+          "description": "Päivitettävä Saxo Portfolio -merkintä. Jätä tyhjäksi päivittääksesi kaikki ladatut merkinnät."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "refresh_failed": {
+      "message": "Salkkutietojen päivitys epäonnistui: {error}"
+    },
+    "no_loaded_entries": {
+      "message": "Yhtään Saxo Portfolio -merkintää ei ole ladattu. Määritä integraatio tai todenna tai ota käyttöön olemassa oleva merkintä uudelleen ennen tietojen päivittämistä."
+    },
+    "entry_not_found": {
+      "message": "Määritysmerkintää {entry_id} ei löytynyt tai se ei kuulu Saxo Portfoliolle."
+    },
+    "entry_not_loaded": {
+      "message": "Saxo Portfolio -merkintää {title} ei ole ladattu. Tarkista sen tila kohdasta Laitteet ja palvelut ja yritä uudelleen."
     }
   }
 }

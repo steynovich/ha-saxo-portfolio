@@ -16,7 +16,7 @@
    → Constraints: HACS Gold compatibility requirements
 3. Clarifications resolved:
    → Portfolio metrics: Account balance, positions, P&L, total value
-   → Authentication: OAuth 2.0 Authorization Code Grant with PKCE
+   → Authentication: OAuth 2.0 Authorization Code Grant with PKCE (amended: confidential Code grant without PKCE, see FR-003 note)
    → Data refresh: Every 5 minutes during market hours, 30 minutes after hours
 4. Fill User Scenarios & Testing section
    → Primary flow: Install via HACS → Configure API credentials → View portfolio sensors
@@ -60,7 +60,8 @@ A Home Assistant user wants to monitor their Saxo Bank investment portfolio dire
 ### Functional Requirements
 - **FR-001**: System MUST be installable through HACS (Home Assistant Community Store)
 - **FR-002**: System MUST meet HACS Gold status requirements for code quality and documentation
-- **FR-003**: System MUST authenticate with Saxo OpenAPI using OAuth 2.0 Authorization Code Grant with PKCE flow
+- **FR-003**: System MUST authenticate with Saxo OpenAPI using OAuth 2.0 Authorization Code Grant with PKCE flow *(amended, see note)*
+  - *Note (2026-09, #23): PKCE is intentionally not used.* Saxo documents two separate grant types that are chosen when the app is registered: the **Authorization Code Grant** for server-side (confidential) apps, where the token request is authenticated with the AppKey and AppSecret via HTTP Basic Auth ([docs](https://www.developer.saxo/openapi/learn/oauth-authorization-code-grant)), and the **Authorization Code Grant with PKCE** for native (public) apps. The PKCE variant sends only `client_id` + `code_verifier`, with no secret, and requires the same `code_verifier` again on every refresh-token request ([docs](https://www.developer.saxo/openapi/learn/oauth-authorization-code-grant-pkce), [security overview](https://www.developer.saxo/openapi/learn/security)). Saxo does not document combining PKCE with a client secret. Home Assistant's `LocalOAuth2ImplementationWithPkce` also does not persist the verifier for refreshes. The integration therefore uses the confidential Authorization Code Grant: the App Secret is kept server-side in Home Assistant's Application Credentials, and the authorization code can only be redeemed with it. CSRF is covered by HA's signed `state` parameter. Verifying against Saxo SIM/LIVE whether a Code-grant app accepts `code_challenge` is left to the maintainer. If Saxo confirms that PKCE works alongside the secret, switching to PKCE is a follow-up.
 - **FR-004**: System MUST create Home Assistant sensors displaying portfolio data
 - **FR-005**: System MUST provide account balance, individual positions, profit/loss data, and total portfolio value as sensors
 - **FR-006**: System MUST handle API authentication failures gracefully with user-friendly error messages

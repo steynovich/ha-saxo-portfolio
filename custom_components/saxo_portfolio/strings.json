@@ -40,7 +40,8 @@
       "api_validation_failed": "Could not validate your Saxo API credentials. Please try again.",
       "invalid_auth": "Invalid authentication credentials. Please try again.",
       "cannot_connect": "Failed to connect to Saxo Bank. Please check your internet connection.",
-      "reauth_successful": "Successfully reauthenticated with Saxo Bank. Your integration will now continue working with the new credentials."
+      "reauth_successful": "Successfully reauthenticated with Saxo Bank. Your integration will now continue working with the new credentials.",
+      "reauth_account_mismatch": "You signed in with a different Saxo account than the one configured for this entry. Please reauthenticate with the original Saxo account. To monitor another account, add it as a new integration entry instead."
     }
   },
   "options": {
@@ -127,6 +128,15 @@
   "exceptions": {
     "refresh_failed": {
       "message": "Failed to refresh portfolio data: {error}"
+    },
+    "no_loaded_entries": {
+      "message": "No Saxo Portfolio entries are loaded. Set up the integration, or reauthenticate or re-enable an existing entry, before refreshing data."
+    },
+    "entry_not_found": {
+      "message": "Config entry {entry_id} was not found or does not belong to Saxo Portfolio."
+    },
+    "entry_not_loaded": {
+      "message": "The Saxo Portfolio entry {title} is not loaded. Check its status in Devices & services and try again."
     }
   },
   "issues": {
@@ -138,7 +148,13 @@
   "services": {
     "refresh_data": {
       "name": "Refresh Portfolio Data",
-      "description": "Manually refresh portfolio data from Saxo Bank API."
+      "description": "Manually refresh portfolio data from Saxo Bank API.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Config entry",
+          "description": "The Saxo Portfolio entry to refresh. Leave empty to refresh all loaded entries."
+        }
+      }
     }
   }
 }

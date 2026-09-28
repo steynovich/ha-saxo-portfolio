@@ -36,7 +36,8 @@
     },
     "abort": {
       "missing_credentials": "**Se requieren credenciales de aplicación**\n\nAntes de configurar Saxo Portfolio, debe configurar las credenciales de aplicación.\n\n**Pasos:**\n1. Vaya al [Portal de desarrolladores de Saxo]({developer_portal_url})\n2. Cree una aplicación de producción con URI de redirección: `{redirect_uri}`\n3. Vaya a [Credenciales de aplicación]({setup_url}) en Home Assistant\n4. Agregue credenciales para {domain} con su clave de aplicación y secreto\n5. Regrese aquí para completar la configuración\n\n**Endpoints OAuth de producción:**\n• Autorizar: {authorize_url}\n• Token: {token_url}",
-      "reauth_successful": "Reautenticación exitosa con Saxo Bank. Su integración ahora funcionará con las nuevas credenciales."
+      "reauth_successful": "Reautenticación exitosa con Saxo Bank. Su integración ahora funcionará con las nuevas credenciales.",
+      "reauth_account_mismatch": "Ha iniciado sesión con una cuenta de Saxo distinta de la configurada para esta entrada. Vuelva a autenticarse con la cuenta de Saxo original. Para supervisar otra cuenta, añádala como una nueva entrada de la integración."
     }
   },
   "options": {
@@ -129,7 +130,27 @@
   "services": {
     "refresh_data": {
       "name": "Actualizar datos de la cartera",
-      "description": "Actualizar manualmente los datos de la cartera desde la API de Saxo Bank."
+      "description": "Actualizar manualmente los datos de la cartera desde la API de Saxo Bank.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Entrada de configuración",
+          "description": "La entrada de Saxo Portfolio que se va a actualizar. Déjelo vacío para actualizar todas las entradas cargadas."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "refresh_failed": {
+      "message": "No se pudieron actualizar los datos de la cartera: {error}"
+    },
+    "no_loaded_entries": {
+      "message": "No hay entradas de Saxo Portfolio cargadas. Configure la integración, o vuelva a autenticar o habilite una entrada existente, antes de actualizar los datos."
+    },
+    "entry_not_found": {
+      "message": "No se encontró la entrada de configuración {entry_id} o no pertenece a Saxo Portfolio."
+    },
+    "entry_not_loaded": {
+      "message": "La entrada de Saxo Portfolio {title} no está cargada. Compruebe su estado en Dispositivos y servicios e inténtelo de nuevo."
     }
   }
 }
