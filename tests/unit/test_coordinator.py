@@ -566,6 +566,19 @@ class TestProactiveRefreshToken:
         with pytest.raises(ConfigEntryAuthFailed):
             await coord._proactive_refresh_token()
 
+    async def test_400_invalid_client_raises_auth_failed(self):
+        """HTTP 400 invalid_client (bad app credentials) triggers reauthentication."""
+        coord = _bare_coordinator()
+        coord._oauth_session.implementation = MagicMock()
+        error = aiohttp.ClientResponseError(
+            MagicMock(), (), status=400, message="invalid_client"
+        )
+        coord._oauth_session.implementation.async_refresh_token = AsyncMock(
+            side_effect=error
+        )
+        with pytest.raises(ConfigEntryAuthFailed):
+            await coord._proactive_refresh_token()
+
     async def test_401_raises_auth_failed(self):
         """HTTP 401 from Saxo triggers reauthentication."""
         coord = _bare_coordinator()

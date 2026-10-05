@@ -33,7 +33,7 @@ from .positions import PositionData, PositionsFetcher
 from .const import (
     CONF_ENABLE_POSITION_SENSORS,
     CONF_TIMEZONE,
-    OAUTH_ERROR_INVALID_GRANT,
+    OAUTH_TERMINAL_TOKEN_ERRORS,
     COORDINATOR_UPDATE_TIMEOUT,
     DEFAULT_ENABLE_POSITION_SENSORS,
     DEFAULT_TIMEZONE,
@@ -324,7 +324,7 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
         deferred like transient failures.
 
         Raises:
-            ConfigEntryAuthFailed: On a 401 or a 400 invalid_grant response.
+            ConfigEntryAuthFailed: On a 401 or a 400 invalid_grant/invalid_client response.
 
         """
         implementation = self._oauth_session.implementation
@@ -336,10 +336,10 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
                 self._oauth_session.token
             )
         except aiohttp.ClientResponseError as err:
-            # 401 or an explicit invalid_grant is terminal. Any other 400 may be
+            # 401 or an explicit invalid_grant/invalid_client is terminal. Any other 400 may be
             # transient (ADR-0005), so it falls through to the deferral below.
             if err.status == 401 or (
-                err.status == 400 and err.message == OAUTH_ERROR_INVALID_GRANT
+                err.status == 400 and err.message in OAUTH_TERMINAL_TOKEN_ERRORS
             ):
                 _LOGGER.error(
                     "Proactive token refresh rejected by Saxo (HTTP %s) - "

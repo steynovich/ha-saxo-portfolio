@@ -19,6 +19,8 @@ from typing import Any
 import aiohttp
 
 from ..const import (
+    DEFAULT_RETRY_AFTER_SECONDS,
+    RETRY_AFTER_MAX_SECONDS,
     API_BALANCE_ENDPOINT,
     API_CLIENT_DETAILS_ENDPOINT,
     API_NET_POSITIONS_ENDPOINT,
@@ -106,9 +108,6 @@ def _summarize_error_body(error_text: str | None) -> str:
         if isinstance(error_code, str) and _ERROR_CODE_RE.match(error_code):
             return f"ErrorCode={error_code}"
     return f"error body redacted, {len(error_text)} chars"
-
-
-DEFAULT_RETRY_AFTER_SECONDS = 60
 
 
 def _parse_retry_after(value: str | None) -> int:
@@ -389,7 +388,7 @@ class SaxoApiClient:
 
         # Retry-After is the server's own instruction, so it is not multiplied
         # by the exponential factor; only capped.
-        return float(min(retry_after, 300))
+        return float(min(retry_after, RETRY_AFTER_MAX_SECONDS))
 
     @staticmethod
     def _compute_timeout_backoff(attempt: int) -> float:

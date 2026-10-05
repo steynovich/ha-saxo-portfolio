@@ -59,6 +59,8 @@ API_RATE_LIMIT_WINDOW: Final = 60  # seconds
 API_REQUEST_DELAY: Final = 0.5  # seconds
 MAX_RETRIES: Final = 3
 RETRY_BACKOFF_FACTOR: Final = 2
+DEFAULT_RETRY_AFTER_SECONDS: Final = 60  # when a 429 has no usable Retry-After
+RETRY_AFTER_MAX_SECONDS: Final = 300  # cap on a single 429 wait
 
 # Market hours (Eastern Time)
 MARKET_OPEN_HOUR: Final = 9
@@ -198,7 +200,9 @@ SERVICE_REFRESH_DATA: Final = "refresh_data"
 
 # Token management
 TOKEN_REFRESH_TIMEOUT: Final = 15  # seconds - conservative to leave budget for data fetching within 60s coordinator timeout
-OAUTH_ERROR_INVALID_GRANT: Final = "invalid_grant"  # terminal: refresh token is dead
+OAUTH_TERMINAL_TOKEN_ERRORS: Final = frozenset(
+    {"invalid_grant", "invalid_client"}
+)  # credentials/refresh token are dead
 
 TOKEN_REFRESH_BUFFER: Final = timedelta(
     minutes=5

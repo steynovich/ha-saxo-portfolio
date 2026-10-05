@@ -735,7 +735,6 @@ class TestHandleRateLimited:
 
     def test_backoff_capped_at_300(self):
         """Backoff should be capped at 300 seconds."""
-        resp = _mock_response(429, headers={"Retry-After": "200"})
         resp = _mock_response(429, headers={"Retry-After": "900"})
         client = _make_client()
         result = client._handle_rate_limited(resp, attempt=1)
