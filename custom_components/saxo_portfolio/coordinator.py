@@ -106,6 +106,9 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
 
         # Get configured timezone
         self._timezone: str = config_entry.data.get(CONF_TIMEZONE, DEFAULT_TIMEZONE)
+        # What the entry holds, kept apart from _timezone which is normalised
+        # to the default when the configured value is unknown
+        self._configured_timezone = self._timezone
 
         # Cache market hours check to avoid repeated calculations
         self._market_hours_cache: bool | None = None
@@ -772,12 +775,16 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
         """Apply a changed market timezone without reloading the entry."""
         assert self.config_entry is not None
         timezone: str = self.config_entry.data.get(CONF_TIMEZONE, DEFAULT_TIMEZONE)
-        if timezone != self._timezone:
+        if timezone != self._configured_timezone:
             _LOGGER.info("Market timezone changed to %s", timezone)
+            self._configured_timezone = timezone
             self._timezone = timezone
             self._market_hours_cache = None
             self._market_hours_cache_time = None
             await self.async_update_interval_if_needed()
+            # always_update=False skips notifying when a refresh returns equal
+            # data, so tell the Timezone sensor explicitly
+            self.async_update_listeners()
             await self.async_request_refresh()
 
     async def async_update_interval_if_needed(self) -> None:

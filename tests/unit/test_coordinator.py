@@ -1316,3 +1316,35 @@ class TestApplyOptions:
 
         assert coord.is_market_hours is False
         assert coord.update_interval == DEFAULT_UPDATE_INTERVAL_ANY
+
+    @pytest.mark.asyncio
+    async def test_listeners_notified_even_if_data_unchanged(
+        self, mock_hass, mock_config_entry, mock_oauth_session
+    ) -> None:
+        """always_update=False must not leave the Timezone sensor stale."""
+        coord = _make_coordinator(
+            mock_hass, mock_config_entry, mock_oauth_session, timezone="any"
+        )
+        coord.async_request_refresh = AsyncMock()
+        coord.async_update_listeners = MagicMock()
+
+        mock_config_entry.data = {**mock_config_entry.data, "timezone": "Asia/Tokyo"}
+        await coord.async_apply_options()
+
+        coord.async_update_listeners.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_unchanged_configured_timezone_is_a_noop(
+        self, mock_hass, mock_config_entry, mock_oauth_session
+    ) -> None:
+        """Token-only entry updates, even with an unknown timezone, do nothing."""
+        coord = _make_coordinator(
+            mock_hass, mock_config_entry, mock_oauth_session, timezone="Mars/Olympus"
+        )
+        coord.async_request_refresh = AsyncMock()
+        with patch("custom_components.saxo_portfolio.coordinator.dt_util.utcnow"):
+            coord._is_market_hours()  # normalises the unknown timezone
+
+        await coord.async_apply_options()
+
+        coord.async_request_refresh.assert_not_awaited()
