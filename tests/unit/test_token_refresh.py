@@ -127,9 +127,46 @@ class TestTokenRequestAuthErrors:
                 await impl._token_request({"grant_type": "authorization_code"})
 
             assert exc_info.value.status == 400
+            # The OAuth error code is carried so callers can tell invalid_grant
+            assert exc_info.value.message == "invalid_grant"
 
         # Should only be called once (no retry)
         assert session.post.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_400_with_malformed_json_body_still_raises_client_error(self):
+        """A non-JSON body on a 400 must not mask the HTTP error."""
+        impl = _make_auth_impl()
+        resp = _make_response(400)
+        resp.json = AsyncMock(side_effect=aiohttp.ContentTypeError(MagicMock(), ()))
+        session = AsyncMock()
+        session.post = AsyncMock(return_value=resp)
+
+        with patch(
+            "custom_components.saxo_portfolio.application_credentials.async_get_clientsession",
+            return_value=session,
+        ):
+            with pytest.raises(aiohttp.ClientResponseError) as exc_info:
+                await impl._token_request({"grant_type": "refresh_token"})
+
+        assert exc_info.value.status == 400
+        assert exc_info.value.message != "invalid_grant"
+
+    @pytest.mark.asyncio
+    async def test_400_with_non_dict_json_body_still_raises_client_error(self):
+        """A JSON list/scalar body must not raise AttributeError."""
+        impl = _make_auth_impl()
+        resp = _make_response(400, None)
+        resp.json = AsyncMock(return_value=["unexpected"])
+        session = AsyncMock()
+        session.post = AsyncMock(return_value=resp)
+
+        with patch(
+            "custom_components.saxo_portfolio.application_credentials.async_get_clientsession",
+            return_value=session,
+        ):
+            with pytest.raises(aiohttp.ClientResponseError):
+                await impl._token_request({"grant_type": "refresh_token"})
 
     @pytest.mark.asyncio
     async def test_401_raises_immediately_no_retry(self):

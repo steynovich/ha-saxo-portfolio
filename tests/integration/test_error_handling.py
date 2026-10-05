@@ -718,7 +718,7 @@ class TestProactiveTokenRefresh:
 
     @pytest.mark.asyncio
     async def test_proactive_refresh_raises_reauth_on_invalid_grant(self, mock_hass):
-        """400/401 from Saxo during proactive refresh -> ConfigEntryAuthFailed."""
+        """400 invalid_grant from Saxo during proactive refresh -> ConfigEntryAuthFailed."""
         token = self._past_half_life_token()
         entry = self._make_entry(token)
 
@@ -728,7 +728,7 @@ class TestProactiveTokenRefresh:
                 request_info=Mock(),
                 history=(),
                 status=400,
-                message="Bad Request",
+                message="invalid_grant",
             )
         )
         session = self._make_session(token, implementation)

@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import time
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -724,22 +726,45 @@ class TestHandleRateLimited:
         # backoff = min(10 * 2^0, 300) = 10.0
         assert result == 10.0
 
-    def test_returns_backoff_on_middle_attempt(self):
-        """Middle attempt should return exponential backoff."""
+    def test_backoff_honours_retry_after_on_later_attempts(self):
+        """Retry-After is authoritative: no exponential multiplier on top."""
         resp = _mock_response(429, headers={"Retry-After": "10"})
         client = _make_client()
         result = client._handle_rate_limited(resp, attempt=1)
-        # backoff = min(10 * 2^1, 300) = 20.0
-        assert result == 20.0
+        assert result == 10.0
 
     def test_backoff_capped_at_300(self):
         """Backoff should be capped at 300 seconds."""
-        resp = _mock_response(429, headers={"Retry-After": "200"})
-        # Use attempt=1 (not last) with high Retry-After to test cap
-        # backoff = min(200 * 2^1, 300) = min(400, 300) = 300
+        resp = _mock_response(429, headers={"Retry-After": "900"})
         client = _make_client()
         result = client._handle_rate_limited(resp, attempt=1)
         assert result == 300.0
+
+    def test_http_date_retry_after_is_parsed(self):
+        """An HTTP-date Retry-After must not raise ValueError."""
+        when = datetime.now(UTC) + timedelta(seconds=120)
+        resp = _mock_response(
+            429, headers={"Retry-After": format_datetime(when, usegmt=True)}
+        )
+        client = _make_client()
+        result = client._handle_rate_limited(resp, attempt=0)
+        assert 110 <= result <= 121
+
+    def test_past_http_date_retry_after_clamps_to_zero(self):
+        """A date in the past yields a zero (not negative) wait."""
+        when = datetime.now(UTC) - timedelta(seconds=300)
+        resp = _mock_response(
+            429, headers={"Retry-After": format_datetime(when, usegmt=True)}
+        )
+        client = _make_client()
+        assert client._handle_rate_limited(resp, attempt=0) == 0.0
+
+    @pytest.mark.parametrize("value", ["garbage", "", "-5", "1.5e3x"])
+    def test_malformed_retry_after_falls_back_to_default(self, value):
+        """Unparseable or negative Retry-After falls back to the 60 s default."""
+        resp = _mock_response(429, headers={"Retry-After": value})
+        client = _make_client()
+        assert client._handle_rate_limited(resp, attempt=0) == 60.0
 
     def test_raises_on_last_attempt(self):
         """Last attempt should raise RateLimitError."""
@@ -755,7 +780,6 @@ class TestHandleRateLimited:
         resp = _mock_response(429, headers={})
         client = _make_client()
         result = client._handle_rate_limited(resp, attempt=0)
-        # backoff = min(60 * 2^0, 300) = 60.0
         assert result == 60.0
 
     def test_sets_rate_limiter_state(self):

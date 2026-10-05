@@ -38,16 +38,27 @@ async def _retry_wait_if_not_last(attempt: int, max_attempts: int) -> None:
         await asyncio.sleep(_token_retry_backoff(attempt))
 
 
-async def _log_token_error_response(resp: aiohttp.ClientResponse) -> None:
-    """Log the JSON error body from a failing token response."""
-    error_response = (
-        await resp.json() if resp.content_type == "application/json" else {}
-    )
+async def _log_token_error_response(resp: aiohttp.ClientResponse) -> str | None:
+    """Log the JSON error body from a failing token response.
+
+    Returns the OAuth ``error`` code, or None when the body is missing,
+    malformed or not a JSON object.
+    """
+    error_response: Any = {}
+    if resp.content_type == "application/json":
+        try:
+            error_response = await resp.json()
+        except aiohttp.ContentTypeError, ValueError:
+            error_response = {}
+    if not isinstance(error_response, dict):
+        error_response = {}
+    error_code = error_response.get("error")
     _LOGGER.error(
         "Token request failed (%s): %s",
-        mask_sensitive_data(str(error_response.get("error", "unknown"))),
+        mask_sensitive_data(str(error_code or "unknown")),
         mask_sensitive_data(str(error_response.get("error_description", "unknown"))),
     )
+    return error_code if isinstance(error_code, str) else None
 
 
 class SaxoAuthImplementation(AuthImplementation):
@@ -90,8 +101,15 @@ class SaxoAuthImplementation(AuthImplementation):
 
                 if resp.status in (400, 401):
                     # Auth errors — no retry, credentials are bad
-                    await _log_token_error_response(resp)
-                    resp.raise_for_status()
+                    error_code = await _log_token_error_response(resp)
+                    raise aiohttp.ClientResponseError(
+                        resp.request_info,
+                        resp.history,
+                        status=resp.status,
+                        # The OAuth error code rides in ``message`` so callers
+                        # can tell invalid_grant from other 400s.
+                        message=error_code or resp.reason or "",
+                    )
 
                 if resp.status >= 500:
                     # Server error — retry
