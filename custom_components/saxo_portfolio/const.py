@@ -168,6 +168,10 @@ DEFAULT_UPDATE_INTERVAL_ANY: Final = timedelta(minutes=15)
 # Increased to 2 hours to reduce API calls and prevent rate limiting
 PERFORMANCE_UPDATE_INTERVAL: Final = timedelta(hours=2)
 
+# Minimum wait before re-requesting performance data after an incomplete fetch,
+# so a permanently failing endpoint costs API calls every 15 min, not every poll
+PERFORMANCE_RETRY_INTERVAL: Final = timedelta(minutes=15)
+
 # Spans of Saxo's trailing StandardPeriod windows. These are rolling windows
 # ending at the last completed day, not calendar month/quarter-to-date
 # (observed against /hist/v4/performance/timeseries; Saxo does not document

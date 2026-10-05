@@ -8,13 +8,16 @@ good values, must leave never-fetched values unknown (None) rather than
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from custom_components.saxo_portfolio.api.saxo_client import APIError
-from custom_components.saxo_portfolio.const import PERFORMANCE_UPDATE_INTERVAL
+from custom_components.saxo_portfolio.const import (
+    PERFORMANCE_RETRY_INTERVAL,
+    PERFORMANCE_UPDATE_INTERVAL,
+)
 from custom_components.saxo_portfolio.data import (
     BalanceData,
     ClientInfo,
@@ -163,8 +166,17 @@ class TestNeverFetched:
             assert sensor.available is True
 
 
+def _after(delta: timedelta):
+    """Patch the fetcher's clock to ``delta`` from now."""
+    moved = datetime.now() + delta
+    return patch(
+        "custom_components.saxo_portfolio.performance.datetime",
+        **{"now.return_value": moved},
+    )
+
+
 class TestStartupFailureThenRecovery:
-    """A failure at startup is retried on the very next update cycle."""
+    """A failure at startup is retried once the retry backoff has elapsed."""
 
     @pytest.mark.parametrize(
         "failing_client",
@@ -180,16 +192,41 @@ class TestStartupFailureThenRecovery:
 
         await _fetch(fetcher, failing_client)
         assert fetcher.last_updated is None
-        assert fetcher.should_update() is True
+        # Backing off: the very next poll must not re-hit the API ...
+        assert fetcher.should_update() is False
+        # ... but once the retry interval has passed it retries.
+        with _after(PERFORMANCE_RETRY_INTERVAL + timedelta(seconds=1)):
+            assert fetcher.should_update() is True
 
         good = _client()
-        result = await _fetch(fetcher, good)
+        with _after(PERFORMANCE_RETRY_INTERVAL + timedelta(seconds=1)):
+            result = await _fetch(fetcher, good)
 
         good.get_performance_v4_batch.assert_awaited_once()
         assert fetcher.last_updated is not None
         assert result["investment_performance_percentage"] == pytest.approx(10.0)
         assert result["ytd_earnings_percentage"] == 123.0
         assert result["client_id"] == "C1"
+
+    async def test_backoff_issues_no_api_calls_between_retries(self):
+        """A permanently failing endpoint is not re-requested on every poll."""
+        fetcher = _fetcher()
+        failing = _client(v4=APIError("no access"))
+        await _fetch(fetcher, failing)
+        calls = failing.get_performance_v4_batch.await_count
+
+        for _ in range(3):
+            await _fetch(fetcher, failing)
+
+        assert failing.get_performance_v4_batch.await_count == calls
+
+    async def test_complete_fetch_clears_backoff(self):
+        fetcher = _fetcher()
+        await _fetch(fetcher, _client(v4=APIError("v4 down")))
+        with _after(PERFORMANCE_RETRY_INTERVAL + timedelta(seconds=1)):
+            await _fetch(fetcher, _client())
+        assert fetcher.last_updated is not None
+        assert fetcher._retry_not_before is None
 
     async def test_timeout_does_not_refresh_timestamp(self):
         fetcher = _fetcher()
@@ -229,9 +266,11 @@ class TestFailureAfterGoodFetch:
             assert result[key] == first[key], key
         assert result["client_id"] == "C1"
         assert result["client_name"] == "Test User"
-        # Not refreshed: the next cycle retries.
+        # Not refreshed: retried once the backoff has elapsed.
         assert fetcher.last_updated == stale_timestamp
-        assert fetcher.should_update() is True
+        assert fetcher.should_update() is False
+        with _after(PERFORMANCE_RETRY_INTERVAL + timedelta(seconds=1)):
+            assert fetcher.should_update() is True
 
     async def test_v4_failure_keeps_old_v4_values_updates_v3(self):
         fetcher = _fetcher()
