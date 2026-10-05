@@ -1,0 +1,3 @@
+# OAuth runs through Home Assistant Application Credentials with proactive refresh-token rotation
+
+Users supply their own Saxo App Key and App Secret through Home Assistant's Application Credentials platform, and the config flow validates them against the API before the entry is created. Tokens are refreshed proactively at `REFRESH_TOKEN_REFRESH_AT_FRACTION` (0.5) of their lifetime, with retries and backoff, rather than when they expire, so a short Saxo outage does not push the entry into reauthentication. Reauthentication happens in the UI without removing the integration (including a user-triggered button) and must use the same Saxo account the entry was created with, so entities and history are never re-attached to a different account.

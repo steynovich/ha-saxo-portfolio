@@ -1,0 +1,3 @@
+# Polling is market-hours aware and deliberately throttled
+
+The coordinator polls every 5 minutes during market hours and every 30 minutes outside them (`DEFAULT_UPDATE_INTERVAL_MARKET_HOURS` / `DEFAULT_UPDATE_INTERVAL_AFTER_HOURS`), because balances only move meaningfully while markets are open. Calls inside one update are spaced by `API_REQUEST_DELAY` (0.5 s), and each coordinator applies a one-time random 0–30 s offset (`_initial_update_offset`) so several configured accounts don't hit the API in the same instant. We trade a little data freshness for staying well inside Saxo's rate limits; a faster or unthrottled poll would be an easy-looking "improvement" that risks throttling or blocking the user's Saxo app.
