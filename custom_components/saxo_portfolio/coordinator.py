@@ -27,13 +27,20 @@ import aiohttp
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api.saxo_client import SaxoApiClient, AuthenticationError, APIError
-from .data import BalanceData, ClientInfo, SaxoPortfolioData
+from .data import UNKNOWN, BalanceData, ClientInfo, SaxoPortfolioData
 from .performance import PerformanceFetcher
 from .positions import PositionData, PositionsFetcher
 from .const import (
     CONF_ENABLE_POSITION_SENSORS,
     CONF_TIMEZONE,
+    INITIAL_UPDATE_STAGGER_MAX,
+    MARKET_HOURS_CACHE_TTL,
     OAUTH_TERMINAL_TOKEN_ERRORS,
+    SAXO_API_BASE_URL,
+    STARTUP_SUCCESSFUL_UPDATES,
+    TIMEOUT_WARNING_THROTTLE,
+    TIMEZONE_ANY,
+    TOKEN_DEFAULT_EXPIRES_IN,
     COORDINATOR_UPDATE_TIMEOUT,
     DEFAULT_ENABLE_POSITION_SENSORS,
     DEFAULT_TIMEZONE,
@@ -93,7 +100,7 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
         # Track if sensors were skipped due to unknown client name
         self._sensors_initialized = False
         # Initialize as unknown - will be updated after first successful refresh
-        self._last_known_client_name = "unknown"
+        self._last_known_client_name = UNKNOWN
         # Track if initial setup is complete (platforms loaded)
         self._setup_complete = False
 
@@ -103,7 +110,7 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
 
         # Add random offset for multiple accounts to prevent simultaneous updates
         # This spreads updates across 0-30 seconds to reduce rate limiting risk
-        self._initial_update_offset = random.uniform(0, 30)
+        self._initial_update_offset = random.uniform(0, INITIAL_UPDATE_STAGGER_MAX)
 
         # Get configured timezone
         self._timezone: str = config_entry.data.get(CONF_TIMEZONE, DEFAULT_TIMEZONE)
@@ -117,21 +124,11 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
         self._last_timeout_warning: datetime | None = None
         self._warned_unknown_timezone: str | None = None
 
-        # Determine initial update interval
-        if self._timezone == "any":
-            update_interval = DEFAULT_UPDATE_INTERVAL_ANY
-        else:
-            update_interval = (
-                DEFAULT_UPDATE_INTERVAL_MARKET_HOURS
-                if self._is_market_hours()
-                else DEFAULT_UPDATE_INTERVAL_AFTER_HOURS
-            )
-
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=update_interval,
+            update_interval=self._target_interval(),
             always_update=False,
         )
 
@@ -150,8 +147,6 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
             self._api_client.access_token = access_token
 
         if self._api_client is None:
-            from .const import SAXO_API_BASE_URL
-
             session = async_get_clientsession(self.hass)
             self._api_client = SaxoApiClient(access_token, SAXO_API_BASE_URL, session)
             _LOGGER.debug(
@@ -171,7 +166,7 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
 
         """
         # If timezone is "any", market hours don't apply
-        if self._timezone == "any":
+        if self._timezone == TIMEZONE_ANY:
             return False
 
         # Check cache - if we checked within the last second, return cached result
@@ -179,7 +174,8 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
         if (
             self._market_hours_cache is not None
             and self._market_hours_cache_time is not None
-            and (now - self._market_hours_cache_time).total_seconds() < 1.0
+            and (now - self._market_hours_cache_time).total_seconds()
+            < MARKET_HOURS_CACHE_TTL
         ):
             return self._market_hours_cache
 
@@ -281,7 +277,9 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
             elif expires_at:
                 token_issued_at = datetime.fromtimestamp(
                     expires_at, tz=dt_util.UTC
-                ) - timedelta(seconds=token_data.get("expires_in", 1200))
+                ) - timedelta(
+                    seconds=token_data.get("expires_in", TOKEN_DEFAULT_EXPIRES_IN)
+                )
             else:
                 token_issued_at = dt_util.utcnow()
 
@@ -527,8 +525,9 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
         # First occurrence as warning, subsequent as debug to reduce noise
         if (
             self._last_timeout_warning is None
-            or (datetime.now() - self._last_timeout_warning).total_seconds() > 300
-        ):  # 5 minutes
+            or (datetime.now() - self._last_timeout_warning).total_seconds()
+            > TIMEOUT_WARNING_THROTTLE
+        ):
             _LOGGER.warning(timeout_msg)
             self._last_timeout_warning = datetime.now()
         else:
@@ -544,36 +543,7 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
             Updated portfolio data
 
         """
-        # For "any" timezone, use fixed interval
-        if self._timezone == "any":
-            new_interval = DEFAULT_UPDATE_INTERVAL_ANY
-            # Log only if interval changed
-            if new_interval != self.update_interval:
-                _LOGGER.info(
-                    "Using fixed update interval (no market hours) - %s",
-                    new_interval,
-                )
-                self.update_interval = new_interval
-        else:
-            # Check current market status and determine appropriate interval
-            is_market_open = self._is_market_hours()
-            new_interval = (
-                DEFAULT_UPDATE_INTERVAL_MARKET_HOURS
-                if is_market_open
-                else DEFAULT_UPDATE_INTERVAL_AFTER_HOURS
-            )
-
-            # Update interval if it has changed
-            if new_interval != self.update_interval:
-                market_status = "market hours" if is_market_open else "after hours"
-                _LOGGER.info(
-                    "Switched to %s mode for %s - updating refresh interval from %s to %s",
-                    market_status,
-                    self._timezone,
-                    self.update_interval,
-                    new_interval,
-                )
-                self.update_interval = new_interval
+        self._sync_update_interval()
 
         # Fetch the portfolio data
         data = await self._fetch_portfolio_data()
@@ -584,9 +554,7 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
 
             # Track successful updates and exit startup phase after a few successes
             self._successful_updates_count += 1
-            if (
-                self._successful_updates_count >= 3
-            ):  # Exit startup after 3 successful updates
+            if self._successful_updates_count >= STARTUP_SUCCESSFUL_UPDATES:
                 if self._is_startup_phase:  # Only log once when exiting startup
                     _LOGGER.debug(
                         "Integration startup phase completed after %d successful updates",
@@ -604,8 +572,8 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
             _LOGGER.debug(
                 "Reload check - last_known_name_set: %s, current_name_set: %s, "
                 "sensors_init: %s, setup_complete: %s",
-                self._last_known_client_name != "unknown",
-                current_client_name != "unknown",
+                self._last_known_client_name != UNKNOWN,
+                current_client_name != UNKNOWN,
                 self._sensors_initialized,
                 self._setup_complete,
             )
@@ -616,8 +584,8 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
             # 3. Sensors weren't initialized (means they were skipped)
             # 4. Initial setup is complete (platforms already loaded)
             should_reload = (
-                self._last_known_client_name == "unknown"
-                and current_client_name != "unknown"
+                self._last_known_client_name == UNKNOWN
+                and current_client_name != UNKNOWN
                 and not self._sensors_initialized
                 and self._setup_complete
             )
@@ -668,7 +636,7 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
 
     @property
     def client_info(self) -> ClientInfo:
-        """Return the client identity, "unknown" fields before the first update."""
+        """Return the client identity, UNKNOWN fields before the first update."""
         return self.data.client if self.data is not None else ClientInfo()
 
     def get_positions(self) -> dict[str, PositionData]:
@@ -754,7 +722,7 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
             client_id: The Saxo Client ID to include in the title
 
         """
-        if client_id == "unknown":
+        if client_id == UNKNOWN:
             return
         assert self.config_entry is not None
 
@@ -775,16 +743,6 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
                 title=expected_title,
             )
 
-    @property
-    def is_startup_phase(self) -> bool:
-        """Check if the coordinator is still in startup phase.
-
-        Returns:
-            True if still in startup phase (first few updates), False otherwise
-
-        """
-        return self._is_startup_phase
-
     async def async_apply_options(self) -> None:
         """Apply a changed market timezone without reloading the entry."""
         assert self.config_entry is not None
@@ -801,36 +759,39 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
             self.async_update_listeners()
             await self.async_request_refresh()
 
+    def _target_interval(self) -> timedelta:
+        """Return the refresh interval for the current timezone and market status."""
+        if self._timezone == TIMEZONE_ANY:
+            return DEFAULT_UPDATE_INTERVAL_ANY
+        if self._is_market_hours():
+            return DEFAULT_UPDATE_INTERVAL_MARKET_HOURS
+        return DEFAULT_UPDATE_INTERVAL_AFTER_HOURS
+
+    def _sync_update_interval(self) -> None:
+        """Apply the target interval, logging only when it changes."""
+        new_interval = self._target_interval()
+        if new_interval == self.update_interval:
+            return
+        if self._timezone == TIMEZONE_ANY:
+            _LOGGER.info(
+                "Using fixed update interval (no market hours) - %s", new_interval
+            )
+        else:
+            _LOGGER.info(
+                "Switched to %s mode for %s - updating refresh interval from %s to %s",
+                "market hours"
+                if new_interval == DEFAULT_UPDATE_INTERVAL_MARKET_HOURS
+                else "after hours",
+                self._timezone,
+                self.update_interval,
+                new_interval,
+            )
+        self.update_interval = new_interval
+
     async def async_update_interval_if_needed(self) -> None:
         """Check and update the refresh interval based on current market status.
 
         This can be called manually to force an interval check without waiting
         for the next scheduled update.
         """
-        # For "any" timezone, use fixed interval
-        if self._timezone == "any":
-            new_interval = DEFAULT_UPDATE_INTERVAL_ANY
-            if new_interval != self.update_interval:
-                _LOGGER.info(
-                    "Manual interval check: Using fixed update interval (no market hours) - %s",
-                    new_interval,
-                )
-                self.update_interval = new_interval
-        else:
-            is_market_open = self._is_market_hours()
-            new_interval = (
-                DEFAULT_UPDATE_INTERVAL_MARKET_HOURS
-                if is_market_open
-                else DEFAULT_UPDATE_INTERVAL_AFTER_HOURS
-            )
-
-            if new_interval != self.update_interval:
-                market_status = "market hours" if is_market_open else "after hours"
-                _LOGGER.info(
-                    "Manual interval check: Switched to %s mode for %s - updating refresh interval from %s to %s",
-                    market_status,
-                    self._timezone,
-                    self.update_interval,
-                    new_interval,
-                )
-                self.update_interval = new_interval
+        self._sync_update_interval()

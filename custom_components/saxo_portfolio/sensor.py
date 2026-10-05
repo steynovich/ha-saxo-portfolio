@@ -28,11 +28,20 @@ from .const import (
     AVAILABILITY_FAILURE_FLOOR,
     AVAILABILITY_FAILURE_INTERVAL_MULTIPLIER,
     AVAILABILITY_FALLBACK_UPDATE_INTERVAL,
+    CONF_TIMEZONE,
+    DEFAULT_UPDATE_INTERVAL_AFTER_HOURS,
+    DEFAULT_UPDATE_INTERVAL_ANY,
+    DEFAULT_UPDATE_INTERVAL_MARKET_HOURS,
     DEVICE_MANUFACTURER,
     DEVICE_MODEL,
     DOMAIN,
+    MARKET_HOURS,
     STANDARD_PERIOD_MONTH_SPAN,
     STANDARD_PERIOD_QUARTER_SPAN,
+    UPDATE_MODE_FIXED,
+    UPDATE_MODE_MARKET_HOURS,
+    UPDATE_MODE_UNKNOWN,
+    market_hours_attributes,
 )
 from .coordinator import SaxoCoordinator
 from .data import DEFAULT_CURRENCY, UNKNOWN, SaxoPortfolioData
@@ -835,13 +844,6 @@ class SaxoMarketStatusSensor(SaxoDiagnosticSensorBase):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
-        from .const import (
-            MARKET_HOURS,
-            market_hours_attributes,
-            DEFAULT_UPDATE_INTERVAL_MARKET_HOURS,
-            DEFAULT_UPDATE_INTERVAL_AFTER_HOURS,
-            DEFAULT_UPDATE_INTERVAL_ANY,
-        )
 
         timezone = self.coordinator.timezone
         attrs: dict[str, Any] = {
@@ -931,17 +933,6 @@ class SaxoTimezoneSensor(SaxoDiagnosticSensorBase):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
-        from .const import (
-            MARKET_HOURS,
-            UPDATE_MODE_FIXED,
-            UPDATE_MODE_MARKET_HOURS,
-            UPDATE_MODE_UNKNOWN,
-            market_hours_attributes,
-            CONF_TIMEZONE,
-            DEFAULT_UPDATE_INTERVAL_MARKET_HOURS,
-            DEFAULT_UPDATE_INTERVAL_AFTER_HOURS,
-            DEFAULT_UPDATE_INTERVAL_ANY,
-        )
 
         assert self.coordinator.config_entry is not None
         timezone = self.coordinator.timezone
