@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import timedelta
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 
 def _get_version_from_manifest() -> str:
@@ -133,6 +133,25 @@ MARKET_HOURS: Final = {
         "weekdays": [0, 1, 2, 3, 4],
     },
 }
+
+
+# Update-mode labels shown in the update-configuration sensor attributes
+UPDATE_MODE_FIXED: Final = "Fixed interval"
+UPDATE_MODE_MARKET_HOURS: Final = "Market hours detection"
+UPDATE_MODE_UNKNOWN: Final = "Unknown configuration"
+
+
+def market_hours_attributes(timezone: str) -> dict[str, Any]:
+    """Return open/close/trading-day attributes for a MARKET_HOURS timezone."""
+    info = MARKET_HOURS[timezone]
+    open_h, open_m = info["open"]
+    close_h, close_m = info["close"]
+    return {
+        "market_open": f"{open_h:02d}:{open_m:02d}",
+        "market_close": f"{close_h:02d}:{close_m:02d}",
+        "trading_days": info["weekdays"],
+    }
+
 
 # Update interval for "any" timezone (no intelligent scheduling)
 DEFAULT_UPDATE_INTERVAL_ANY: Final = timedelta(minutes=15)

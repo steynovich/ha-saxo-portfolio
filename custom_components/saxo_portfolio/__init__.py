@@ -154,10 +154,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: SaxoConfigEntry) -> bool
 
     except Exception as e:
         _LOGGER.error(
-            "Failed to set up Saxo Portfolio integration: %s - %s",
+            "Failed to set up Saxo Portfolio integration: %s",
             type(e).__name__,
-            str(e),
-            exc_info=True,
         )
 
         # Re-raise as ConfigEntryNotReady if it's a temporary issue

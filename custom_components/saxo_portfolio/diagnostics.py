@@ -21,6 +21,7 @@ from .const import (
     DEFAULT_UPDATE_INTERVAL_ANY,
     DEFAULT_UPDATE_INTERVAL_MARKET_HOURS,
     MARKET_HOURS,
+    market_hours_attributes,
 )
 from .coordinator import SaxoCoordinator
 from .data import SaxoPortfolioData
@@ -70,12 +71,9 @@ def _get_market_config(configured_tz: str) -> dict[str, Any]:
             "update_interval": str(DEFAULT_UPDATE_INTERVAL_ANY),
         }
     if configured_tz in MARKET_HOURS:
-        market_info = MARKET_HOURS[configured_tz]
         return {
             "timezone": configured_tz,
-            "market_open": f"{market_info['open'][0]:02d}:{market_info['open'][1]:02d}",
-            "market_close": f"{market_info['close'][0]:02d}:{market_info['close'][1]:02d}",
-            "trading_days": market_info["weekdays"],
+            **market_hours_attributes(configured_tz),
             "update_interval_market": str(DEFAULT_UPDATE_INTERVAL_MARKET_HOURS),
             "update_interval_after": str(DEFAULT_UPDATE_INTERVAL_AFTER_HOURS),
         }

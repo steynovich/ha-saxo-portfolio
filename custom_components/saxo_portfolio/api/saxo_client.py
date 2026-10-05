@@ -33,7 +33,7 @@ from ..const import (
     MAX_RETRIES,
     RETRY_BACKOFF_FACTOR,
 )
-from ..models import mask_url_for_logging
+from ..models import mask_sensitive_data, mask_url_for_logging
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -334,7 +334,7 @@ class SaxoApiClient:
         )
         www_auth = response.headers.get("WWW-Authenticate", "")
         if www_auth:
-            _LOGGER.debug("WWW-Authenticate header: %s", www_auth)
+            _LOGGER.debug("WWW-Authenticate header: %s", mask_sensitive_data(www_auth))
 
     def _handle_rate_limited(
         self, response: aiohttp.ClientResponse, attempt: int

@@ -16,6 +16,7 @@ from homeassistant.components.application_credentials import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from .models import mask_sensitive_data
 from .const import (
     SAXO_AUTH_BASE_URL,
     OAUTH_AUTHORIZE_ENDPOINT,
@@ -44,8 +45,8 @@ async def _log_token_error_response(resp: aiohttp.ClientResponse) -> None:
     )
     _LOGGER.error(
         "Token request failed (%s): %s",
-        error_response.get("error", "unknown"),
-        error_response.get("error_description", "unknown"),
+        mask_sensitive_data(str(error_response.get("error", "unknown"))),
+        mask_sensitive_data(str(error_response.get("error_description", "unknown"))),
     )
 
 

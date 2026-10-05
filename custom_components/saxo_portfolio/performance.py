@@ -54,14 +54,17 @@ def apply_v3_performance(
     )
 
 
-def current_year_bucket(series: list[dict[str, Any]]) -> float | None:
+def current_year_bucket(
+    series: list[dict[str, Any]], year: int | None = None
+) -> float | None:
     """Value of the calendar-year bucket matching the current year.
 
     ``YearlyProfitLoss`` returns one bucket per calendar year. Match on the
     year rather than assuming a single-element list, so a response spanning
-    a year boundary cannot select the wrong bucket.
+    a year boundary cannot select the wrong bucket. Pass ``year`` to match
+    the year the request window was built from; it defaults to today.
     """
-    current_year = str(dt_util.now().year)
+    current_year = str(year if year is not None else dt_util.now().year)
     for point in series:
         if str(point.get("Date", "")).startswith(current_year):
             value = point.get("Value")
@@ -80,15 +83,18 @@ def last_series_value(series: list[dict[str, Any]]) -> float | None:
 
 
 def apply_v4_batch(
-    metrics: PerformanceData, v4_batch: dict[str, dict[str, Any]]
+    metrics: PerformanceData,
+    v4_batch: dict[str, dict[str, Any]],
+    year: int | None = None,
 ) -> PerformanceData:
     """Return ``metrics`` updated from the batched v4 performance responses.
 
     ``v4_batch`` maps ``alltime``/``ytd``/``month``/``quarter`` to their
     ``/hist/v4/performance/timeseries`` responses. The all-time cash
     transfer balance is only replaced when the response carries a
-    ``CashTransfer`` series. Raises if a response is malformed, leaving
-    ``metrics`` untouched.
+    ``CashTransfer`` series. ``year`` is the year the YTD window was
+    requested for. Raises if a response is malformed, leaving ``metrics``
+    untouched.
     """
     alltime = v4_batch.get("alltime", {})
     alltime_return = alltime.get("KeyFigures", {}).get("ReturnFraction", 0.0)
@@ -102,8 +108,15 @@ def apply_v4_batch(
             cash_transfer_list[-1].get("Value", 0.0)
         )
 
+    # No YTD key figures means "no data", not a 0% return.
+    ytd_return = v4_batch.get("ytd", {}).get("KeyFigures", {}).get("ReturnFraction")
+    updates["ytd_investment_performance_percentage"] = (
+        numeric_or_none(ytd_return * 100.0)
+        if isinstance(ytd_return, int | float)
+        else None
+    )
+
     for period_key, field_name in (
-        ("ytd", "ytd_investment_performance_percentage"),
         ("month", "month_investment_performance_percentage"),
         ("quarter", "quarter_investment_performance_percentage"),
     ):
@@ -119,7 +132,7 @@ def apply_v4_batch(
     # as "you earned nothing this year" rather than "no data".
     ytd_balance = v4_batch.get("ytd", {}).get("Balance", {})
     updates["ytd_profit_loss"] = current_year_bucket(
-        ytd_balance.get("YearlyProfitLoss", [])
+        ytd_balance.get("YearlyProfitLoss", []), year
     )
     updates["ytd_cash_transfer"] = last_series_value(
         ytd_balance.get("CashTransfer", [])
@@ -298,7 +311,7 @@ class PerformanceFetcher:
                 ytd_from=f"{now.year:04d}-01-01",
                 ytd_to=now.date().isoformat(),
             )
-            metrics = apply_v4_batch(metrics, v4_batch)
+            metrics = apply_v4_batch(metrics, v4_batch, now.year)
             _LOGGER.debug(
                 "Retrieved batched performance v4 data - periods: %s, "
                 "YTD currency metrics present: %s",

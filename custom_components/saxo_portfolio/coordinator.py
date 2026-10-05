@@ -477,11 +477,7 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
 
     async def _fetch_balance_with_logging(self, client: SaxoApiClient) -> BalanceData:
         """Fetch and parse the balance endpoint, logging timing and field names."""
-        _LOGGER.debug(
-            "About to fetch balance from: %s%s",
-            client.base_url,
-            "/port/v1/balances/me",
-        )
+        _LOGGER.debug("About to fetch balance from: %s", client.base_url)
         balance_start_time = datetime.now()
         balance_data = await client.get_account_balance()
 

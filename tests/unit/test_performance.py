@@ -118,6 +118,17 @@ class TestSeriesHelpers:
 
 
 class TestApplyV4Batch:
+    def test_explicit_year_overrides_clock(self):
+        """The bucket year follows the request window, not a later clock read."""
+        v4_batch = {
+            "ytd": {
+                "Balance": {"YearlyProfitLoss": [{"Date": "2026-12-31", "Value": 7.0}]}
+            }
+        }
+        with patch(NOW, return_value=datetime(2027, 1, 1, 0, 0)):
+            metrics = apply_v4_batch(PerformanceData(), v4_batch, 2026)
+        assert metrics.ytd_profit_loss == pytest.approx(7.0)
+
     def test_full_response(self):
         """Full v4 batch response is parsed into all metrics."""
         v4_batch = {
@@ -140,7 +151,7 @@ class TestApplyV4Batch:
         """Empty batch response yields zero returns and keeps the cash transfer."""
         metrics = apply_v4_batch(PerformanceData(), {})
         assert metrics.investment_performance_percentage == 0.0
-        assert metrics.ytd_investment_performance_percentage == 0.0
+        assert metrics.ytd_investment_performance_percentage is None
         assert metrics.cash_transfer_balance is None
 
     def test_empty_cash_transfer_list_keeps_previous_value(self):

@@ -33,6 +33,7 @@ from .const import (
 )
 from .coordinator import SaxoCoordinator
 from .data import DEFAULT_CURRENCY, UNKNOWN, SaxoPortfolioData
+from .models import mask_sensitive_data
 
 type ValueFn = Callable[[SaxoPortfolioData], float | None]
 
@@ -103,6 +104,8 @@ class SaxoSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
         self._attr_device_class = device_class
         self._attr_entity_category = entity_category
         self._attr_native_unit_of_measurement = unit_of_measurement
+
+        _LOGGER.debug("Initialized sensor - translation_key: %s", sensor_type)
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -572,9 +575,14 @@ class SaxoYTDProfitLossSensor(SaxoSensorBase):
     @property
     def native_value(self) -> StateType:
         """Return the state of the sensor."""
-        if self.coordinator.data is None:
+        data = self.coordinator.data
+        if data is None:
             return None
-        return self.coordinator.data.performance.ytd_profit_loss
+
+        value = data.performance.ytd_profit_loss
+        if value is None or not math.isfinite(value):
+            return None
+        return round(value, 2)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -730,11 +738,6 @@ class SaxoNameSensor(SaxoDiagnosticSensorBase):
             "name",
         )
 
-        _LOGGER.debug(
-            "Initialized Name sensor - translation_key: %s",
-            self._attr_translation_key,
-        )
-
     @property
     def native_value(self) -> str:
         """Return the client Name."""
@@ -758,11 +761,6 @@ class SaxoTokenExpirySensor(SaxoDiagnosticSensorBase):
             "token_expiry",
         )
         self._attr_device_class = SensorDeviceClass.ENUM
-
-        _LOGGER.debug(
-            "Initialized token expiry sensor - translation_key: %s",
-            self._attr_translation_key,
-        )
 
     @property
     def native_value(self) -> str | None:
@@ -824,11 +822,6 @@ class SaxoMarketStatusSensor(SaxoDiagnosticSensorBase):
         )
         self._attr_device_class = SensorDeviceClass.ENUM
 
-        _LOGGER.debug(
-            "Initialized market status sensor - translation_key: %s",
-            self._attr_translation_key,
-        )
-
     @property
     def native_value(self) -> str:
         """Return the market status."""
@@ -844,6 +837,7 @@ class SaxoMarketStatusSensor(SaxoDiagnosticSensorBase):
         """Return additional attributes."""
         from .const import (
             MARKET_HOURS,
+            market_hours_attributes,
             DEFAULT_UPDATE_INTERVAL_MARKET_HOURS,
             DEFAULT_UPDATE_INTERVAL_AFTER_HOURS,
             DEFAULT_UPDATE_INTERVAL_ANY,
@@ -856,14 +850,7 @@ class SaxoMarketStatusSensor(SaxoDiagnosticSensorBase):
         }
 
         if timezone != "any" and timezone in MARKET_HOURS:
-            market_info = MARKET_HOURS[timezone]
-            attrs["market_open"] = (
-                f"{market_info['open'][0]:02d}:{market_info['open'][1]:02d}"
-            )
-            attrs["market_close"] = (
-                f"{market_info['close'][0]:02d}:{market_info['close'][1]:02d}"
-            )
-            attrs["trading_days"] = market_info["weekdays"]
+            attrs.update(market_hours_attributes(timezone))
 
             attrs["interval_active"] = str(
                 DEFAULT_UPDATE_INTERVAL_MARKET_HOURS
@@ -892,11 +879,6 @@ class SaxoLastUpdateSensor(SaxoDiagnosticSensorBase):
         )
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
 
-        _LOGGER.debug(
-            "Initialized last update sensor - translation_key: %s",
-            self._attr_translation_key,
-        )
-
     @property
     def native_value(self) -> datetime | None:
         """Return the last update time."""
@@ -912,7 +894,9 @@ class SaxoLastUpdateSensor(SaxoDiagnosticSensorBase):
         }
 
         if self.coordinator.last_exception:
-            attrs["last_error"] = str(self.coordinator.last_exception)
+            attrs["last_error"] = mask_sensitive_data(
+                str(self.coordinator.last_exception)
+            )
 
         return attrs
 
@@ -934,11 +918,6 @@ class SaxoTimezoneSensor(SaxoDiagnosticSensorBase):
             "timezone",
         )
 
-        _LOGGER.debug(
-            "Initialized timezone sensor - translation_key: %s",
-            self._attr_translation_key,
-        )
-
     @property
     def native_value(self) -> str:
         """Return the configured timezone."""
@@ -954,6 +933,10 @@ class SaxoTimezoneSensor(SaxoDiagnosticSensorBase):
         """Return additional attributes."""
         from .const import (
             MARKET_HOURS,
+            UPDATE_MODE_FIXED,
+            UPDATE_MODE_MARKET_HOURS,
+            UPDATE_MODE_UNKNOWN,
+            market_hours_attributes,
             CONF_TIMEZONE,
             DEFAULT_UPDATE_INTERVAL_MARKET_HOURS,
             DEFAULT_UPDATE_INTERVAL_AFTER_HOURS,
@@ -970,20 +953,13 @@ class SaxoTimezoneSensor(SaxoDiagnosticSensorBase):
         }
 
         if timezone == "any":
-            attrs["mode"] = "Fixed interval"
+            attrs["mode"] = UPDATE_MODE_FIXED
             attrs["update_interval"] = str(DEFAULT_UPDATE_INTERVAL_ANY)
             attrs["market_hours_detection"] = False
         elif timezone in MARKET_HOURS:
-            market_info = MARKET_HOURS[timezone]
-            attrs["mode"] = "Market hours detection"
+            attrs["mode"] = UPDATE_MODE_MARKET_HOURS
             attrs["market_hours_detection"] = True
-            attrs["market_open"] = (
-                f"{market_info['open'][0]:02d}:{market_info['open'][1]:02d}"
-            )
-            attrs["market_close"] = (
-                f"{market_info['close'][0]:02d}:{market_info['close'][1]:02d}"
-            )
-            attrs["trading_days"] = market_info["weekdays"]
+            attrs.update(market_hours_attributes(timezone))
             attrs["update_interval_market"] = str(DEFAULT_UPDATE_INTERVAL_MARKET_HOURS)
             attrs["update_interval_after"] = str(DEFAULT_UPDATE_INTERVAL_AFTER_HOURS)
 
@@ -992,7 +968,7 @@ class SaxoTimezoneSensor(SaxoDiagnosticSensorBase):
                 "Open" if self.coordinator.is_market_hours else "Closed"
             )
         else:
-            attrs["mode"] = "Unknown configuration"
+            attrs["mode"] = UPDATE_MODE_UNKNOWN
             attrs["error"] = f"Unknown timezone: {timezone}"
 
         return attrs
@@ -1016,11 +992,6 @@ class SaxoMarketDataAccessSensor(SaxoDiagnosticSensorBase):
             "market_data_access",
         )
         self._attr_device_class = SensorDeviceClass.ENUM
-
-        _LOGGER.debug(
-            "Initialized real-time market data access sensor - translation_key: %s",
-            self._attr_translation_key,
-        )
 
     @property
     def native_value(self) -> str | None:
