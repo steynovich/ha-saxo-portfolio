@@ -8,7 +8,9 @@ Failures degrade gracefully: they never raise, so balance data still
 updates. Only a *complete* fetch (client details, v3 and v4 all
 succeeded) refreshes the cache timestamp. A failed or partial fetch keeps
 the last known good value for every field that could not be fetched and
-leaves the timestamp alone, so the next coordinator update retries (#15).
+leaves the timestamp alone so it is retried (#15), but no sooner than
+``PERFORMANCE_RETRY_INTERVAL`` (15 min) after the failed attempt, so a
+permanently failing endpoint does not cost extra calls on every poll (#37).
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ from .api.saxo_client import SaxoApiClient
 from .const import (
     API_REQUEST_DELAY,
     PERFORMANCE_FETCH_TIMEOUT,
+    PERFORMANCE_RETRY_INTERVAL,
     PERFORMANCE_UPDATE_INTERVAL,
 )
 from .data import UNKNOWN, ClientInfo, PerformanceData, numeric_or_none
@@ -157,9 +160,24 @@ class PerformanceFetcher:
         self.client = ClientInfo()
         self.metrics = PerformanceData()
         self.last_updated: datetime | None = None
+        self._retry_not_before: datetime | None = None
 
     def should_update(self) -> bool:
-        """Return True if the cache is empty or older than the cache TTL."""
+        """Return True if a fetch is due.
+
+        A fetch is due when the cache is empty or older than the cache TTL,
+        unless a recent incomplete fetch is still backing off.
+        """
+        if (
+            self._retry_not_before is not None
+            and datetime.now() < self._retry_not_before
+        ):
+            _LOGGER.debug(
+                "Performance fetch backing off until %s after an incomplete fetch",
+                self._retry_not_before,
+            )
+            return False
+
         if self.last_updated is None:
             # No cached data, should update
             return True
@@ -188,6 +206,8 @@ class PerformanceFetcher:
 
         _LOGGER.debug("Updating performance data (cache expired or missing)")
 
+        # Assume failure; a complete fetch clears the backoff below.
+        self._retry_not_before = datetime.now() + PERFORMANCE_RETRY_INTERVAL
         try:
             async with asyncio.timeout(PERFORMANCE_FETCH_TIMEOUT):
                 # Delay before client details call to prevent burst
@@ -198,13 +218,16 @@ class PerformanceFetcher:
             self.metrics = metrics
             if complete:
                 self.last_updated = datetime.now()
+                self._retry_not_before = None
                 _LOGGER.debug("Updated performance data cache")
             else:
                 # Fields that failed to fetch still hold their last known good
-                # value; the timestamp is left alone so the next update retries.
+                # value; the timestamp is left alone and the fetch is retried
+                # once the backoff has elapsed.
                 _LOGGER.debug(
                     "Performance data fetch incomplete, keeping last known values; "
-                    "will retry on next update"
+                    "will retry in %s",
+                    PERFORMANCE_RETRY_INTERVAL,
                 )
             self._on_client_info(client_info)
 
