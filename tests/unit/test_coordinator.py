@@ -99,6 +99,7 @@ def _bare_coordinator():
     coord._market_hours_cache = None
     coord._market_hours_cache_time = None
     coord._last_timeout_warning = None
+    coord._warned_unknown_timezone = None
     coord._api_client = None
     coord._oauth_session = MagicMock()
     coord._last_known_client_name = "unknown"
@@ -324,6 +325,17 @@ class TestIsMarketHours:
             mock_dt.utcnow.return_value = datetime(2026, 4, 13, 14, 0, 0, tzinfo=_UTC)
             coord._is_market_hours()
         assert coord._timezone == "Mars/Olympus_Mons"
+
+    def test_unknown_timezone_warns_once(self, caplog):
+        """The fallback warning is logged once, not on every poll."""
+        coord = _bare_coordinator()
+        coord._timezone = "Mars/Olympus_Mons"
+        with patch("custom_components.saxo_portfolio.coordinator.dt_util") as mock_dt:
+            mock_dt.utcnow.return_value = datetime(2026, 4, 13, 14, 0, 0, tzinfo=_UTC)
+            coord._is_market_hours()
+            coord._market_hours_cache_time = None
+            coord._is_market_hours()
+        assert caplog.text.count("Unknown timezone") == 1
 
     def test_frankfurt_market_open(self):
         """Frankfurt users get market hours: Monday 10:00 CEST is open."""

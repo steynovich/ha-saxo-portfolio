@@ -114,6 +114,7 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
         self._market_hours_cache: bool | None = None
         self._market_hours_cache_time: datetime | None = None
         self._last_timeout_warning: datetime | None = None
+        self._warned_unknown_timezone: str | None = None
 
         # Determine initial update interval
         if self._timezone == "any":
@@ -191,11 +192,13 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
             if not market_config:
                 # Fall back to the default timezone without changing the
                 # configured one
-                _LOGGER.warning(
-                    "Unknown timezone %s, falling back to %s",
-                    timezone,
-                    DEFAULT_TIMEZONE,
-                )
+                if self._warned_unknown_timezone != timezone:
+                    self._warned_unknown_timezone = timezone
+                    _LOGGER.warning(
+                        "Unknown timezone %s, falling back to %s",
+                        timezone,
+                        DEFAULT_TIMEZONE,
+                    )
                 timezone = DEFAULT_TIMEZONE
                 market_config = MARKET_HOURS[DEFAULT_TIMEZONE]
 

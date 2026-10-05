@@ -201,6 +201,7 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
             data = dict(config_entry.data)
             if data.get(CONF_TIMEZONE) == "Europe/Frankfurt":
                 data[CONF_TIMEZONE] = "Europe/Berlin"
+                _LOGGER.info("Migrated market timezone to Europe/Berlin")
             hass.config_entries.async_update_entry(
                 config_entry, data=data, minor_version=2
             )
