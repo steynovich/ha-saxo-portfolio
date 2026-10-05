@@ -16,6 +16,7 @@ from homeassistant.util import dt as dt_util
 
 from custom_components.saxo_portfolio.coordinator import SaxoCoordinator
 from custom_components.saxo_portfolio.positions import PositionData
+from custom_components.saxo_portfolio.update_mode import update_mode_attributes
 from custom_components.saxo_portfolio.data import (
     BalanceData,
     ClientInfo,
@@ -58,6 +59,7 @@ def coord():
     c.client_info = ClientInfo(
         client_id="TEST123", account_id="ACC456", client_name="Test User"
     )
+    c.client_id = c.client_info.client_id
     c.last_update_success = True
     c.last_exception = None
     c.data = SaxoPortfolioData(
@@ -88,7 +90,11 @@ def coord():
     }
     c.update_interval = timedelta(minutes=5)
     c.performance_last_updated = datetime(2026, 1, 1, 12, 0)
+    c.token_data = c.config_entry.data["token"]
     c.timezone = "Europe/Amsterdam"
+    c.update_mode_attributes.side_effect = lambda: update_mode_attributes(
+        c.timezone, c.is_market_hours
+    )
     c.is_market_hours = True
     c.position_sensors_enabled = True
     c.get_position_ids.return_value = ["aapl_stock"]
@@ -612,6 +618,7 @@ class TestTokenExpirySensor:
     def test_state(self, coord, offset, expected):
         now = 1_800_000_000.0
         coord.config_entry.data = {"token": {"expires_at": now + offset}}
+        coord.token_data = coord.config_entry.data.get("token")
         sensor = SaxoTokenExpirySensor(coord)
         with patch(
             "custom_components.saxo_portfolio.sensor.time.time", return_value=now
@@ -621,12 +628,14 @@ class TestTokenExpirySensor:
 
     def test_unknown_no_token(self, coord):
         coord.config_entry.data = {}
+        coord.token_data = coord.config_entry.data.get("token")
         sensor = SaxoTokenExpirySensor(coord)
         # None renders as HA's own (translated) "unknown" state
         assert sensor.native_value is None
 
     def test_extra_attrs(self, coord):
         coord.config_entry.data = {"token": {"expires_at": time.time() + 3600}}
+        coord.token_data = coord.config_entry.data.get("token")
         sensor = SaxoTokenExpirySensor(coord)
         attrs = sensor.extra_state_attributes
         # Absolute `expires_at` is intentionally omitted so the state machine
@@ -638,6 +647,7 @@ class TestTokenExpirySensor:
 
     def test_extra_attrs_no_token(self, coord):
         coord.config_entry.data = {}
+        coord.token_data = coord.config_entry.data.get("token")
         sensor = SaxoTokenExpirySensor(coord)
         attrs = sensor.extra_state_attributes
         assert len(attrs) == 0
@@ -648,6 +658,7 @@ class TestTokenExpirySensor:
 
     def test_unavailable_no_token(self, coord):
         coord.config_entry.data = {}
+        coord.token_data = coord.config_entry.data.get("token")
         sensor = SaxoTokenExpirySensor(coord)
         assert sensor.available is False
 

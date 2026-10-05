@@ -109,6 +109,7 @@ def attach_portfolio_data(coordinator: Any, **fields: Any) -> SaxoPortfolioData:
     data = portfolio_data(**fields)
     coordinator.data = data
     coordinator.client_info = data.client
+    coordinator.client_id = data.client.client_id
     return data
 
 
