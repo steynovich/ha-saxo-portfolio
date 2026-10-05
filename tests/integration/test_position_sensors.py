@@ -3,6 +3,7 @@
 These tests verify dynamic sensor creation, options flow, and sensor lifecycle.
 """
 
+import logging
 from datetime import datetime
 
 import pytest
@@ -167,6 +168,35 @@ class TestPositionSensorDynamicCreation:
         # Verify new sensor was created
         assert len(added_entities) == 1
         assert "msft" in added_entities[0].unique_id
+
+    def test_new_position_log_does_not_leak_slugs_at_info(
+        self, mock_hass, mock_config_entry, mock_coordinator, caplog
+    ):
+        """INFO logs report only the count of new positions, never the slugs."""
+        mock_coordinator.get_position_ids.return_value = ["aapl_stock"]
+        listener_callback = None
+
+        def capture_listener(callback):
+            nonlocal listener_callback
+            listener_callback = callback
+            return lambda: None
+
+        mock_coordinator.async_add_listener = capture_listener
+
+        from custom_components.saxo_portfolio.sensor import _setup_position_listener
+
+        _setup_position_listener(
+            mock_hass, mock_config_entry, mock_coordinator, lambda e, u: None
+        )
+        mock_coordinator.get_position_ids.return_value = ["aapl_stock", "msft_stock"]
+
+        with caplog.at_level(logging.INFO):
+            assert listener_callback is not None
+            listener_callback()
+
+        info_records = [r for r in caplog.records if r.levelno >= logging.INFO]
+        assert any("1" in r.getMessage() for r in info_records)
+        assert not any("msft" in r.getMessage() for r in info_records)
 
 
 @pytest.mark.integration

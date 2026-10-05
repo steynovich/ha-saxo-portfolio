@@ -71,10 +71,9 @@ def _setup_position_listener(
 
         if new_positions:
             _LOGGER.info(
-                "Detected %d new positions, creating sensors: %s",
-                len(new_positions),
-                list(new_positions),
+                "Detected %d new positions, creating sensors", len(new_positions)
             )
+            _LOGGER.debug("New position sensor slugs: %s", sorted(new_positions))
             new_entities = [
                 SaxoPositionSensor(coordinator, position_slug)
                 for position_slug in new_positions
