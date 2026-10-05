@@ -186,19 +186,21 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
             now_utc = dt_util.utcnow()
 
             # Get market hours for configured timezone
-            market_config = MARKET_HOURS.get(self._timezone)
+            timezone = self._timezone
+            market_config = MARKET_HOURS.get(timezone)
             if not market_config:
-                # Fallback to default timezone if not found
+                # Fall back to the default timezone without changing the
+                # configured one
                 _LOGGER.warning(
                     "Unknown timezone %s, falling back to %s",
-                    self._timezone,
+                    timezone,
                     DEFAULT_TIMEZONE,
                 )
-                self._timezone = DEFAULT_TIMEZONE
+                timezone = DEFAULT_TIMEZONE
                 market_config = MARKET_HOURS[DEFAULT_TIMEZONE]
 
-            # Convert to configured timezone
-            tz = zoneinfo.ZoneInfo(self._timezone)
+            # Convert to market timezone
+            tz = zoneinfo.ZoneInfo(timezone)
             now_local = now_utc.astimezone(tz)
 
             # Check if it's a weekday
@@ -220,7 +222,7 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
 
             _LOGGER.debug(
                 "Market hours check for %s: %s, weekday: %s, is_open: %s",
-                self._timezone,
+                timezone,
                 now_local.time().strftime("%H:%M:%S"),
                 now_local.weekday(),
                 is_open,

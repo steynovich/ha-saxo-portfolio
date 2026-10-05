@@ -19,6 +19,7 @@ from homeassistant.helpers.typing import ConfigType
 
 from .const import (
     CONF_ENTITY_PREFIX,
+    CONF_TIMEZONE,
     DOMAIN,
     PLATFORMS,
     SERVICE_REFRESH_DATA,
@@ -195,8 +196,14 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     )
 
     if config_entry.version == 1:
-        # Migration logic for future versions
-        _LOGGER.info("Entry already at current version")
+        if config_entry.minor_version < 2:
+            # "Europe/Frankfurt" is not an IANA zone; XETRA uses Europe/Berlin
+            data = dict(config_entry.data)
+            if data.get(CONF_TIMEZONE) == "Europe/Frankfurt":
+                data[CONF_TIMEZONE] = "Europe/Berlin"
+            hass.config_entries.async_update_entry(
+                config_entry, data=data, minor_version=2
+            )
         return True
 
     _LOGGER.error("Unknown configuration version: %s", config_entry.version)

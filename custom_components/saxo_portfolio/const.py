@@ -83,7 +83,7 @@ TIMEZONE_OPTIONS: Final = {
     "Europe/London": "London (LSE)",
     "Europe/Amsterdam": "Amsterdam (Euronext)",
     "Europe/Paris": "Paris (Euronext)",
-    "Europe/Frankfurt": "Frankfurt (XETRA)",
+    "Europe/Berlin": "Frankfurt (XETRA)",
     "Asia/Tokyo": "Tokyo (TSE)",
     "Asia/Hong_Kong": "Hong Kong (HKEX)",
     "Asia/Singapore": "Singapore (SGX)",
@@ -113,7 +113,7 @@ MARKET_HOURS: Final = {
         "close": (17, 30),
         "weekdays": [0, 1, 2, 3, 4],
     },
-    "Europe/Frankfurt": {
+    "Europe/Berlin": {
         "open": (9, 0),
         "close": (17, 30),
         "weekdays": [0, 1, 2, 3, 4],

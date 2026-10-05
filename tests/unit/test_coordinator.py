@@ -315,7 +315,35 @@ class TestIsMarketHours:
             mock_dt.utcnow.return_value = datetime(2026, 4, 13, 14, 0, 0, tzinfo=_UTC)
             result = coord._is_market_hours()
             assert isinstance(result, bool)
-            assert coord._timezone == "America/New_York"
+
+    def test_unknown_timezone_does_not_overwrite_configured(self):
+        """Falling back for an unknown zone must not mutate self._timezone."""
+        coord = _bare_coordinator()
+        coord._timezone = "Mars/Olympus_Mons"
+        with patch("custom_components.saxo_portfolio.coordinator.dt_util") as mock_dt:
+            mock_dt.utcnow.return_value = datetime(2026, 4, 13, 14, 0, 0, tzinfo=_UTC)
+            coord._is_market_hours()
+        assert coord._timezone == "Mars/Olympus_Mons"
+
+    def test_frankfurt_market_open(self):
+        """Frankfurt users get market hours: Monday 10:00 CEST is open."""
+        coord = _bare_coordinator()
+        coord._timezone = "Europe/Berlin"
+        with patch("custom_components.saxo_portfolio.coordinator.dt_util") as mock_dt:
+            mock_dt.utcnow.return_value = datetime(2026, 4, 13, 8, 0, 0, tzinfo=_UTC)
+            assert coord._is_market_hours() is True
+
+    def test_market_hour_keys_are_valid_iana_zones(self):
+        """Every timezone key must resolve via ZoneInfo (except 'any')."""
+        from custom_components.saxo_portfolio.const import (
+            MARKET_HOURS,
+            TIMEZONE_OPTIONS,
+        )
+
+        for key in (*MARKET_HOURS, *TIMEZONE_OPTIONS):
+            if key != "any":
+                ZoneInfo(key)
+        assert set(MARKET_HOURS) == set(TIMEZONE_OPTIONS) - {"any"}
 
     def test_exception_returns_false(self):
         """Exception during check defaults to False (after-hours)."""

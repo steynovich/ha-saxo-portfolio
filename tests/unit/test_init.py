@@ -53,6 +53,7 @@ def _make_entry(**overrides: object) -> MagicMock:
     entry.domain = DOMAIN
     entry.title = "Saxo Portfolio"
     entry.version = overrides.get("version", 1)
+    entry.minor_version = overrides.get("minor_version", 1)
     entry.options = {}
     entry.data = overrides.get(
         "data",
@@ -372,6 +373,43 @@ class TestAsyncMigrateEntry:
 
         result = await async_migrate_entry(hass, entry)
         assert result is True
+
+    @pytest.mark.asyncio
+    async def test_frankfurt_timezone_migrated_to_berlin(self) -> None:
+        """The invalid Europe/Frankfurt key is rewritten to Europe/Berlin."""
+        hass = _make_hass()
+        data = {"entity_prefix": "saxo", "timezone": "Europe/Frankfurt"}
+        entry = _make_entry(data=data)
+
+        result = await async_migrate_entry(hass, entry)
+
+        assert result is True
+        hass.config_entries.async_update_entry.assert_called_once()
+        kwargs = hass.config_entries.async_update_entry.call_args.kwargs
+        assert kwargs["data"] == {"entity_prefix": "saxo", "timezone": "Europe/Berlin"}
+        assert kwargs["minor_version"] == 2
+
+    @pytest.mark.asyncio
+    async def test_other_timezone_kept_on_migration(self) -> None:
+        """Valid timezones are left untouched; only the minor version is bumped."""
+        hass = _make_hass()
+        data = {"timezone": "Europe/Paris"}
+        entry = _make_entry(data=data)
+
+        assert await async_migrate_entry(hass, entry) is True
+
+        kwargs = hass.config_entries.async_update_entry.call_args.kwargs
+        assert kwargs["data"] == {"timezone": "Europe/Paris"}
+        assert kwargs["minor_version"] == 2
+
+    @pytest.mark.asyncio
+    async def test_current_minor_version_not_migrated_again(self) -> None:
+        """An entry already at minor version 2 is not rewritten."""
+        hass = _make_hass()
+        entry = _make_entry(minor_version=2)
+
+        assert await async_migrate_entry(hass, entry) is True
+        hass.config_entries.async_update_entry.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_unknown_version_returns_false(self) -> None:

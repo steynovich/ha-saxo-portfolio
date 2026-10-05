@@ -126,7 +126,7 @@ To sign in to Saxo again without removing the integration, open **Settings → D
 - **Europe/London**: LSE (8:00 AM - 4:30 PM GMT/BST)
 - **Europe/Amsterdam**: Euronext (9:00 AM - 5:30 PM CET/CEST)
 - **Europe/Paris**: Euronext (9:00 AM - 5:30 PM CET/CEST)
-- **Europe/Frankfurt**: XETRA (9:00 AM - 5:30 PM CET/CEST)
+- **Europe/Berlin**: XETRA (9:00 AM - 5:30 PM CET/CEST)
 - **Asia/Tokyo**: TSE (9:00 AM - 3:00 PM JST)
 - **Asia/Hong_Kong**: HKEX (9:30 AM - 4:00 PM HKT)
 - **Asia/Singapore**: SGX (9:00 AM - 5:00 PM SGT)
