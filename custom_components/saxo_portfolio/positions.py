@@ -157,7 +157,8 @@ def parse_position(raw_position: dict[str, Any]) -> tuple[str, PositionData] | N
         _LOGGER.debug("Parsed position (asset type %s)", asset_type)
         return slug, position_data
 
-    except Exception as pos_error:
+    except (AttributeError, TypeError, ValueError, ArithmeticError) as pos_error:
+        # Malformed payload shapes/values only; anything else is a real bug
         _LOGGER.debug(
             "Error parsing position: %s",
             type(pos_error).__name__,

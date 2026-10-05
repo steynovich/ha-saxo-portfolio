@@ -17,17 +17,15 @@ from homeassistant.helpers import entity_registry as er
 from .const import (
     CONF_TIMEZONE,
     DEFAULT_TIMEZONE,
-    DEFAULT_UPDATE_INTERVAL_AFTER_HOURS,
-    DEFAULT_UPDATE_INTERVAL_ANY,
-    DEFAULT_UPDATE_INTERVAL_MARKET_HOURS,
     MARKET_HOURS,
-    market_hours_attributes,
 )
 from .coordinator import SaxoCoordinator
 from .data import SaxoPortfolioData
+from .update_mode import update_mode_attributes
 from .token_expiry import (
     TOKEN_EXPIRY_CRITICAL_SECONDS,
     TOKEN_EXPIRY_WARNING_SECONDS,
+    TokenExpiryStatus,
     token_expiry_status,
     token_seconds_remaining,
 )
@@ -71,22 +69,17 @@ def _get_coordinator_status(coordinator: SaxoCoordinator) -> dict[str, Any]:
 
 def _get_market_config(configured_tz: str) -> dict[str, Any]:
     """Return market-hours configuration for the configured timezone."""
+    config = update_mode_attributes(configured_tz)
     if configured_tz == "any":
-        return {
-            "mode": "Fixed interval (no market hours)",
-            "update_interval": str(DEFAULT_UPDATE_INTERVAL_ANY),
-        }
-    if configured_tz in MARKET_HOURS:
-        return {
-            "timezone": configured_tz,
-            **market_hours_attributes(configured_tz),
-            "update_interval_market": str(DEFAULT_UPDATE_INTERVAL_MARKET_HOURS),
-            "update_interval_after": str(DEFAULT_UPDATE_INTERVAL_AFTER_HOURS),
-        }
-    return {
-        "error": f"Unknown timezone: {configured_tz}",
-        "fallback": DEFAULT_TIMEZONE,
-    }
+        config["mode"] = "Fixed interval (no market hours)"
+        del config["market_hours_detection"]
+    elif configured_tz in MARKET_HOURS:
+        config = {"timezone": configured_tz, **config}
+        del config["mode"], config["market_hours_detection"]
+    else:
+        config["fallback"] = DEFAULT_TIMEZONE
+        del config["mode"]
+    return config
 
 
 def _format_token_status(token_data: dict[str, Any]) -> dict[str, Any]:
@@ -121,11 +114,11 @@ def _format_token_status(token_data: dict[str, Any]) -> dict[str, Any]:
     )
 
     status = token_expiry_status(time_until_expiry)
-    if status == "expired":
+    if status == TokenExpiryStatus.EXPIRED:
         token_status["status"] = "EXPIRED"
-    elif status == "critical":
+    elif status == TokenExpiryStatus.CRITICAL:
         token_status["status"] = "CRITICAL - Expires in less than 1 minute"
-    elif status == "warning":
+    elif status == TokenExpiryStatus.WARNING:
         token_status["status"] = "WARNING - Expires in less than 5 minutes"
     elif time_until_expiry <= 3600:
         token_status["status"] = (

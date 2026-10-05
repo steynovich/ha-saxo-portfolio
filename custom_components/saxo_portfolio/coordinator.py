@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+from typing import Any
 from datetime import datetime, timedelta, time
 import zoneinfo
 
@@ -30,6 +31,7 @@ from .api.saxo_client import SaxoApiClient, AuthenticationError, APIError
 from .data import BalanceData, ClientInfo, SaxoPortfolioData
 from .performance import PerformanceFetcher
 from .positions import PositionData, PositionsFetcher
+from .update_mode import update_mode_attributes
 from .const import (
     CONF_ENABLE_POSITION_SENSORS,
     CONF_TIMEZONE,
@@ -670,6 +672,22 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
     def client_info(self) -> ClientInfo:
         """Return the client identity, "unknown" fields before the first update."""
         return self.data.client if self.data is not None else ClientInfo()
+
+    @property
+    def client_id(self) -> str:
+        """Return the Saxo ClientId ("unknown" before the first update)."""
+        return self.client_info.client_id
+
+    @property
+    def token_data(self) -> dict[str, Any] | None:
+        """Return the stored OAuth token dict, None when there is none."""
+        assert self.config_entry is not None
+        token: dict[str, Any] | None = self.config_entry.data.get("token")
+        return token
+
+    def update_mode_attributes(self) -> dict[str, Any]:
+        """Describe the update mode (fixed / market hours) for sensors and diagnostics."""
+        return update_mode_attributes(self.timezone, self.is_market_hours)
 
     def get_positions(self) -> dict[str, PositionData]:
         """Get all cached positions.
