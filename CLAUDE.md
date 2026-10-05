@@ -21,7 +21,7 @@
 - Performance data is cached for 2 h (`PERFORMANCE_UPDATE_INTERVAL`, in `PerformanceFetcher`); performance-API failures must not block balance data (graceful degradation). Only a complete fetch refreshes the cache timestamp; a partial one keeps last good values and retries next update.
 
 ### Availability & resilience
-- Sticky availability: sensors stay available during transient failures and only go unavailable after `max(15 min, 3 × update_interval)` of consecutive failures (`max_failure_time` in `sensor.py`).
+- Sticky availability: sensors stay available during transient failures and only go unavailable after `max(15 min, 3 × update_interval)` of consecutive failures (`AVAILABILITY_FAILURE_*` constants in `const.py`, applied in `sensor.py`).
 - Rate limiting: 0.5 s delay between batched API calls (`API_REQUEST_DELAY` in `const.py`, used by `api/saxo_client.py`, `performance.py` and `positions.py`); 0–30 s random stagger across multi-account coordinators (`_initial_update_offset` in `coordinator.py`).
 
 ### Entity conventions
