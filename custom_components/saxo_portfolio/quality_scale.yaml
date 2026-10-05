@@ -1,0 +1,88 @@
+# Self-assessed against the Home Assistant Integration Quality Scale
+# https://developers.home-assistant.io/docs/core/integration-quality-scale/rules
+# "done" is backed by code or tests in this repository; "todo" means not yet met
+# or not verified. This is not an official HA quality-scale rating.
+rules:
+  # Bronze
+  action-setup: done
+  appropriate-polling: done
+  brands:
+    status: todo
+    comment: Not yet submitted to the home-assistant/brands repository.
+  common-modules: done
+  config-flow-test-coverage: done
+  config-flow: done
+  dependency-transparency:
+    status: exempt
+    comment: No third-party requirements; uses aiohttp provided by Home Assistant.
+  docs-actions: done
+  docs-high-level-description: done
+  docs-installation-instructions: done
+  docs-removal-instructions: done
+  entity-event-setup:
+    status: exempt
+    comment: Entities are coordinator-driven; no events are subscribed to.
+  entity-unique-id: done
+  has-entity-name: done
+  runtime-data: done
+  test-before-configure: done
+  test-before-setup: done
+  unique-config-entry: done
+
+  # Silver
+  action-exceptions: done
+  config-entry-unloading: done
+  docs-configuration-parameters: done
+  docs-installation-parameters: done
+  entity-unavailable: done
+  integration-owner: done
+  log-when-unavailable: done
+  parallel-updates: done
+  reauthentication-flow: done
+  test-coverage: done
+
+  # Gold
+  devices: done
+  diagnostics: done
+  discovery-update-info:
+    status: exempt
+    comment: Cloud service; nothing on the network to discover.
+  discovery:
+    status: exempt
+    comment: Cloud service; nothing on the network to discover.
+  docs-data-update: done
+  docs-examples: done
+  docs-known-limitations:
+    status: todo
+    comment: Limitations (market holidays, lunch breaks, 'any' mode) are in ADR-0006 and the spec, not yet in the README.
+  docs-supported-devices:
+    status: exempt
+    comment: Cloud service; no devices are supported or excluded.
+  docs-supported-functions: done
+  docs-troubleshooting: done
+  docs-use-cases: done
+  dynamic-devices:
+    status: exempt
+    comment: One device per config entry; position sensors are added dynamically as entities.
+  entity-category: done
+  entity-device-class: done
+  entity-disabled-by-default:
+    status: todo
+    comment: Diagnostic sensors are enabled by default; not yet reviewed which should be disabled.
+  entity-translations: done
+  exception-translations:
+    status: todo
+    comment: Service errors are translated; coordinator and config-flow errors are not all covered.
+  icon-translations: done
+  reconfiguration-flow: done
+  repair-issues:
+    status: todo
+    comment: Only a deprecated-YAML issue is defined; auth and API problems do not raise repairs.
+  stale-devices:
+    status: exempt
+    comment: One device per config entry, removed with the entry.
+
+  # Platinum
+  async-dependency: done
+  inject-websession: done
+  strict-typing: done
