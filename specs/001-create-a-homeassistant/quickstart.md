@@ -6,7 +6,7 @@ This quickstart guide walks through the complete setup and validation of the Sax
 ## Prerequisites
 
 ### Home Assistant Requirements
-- Home Assistant Core 2024.1.0 or later
+- Home Assistant Core 2026.3.0 or later (the first release on Python 3.14)
 - HACS (Home Assistant Community Store) installed
 - Admin access to Home Assistant configuration
 - Internet connectivity for OAuth authentication
@@ -15,12 +15,13 @@ This quickstart guide walks through the complete setup and validation of the Sax
 - Active Saxo Bank investment account
 - Saxo Developer Account (free at https://www.developer.saxo/)
 - Saxo Application registered with OAuth redirect URI
-- Valid API credentials (Application Key and Secret)
+- Valid API credentials (App Key and App Secret) for a **production** app registered with the **Code** grant type (not PKCE; ADR 0001)
+- Only Saxo's production environment is supported; Simulation/demo accounts are not
 
 ### Network Requirements
 - Home Assistant accessible from external network (for OAuth callback)
 - Firewall allows HTTPS connections to Saxo API endpoints
-- DNS resolution for `gateway.saxobank.com` and `sim.logonvalidation.net`
+- DNS resolution for `gateway.saxobank.com` and `live.logonvalidation.net`
 
 ## Step 1: Saxo API Application Setup
 
@@ -34,56 +35,59 @@ This quickstart guide walks through the complete setup and validation of the Sax
 2. Fill in application details:
    - **Name**: "Home Assistant Portfolio Monitor"
    - **Description**: "Home Assistant integration for portfolio monitoring"
-   - **Application Type**: "Web Application"
+   - **Grant Type**: "Code" (Authorization Code Grant; do not choose PKCE)
    - **Redirect URI**: `https://my.home-assistant.io/redirect/oauth`
 3. Save application and note the **Application Key** and **Application Secret**
 
 ### 1.3 Configure OAuth Permissions
-1. In application settings, ensure the following permissions are enabled:
-   - `Portfolio - Read access to balances`
-   - `Portfolio - Read access to positions`
-   - `Account - Read access to account information`
+1. Make sure the app has read access to portfolio balances, positions, client/account details and performance history, as shown in the Saxo developer portal
 2. Save permission changes
 
 ## Step 2: Home Assistant Integration Installation
 
-### 2.1 Install via HACS
+### 2.1 Install via HACS (custom repository)
 1. Open Home Assistant web interface
-2. Navigate to **HACS** → **Integrations**
-3. Click **+ Explore & Download Repositories**
-4. Search for "Saxo Portfolio"
-5. Click **Download** → **Download** to install
-6. Restart Home Assistant when prompted
+2. Navigate to **HACS** → **Integrations** → three-dot menu → **Custom repositories**
+3. Add `https://github.com/steynovich/ha-saxo-portfolio` as an Integration
+4. Search for "Saxo Portfolio" and download it
+5. Restart Home Assistant when prompted
 
 ### 2.2 Alternative: Manual Installation
 ```bash
 # SSH into Home Assistant or use File Editor add-on
 cd /config/custom_components
-git clone https://github.com/your-username/ha-saxo-portfolio.git saxo_portfolio
+git clone https://github.com/steynovich/ha-saxo-portfolio.git
+cp -r ha-saxo-portfolio/custom_components/saxo_portfolio .
 # Restart Home Assistant
 ```
 
 ## Step 3: Integration Configuration
 
-### 3.1 Add Integration
+### 3.1 Add Application Credentials
+1. Navigate to **Settings** → **Devices & Services** → **Application Credentials**
+2. Add a credential for "Saxo Portfolio": **Client ID** = your App Key, **Client Secret** = your App Secret
+
+### 3.2 Add Integration
 1. Navigate to **Settings** → **Devices & Services**
 2. Click **+ Add Integration**
 3. Search for "Saxo Portfolio"
 4. Click on "Saxo Portfolio" integration
 
-### 3.2 OAuth Authentication Flow
-1. **Application Credentials**: Enter your Saxo Application Key and Secret from Step 1.2
-2. **Environment Selection**: Choose "Simulation" for testing or "Production" for live data
-3. **Authorize**: Click "Authorize with Saxo Bank"
-4. **Saxo Login**: Complete login on Saxo Bank website
-5. **Grant Permissions**: Authorize Home Assistant to access portfolio data
-6. **Completion**: Return to Home Assistant with successful authentication
+### 3.3 OAuth Authentication Flow
+1. **Authorize**: Pick the credentials from 3.1 and sign in with Saxo (production)
+2. **Saxo Login**: Complete login on the Saxo Bank website and grant access
+3. **Timezone**: Select the timezone of your main trading market
+4. **Completion**: The integration fetches your Client ID and creates the entities (credentials are validated against the API before the entry is created)
 
-### 3.3 Configuration Options
-- **Update Interval**: Default 5 minutes (market hours) / 30 minutes (after hours)
-- **Base Currency**: Select preferred currency for portfolio aggregation
-- **Accounts**: Choose which Saxo accounts to monitor (if multiple)
-- **Sensors**: Select which portfolio metrics to track
+### 3.4 Configuration Options
+Under **Configure** on the integration:
+- **Market Timezone**: the market whose hours set the update interval
+- **Enable Position Sensors**: one sensor per open position (off by default)
+- The update interval is **not configurable**: 5 minutes during market hours, 30 minutes after hours (15 minutes in "Any" mode). Performance data is cached for 2 hours.
+- There is no base-currency or account selection; each config entry is one Saxo client, and the currency comes from the account.
+
+### 3.5 Reauthentication
+Home Assistant prompts for reauthentication when tokens can no longer be refreshed. You can also press the **Reauthenticate** button on the device or use **Reconfigure**. It must use the same Saxo account the entry was created with, otherwise it aborts with an account mismatch.
 
 ## Step 4: Verify Installation
 
@@ -94,11 +98,13 @@ git clone https://github.com/your-username/ha-saxo-portfolio.git saxo_portfolio
 4. Verify device shows as "Connected" with last update timestamp
 
 ### 4.2 Verify Sensors Created
-Expected sensors should appear:
-- `sensor.saxo_portfolio_total_value`
-- `sensor.saxo_portfolio_cash_balance`  
-- `sensor.saxo_portfolio_unrealized_pnl`
-- `sensor.saxo_portfolio_positions_count`
+Expected sensors should appear (replace `123456` with your Saxo Client ID):
+- `sensor.saxo_123456_total_value`
+- `sensor.saxo_123456_cash_balance`
+- `sensor.saxo_123456_non_margin_positions_value`
+- `sensor.saxo_123456_accumulated_profit_loss`, plus the investment performance, YTD, month, quarter and cash transfer sensors
+- Diagnostic sensors such as `sensor.saxo_123456_token_expiry` and `sensor.saxo_123456_market_status`
+- `button.saxo_123456_refresh` and `button.saxo_123456_reauthenticate`
 
 ### 4.3 Test Data Refresh
 1. Go to **Developer Tools** → **States**
@@ -107,9 +113,8 @@ Expected sensors should appear:
 4. Check **Attributes** tab for additional data like currency and last update time
 
 ### 4.4 Manual Refresh Test
-1. Navigate to **Settings** → **Devices & Services** → **Saxo Portfolio**
-2. Click **Configure** → **Reload**
-3. Verify sensors update with current timestamp
+1. Press `button.saxo_123456_refresh` (or call the `saxo_portfolio.refresh_data` service)
+2. Verify `sensor.saxo_123456_last_update` shows the current time
 4. Check Home Assistant logs for any error messages
 
 ## Step 5: Dashboard Integration
@@ -120,18 +125,14 @@ Expected sensors should appear:
 type: entities
 title: Saxo Portfolio Overview
 entities:
-  - entity: sensor.saxo_portfolio_total_value
+  - entity: sensor.saxo_123456_total_value
     name: Total Portfolio Value
-    icon: mdi:chart-line
-  - entity: sensor.saxo_portfolio_cash_balance  
+  - entity: sensor.saxo_123456_cash_balance
     name: Available Cash
-    icon: mdi:cash
-  - entity: sensor.saxo_portfolio_unrealized_pnl
-    name: Unrealized P&L
-    icon: mdi:trending-up
-  - entity: sensor.saxo_portfolio_positions_count
-    name: Open Positions
-    icon: mdi:format-list-numbered
+  - entity: sensor.saxo_123456_accumulated_profit_loss
+    name: Accumulated Profit/Loss
+  - entity: sensor.saxo_123456_ytd_investment_performance
+    name: YTD Performance
 show_header_toggle: false
 ```
 
@@ -140,7 +141,7 @@ show_header_toggle: false
 # Historical value chart
 type: history-graph
 entities:
-  - sensor.saxo_portfolio_total_value
+  - sensor.saxo_123456_total_value
 hours_to_show: 24
 refresh_interval: 300
 ```
@@ -149,14 +150,14 @@ refresh_interval: 300
 ```yaml
 # Alert on significant portfolio change
 alias: Portfolio Change Alert
-trigger:
-  - platform: numeric_state
-    entity_id: sensor.saxo_portfolio_unrealized_pnl
-    above: 1000  # Alert if P&L exceeds $1000
-action:
-  - service: notify.mobile_app
+triggers:
+  - trigger: numeric_state
+    entity_id: sensor.saxo_123456_accumulated_profit_loss
+    above: 1000  # Alert if profit/loss exceeds 1000
+actions:
+  - action: notify.mobile_app
     data:
-      message: "Portfolio P&L is now ${{ states('sensor.saxo_portfolio_unrealized_pnl') }}"
+      message: "Portfolio P/L is now {{ states('sensor.saxo_123456_accumulated_profit_loss') }}"
       title: "Portfolio Alert"
 ```
 
@@ -165,23 +166,23 @@ action:
 ### 6.1 Data Accuracy Verification
 1. Compare Home Assistant sensor values with Saxo Bank website/app
 2. Verify currency conversions are correct
-3. Check that position counts match actual holdings
+3. With position sensors enabled, check that the position sensors match actual holdings
 4. Confirm timestamps indicate recent updates
 
 ### 6.2 OAuth Token Refresh Test
-1. Wait for token expiration (typically 20 minutes for Saxo)
+1. Watch `sensor.saxo_123456_token_expiry`; tokens are refreshed proactively at half of their lifetime
 2. Verify sensors continue updating automatically
 3. Check Home Assistant logs for successful token refresh messages
 4. No user intervention should be required
 
 ### 6.3 Error Handling Test
 1. **Network Disconnection**: Disconnect internet temporarily
-   - Sensors should show previous values
+   - Sensors keep their previous values and stay available for `max(15 min, 3 x update interval)` of consecutive failures, then go unavailable (ADR 0002)
    - Logs should indicate connection failures
    - Auto-recovery when connection restored
 2. **Rate Limit Test**: Request multiple manual refreshes quickly
    - Integration should respect API rate limits
-   - No error states in sensor values
+   - Calls are spaced 0.5 s apart; no error states in sensor values
 
 ### 6.4 Performance Validation
 1. Check Home Assistant system resources during updates
@@ -196,7 +197,7 @@ action:
 - Check OAuth token status in integration configuration
 - Verify Saxo API credentials are correct
 - Check Home Assistant logs for authentication errors
-- Re-run OAuth flow if needed
+- Reauthenticate (button, Reconfigure or the repair prompt) if needed
 
 **Data not updating**
 - Verify network connectivity to `gateway.saxobank.com`
@@ -204,7 +205,8 @@ action:
 - Confirm Saxo account has active positions/balance
 
 **OAuth authentication fails**
-- Verify redirect URI exactly matches Saxo app configuration
+- Verify redirect URI exactly matches Saxo app configuration (`https://my.home-assistant.io/redirect/oauth`)
+- Verify the Saxo app uses the Code grant type, not PKCE
 - Check Home Assistant is accessible from external network
 - Ensure system time is synchronized (OAuth requires accurate time)
 
@@ -225,7 +227,7 @@ logger:
 ```
 
 ### Support Resources
-- Integration GitHub Issues: https://github.com/your-username/ha-saxo-portfolio/issues
+- Integration GitHub Issues: https://github.com/steynovich/ha-saxo-portfolio/issues
 - Home Assistant Community Forum: https://community.home-assistant.io/
 - Saxo OpenAPI Documentation: https://www.developer.saxo/openapi/learn
 
@@ -239,7 +241,7 @@ logger:
 
 ✅ **Validation Passed** when:
 - Sensor values match Saxo Bank actual data
-- Automatic updates occur every 5-30 minutes
+- Automatic updates occur every 5 minutes (market hours) or 30 minutes (after hours)
 - Token refresh happens automatically
 - Dashboard displays portfolio information correctly
 

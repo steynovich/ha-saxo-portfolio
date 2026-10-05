@@ -3,7 +3,9 @@
 ## Technology Decisions
 
 ### Saxo OpenAPI Integration
-**Decision**: Use `saxo-openapi` Python package with custom wrapper for Home Assistant compatibility
+> **Superseded**: the `saxo-openapi` package was dropped. The integration has no third-party requirements (`manifest.json` has `"requirements": []`). `SaxoApiClient` (`api/saxo_client.py`) calls the OpenAPI directly over Home Assistant's shared aiohttp session (`async_get_clientsession`), and Home Assistant's OAuth2 framework handles the token flow. The original decision is kept below for history.
+
+**Original decision (superseded)**: Use `saxo-openapi` Python package with custom wrapper for Home Assistant compatibility
 **Rationale**: 
 - Most comprehensive Python SDK for Saxo OpenAPI
 - Stable API with well-documented endpoints
@@ -11,7 +13,7 @@
 - Provides structured response objects
 
 **Alternatives considered**:
-- Direct HTTP requests with `aiohttp` - rejected due to complexity of OAuth flow
+- Direct HTTP requests with `aiohttp` - rejected due to complexity of OAuth flow (this became the chosen approach, since HA's OAuth2 helpers removed that complexity)
 - `python-saxo` minimal wrapper - rejected due to limited documentation
 - `saxo-apy` modern client - rejected due to lack of async support
 
@@ -29,7 +31,7 @@
 - MQTT bridge - rejected due to unnecessary complexity
 
 ### Authentication Flow
-**Decision**: OAuth 2.0 Authorization Code Grant with Home Assistant's OAuth2 framework
+**Decision**: OAuth 2.0 Authorization Code Grant for a confidential client (App Key and App Secret, no PKCE) with Home Assistant's OAuth2 framework and Application Credentials (ADR 0001, ADR 0005). Tokens are refreshed proactively at half their lifetime; reauthentication runs in the UI and must use the same Saxo account.
 **Rationale**:
 - Saxo requires OAuth 2.0 for API access
 - Home Assistant provides built-in OAuth2 configuration flow
@@ -55,8 +57,9 @@
 - Rate limit headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`
 
 **Authentication URLs**:
-- Simulation: `https://sim.logonvalidation.net/`
-- Production: `https://logonvalidation.net/`
+- Simulation: `https://sim.logonvalidation.net/` (historical; not supported by the integration)
+- Production: `https://live.logonvalidation.net` (the only environment the integration uses; Simulation is not supported, see README)
+- API base: `https://gateway.saxobank.com/openapi`
 
 ### Data Structures
 **Portfolio Balance Response**:
@@ -115,8 +118,10 @@ custom_components/saxo_portfolio/
 ├── coordinator.py          # Required: Data fetching coordination
 ├── sensor.py               # Required: Sensor platform
 ├── const.py                # Required: Constants
-├── strings.json            # Required: UI translations
-└── hacs.json              # Required: HACS configuration
+└── strings.json            # Required: UI translations
+hacs.json                    # Required: HACS configuration (repository root)
+# Also present in the real integration: application_credentials.py, button.py,
+# data.py, performance.py, positions.py, diagnostics.py, token_expiry.py, icons.json
 ```
 
 ## Performance and Scalability
@@ -125,7 +130,8 @@ custom_components/saxo_portfolio/
 **Decision**: Dynamic intervals based on market hours
 - Market hours: 5-minute updates
 - After hours: 30-minute updates
-- Maximum 288 requests per day (within rate limits)
+- Fixed intervals (`DEFAULT_UPDATE_INTERVAL_MARKET_HOURS` / `DEFAULT_UPDATE_INTERVAL_AFTER_HOURS`); the interval is not user-configurable (ADR 0004)
+- Performance data is cached for 2 h and fetched separately; positions are opt-in
 
 **Rationale**: Balances API responsiveness with rate limit conservation
 
@@ -166,20 +172,20 @@ custom_components/saxo_portfolio/
 4. **End-to-End Tests**: Full integration in Home Assistant test environment
 
 ### Mock Strategy
-- Use simulation Saxo environment for development
+- Tests run against mocked API responses; no live or simulation Saxo account is needed
 - Mock API responses for automated testing
-- Real API integration tests in CI/CD pipeline
+- CI runs the mocked test suite (`pytest-homeassistant-custom-component`)
 
 ## Dependencies and Compatibility
 
 ### Python Dependencies
-- `saxo-openapi>=1.0.0` - Saxo API client
+- No runtime requirements beyond Home Assistant (`manifest.json`: `"requirements": []`, `"dependencies": ["application_credentials"]`)
 - `aiohttp` - Async HTTP (Home Assistant dependency)
-- `homeassistant>=2024.1.0` - Core platform
+- Development: `homeassistant>=2026.3.0`, `pytest-homeassistant-custom-component` (see `pyproject.toml`)
 
 ### Home Assistant Compatibility
-- Minimum version: 2024.1.0 (for OAuth2 improvements)
-- Python 3.11+ requirement
+- Minimum version: 2026.3.0 (`hacs.json`, `pyproject.toml`)
+- Python 3.14+ requirement (`requires-python = ">=3.14.2"`)
 - Async/await pattern throughout
 
 ### Browser Compatibility

@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-create-a-homeassistant`  
 **Created**: 2025-09-10  
-**Status**: Draft  
+**Status**: Implemented (shipped; kept in line with the code, README and `docs/adr/`)  
 **Input**: User description: "Create a HomeAssistant integration using HACS. It should be compatible with HACS Gold status. The purpose of this HomeAssistant integration is to provide sensors from Saxo Portfolio. Data can be collected using the Saxo SaxoOpenApi"
 
 ## Execution Flow (main)
@@ -16,7 +16,7 @@
    → Constraints: HACS Gold compatibility requirements
 3. Clarifications resolved:
    → Portfolio metrics: Account balance, positions, P&L, total value
-   → Authentication: OAuth 2.0 Authorization Code Grant with PKCE (amended: confidential Code grant without PKCE, see FR-003 note)
+   → Authentication: OAuth 2.0 Authorization Code Grant for a confidential client, without PKCE (see FR-003 and ADR 0001)
    → Data refresh: Every 5 minutes during market hours, 30 minutes after hours
 4. Fill User Scenarios & Testing section
    → Primary flow: Install via HACS → Configure API credentials → View portfolio sensors
@@ -60,22 +60,25 @@ A Home Assistant user wants to monitor their Saxo Bank investment portfolio dire
 ### Functional Requirements
 - **FR-001**: System MUST be installable through HACS (Home Assistant Community Store)
 - **FR-002**: System MUST meet HACS Gold status requirements for code quality and documentation
-- **FR-003**: System MUST authenticate with Saxo OpenAPI using OAuth 2.0 Authorization Code Grant with PKCE flow *(amended, see note)*
+- **FR-003**: System MUST authenticate with Saxo OpenAPI using the OAuth 2.0 Authorization Code Grant for confidential clients (App Key and App Secret, no PKCE), with credentials supplied through Home Assistant Application Credentials (ADR 0001, ADR 0005)
   - *Note (2026-09, #23): PKCE is intentionally not used.* Saxo documents two separate grant types that are chosen when the app is registered: the **Authorization Code Grant** for server-side (confidential) apps, where the token request is authenticated with the AppKey and AppSecret via HTTP Basic Auth ([docs](https://www.developer.saxo/openapi/learn/oauth-authorization-code-grant)), and the **Authorization Code Grant with PKCE** for native (public) apps. The PKCE variant sends only `client_id` + `code_verifier`, with no secret, and requires the same `code_verifier` again on every refresh-token request ([docs](https://www.developer.saxo/openapi/learn/oauth-authorization-code-grant-pkce), [security overview](https://www.developer.saxo/openapi/learn/security)). Saxo does not document combining PKCE with a client secret. Home Assistant's `LocalOAuth2ImplementationWithPkce` also does not persist the verifier for refreshes. The integration therefore uses the confidential Authorization Code Grant: the App Secret is kept server-side in Home Assistant's Application Credentials, and the authorization code can only be redeemed with it. CSRF is covered by HA's signed `state` parameter. Verified live on SIM (2026-09-28): a Code-grant app accepts a `code_challenge` on the authorize request but does not check the `code_verifier` (a mismatching verifier still got a token), so PKCE adds no protection for this app type. LIVE was not tested for PKCE; the flow without PKCE was confirmed working on LIVE.
+  - Users register their own Saxo app with the **Code** grant type and enter its App Key and App Secret in Home Assistant's Application Credentials.
+  - The config flow validates the credentials against the API before the entry is created.
+  - Reauthentication happens in the UI without removing the integration (including a user-triggered button). It MUST use the same Saxo account the entry was created with (same-account rule); a different account is rejected so entities and history are never re-attached to another account (ADR 0005).
 - **FR-004**: System MUST create Home Assistant sensors displaying portfolio data
-- **FR-005**: System MUST provide account balance, individual positions, profit/loss data, and total portfolio value as sensors
+- **FR-005**: System MUST provide account balance, profit/loss and performance data, and total portfolio value as sensors; individual position sensors are opt-in through the options flow
 - **FR-006**: System MUST handle API authentication failures gracefully with user-friendly error messages
-- **FR-007**: System MUST refresh portfolio data every 5 minutes during market hours and every 30 minutes after market close
-- **FR-008**: System MUST respect Saxo API rate limits and implement appropriate throttling
-- **FR-009**: Users MUST be able to configure which portfolio metrics are displayed as sensors
+- **FR-007**: System MUST refresh portfolio data every 5 minutes during market hours and every 30 minutes after market close (market-hours aware, fixed, not configurable; ADR 0004)
+- **FR-008**: System MUST respect Saxo API rate limits and implement appropriate throttling (0.5 s between batched calls, random start stagger across accounts)
+- **FR-009**: Users MUST be able to opt in to per-position sensors and set the market timezone through the options flow. The refresh interval is not user-configurable
 - **FR-010**: System MUST log integration events for troubleshooting purposes
 - **FR-011**: System MUST provide configuration validation to ensure OAuth 2.0 credentials are correct
 - **FR-012**: System MUST securely store and refresh OAuth 2.0 access tokens
-- **FR-013**: System MUST handle OAuth token expiration and automatic renewal using refresh tokens
+- **FR-013**: System MUST handle OAuth token expiration and automatic renewal using refresh tokens, refreshed proactively at half of the token lifetime (ADR 0005)
 
 ### Key Entities *(include if feature involves data)*
 - **Portfolio**: Represents a Saxo investment portfolio with account information, total value, and performance metrics
-- **Account**: Individual Saxo trading account containing positions and balance information
+- **Account**: Individual Saxo trading account containing positions and balance information. Each config entry covers one Saxo client; multiple clients are added as separate entries
 - **Position**: Specific investment holdings with quantity, current value, and profit/loss data
 - **Sensor**: Home Assistant entity that displays financial data with appropriate units and state information
 

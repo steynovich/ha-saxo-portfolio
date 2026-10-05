@@ -1,3 +1,11 @@
+# NOTE: Original v1 contract, corrected where it contradicted the code. It
+# documents only the endpoints sketched during design. The integration
+# currently uses (custom_components/saxo_portfolio/const.py):
+#   /port/v1/balances/me, /port/v1/clients/me, /port/v1/accounts/{AccountKey},
+#   /port/v1/netpositions/me (opt-in position sensors; replaces the
+#   /port/v1/positions path below), /hist/v3/perf/{ClientKey} and
+#   /hist/v4/performance/timeseries.
+# Only the production environment is supported; Simulation is not.
 openapi: 3.0.0
 info:
   title: Saxo Portfolio API Contract
@@ -7,8 +15,6 @@ info:
 servers:
   - url: https://gateway.saxobank.com/openapi
     description: Production Saxo OpenAPI server
-  - url: https://gateway.saxobank.com/sim/openapi  
-    description: Simulation Saxo OpenAPI server
 
 security:
   - OAuth2: [read]
@@ -118,9 +124,11 @@ components:
     OAuth2:
       type: oauth2
       flows:
+        # Confidential Authorization Code grant (App Key + App Secret via HTTP
+        # Basic Auth on the token request), no PKCE (ADR 0001).
         authorizationCode:
-          authorizationUrl: https://sim.logonvalidation.net/authorize
-          tokenUrl: https://sim.logonvalidation.net/token
+          authorizationUrl: https://live.logonvalidation.net/authorize
+          tokenUrl: https://live.logonvalidation.net/token
           scopes:
             read: Read access to portfolio data
 

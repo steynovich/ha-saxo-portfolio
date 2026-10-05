@@ -3,10 +3,12 @@
 **Input**: Design documents from `/specs/001-create-a-homeassistant/`
 **Prerequisites**: plan.md (✓), research.md (✓), data-model.md (✓), contracts/ (✓)
 
+> **Status**: Historical v1 task list. The integration has shipped and the unchecked boxes below were not maintained; they are not a to-do list. Where the original wording no longer matches the code it is marked "Superseded" inline. For the current architecture see `plan.md`, `CLAUDE.md` and `docs/adr/`.
+
 ## Execution Flow (main)
 ```
 1. Load plan.md from feature directory ✓
-   → Tech stack: Python 3.11+, Home Assistant, saxo-openapi, pytest
+   → Tech stack: Python 3.14+, Home Assistant 2026.3.0+, aiohttp (HA shared session), pytest. *(Superseded: the original list included `saxo-openapi` and Python 3.11+; the SDK was removed.)*
    → Structure: Single project (Home Assistant integration)
 2. Load design documents: ✓
    → data-model.md: Portfolio, Account, Position, Sensor entities
@@ -33,11 +35,11 @@
 ## Path Conventions
 - **Home Assistant Integration**: `custom_components/saxo_portfolio/` at repository root
 - **Tests**: `tests/` with contract/, integration/, unit/ subdirectories
-- All paths are absolute from repository root `/Users/steyn/projects/ha-saxo/`
+- All paths are absolute from repository root the repository root *(originally a local checkout path)*
 
 ## Phase 3.1: Setup
 - [ ] **T001** Create Home Assistant integration directory structure `custom_components/saxo_portfolio/` with required subdirectories
-- [ ] **T002** Initialize Python project with Home Assistant dependencies (homeassistant>=2024.1.0, saxo-openapi, aiohttp, pytest)
+- [ ] **T002** Initialize Python project with Home Assistant dependencies (homeassistant>=2026.3.0, aiohttp, pytest; no `saxo-openapi`). *Superseded: originally `homeassistant>=2024.1.0` plus `saxo-openapi`; `manifest.json` now has `"requirements": []`*
 - [ ] **T003** [P] Configure pytest, ruff linting, and mypy type checking in project root
 
 ## Phase 3.2: Contract Tests First (TDD) ⚠️ MUST COMPLETE BEFORE 3.3
@@ -62,9 +64,9 @@
 ## Phase 3.3: Core Implementation (ONLY after tests are failing)
 
 ### Core Data Models and Services
-- [ ] **T014** [P] Portfolio data model in `custom_components/saxo_portfolio/models.py`
+- [ ] **T014** [P] Portfolio data model in `custom_components/saxo_portfolio/models.py` *(Superseded: typed coordinator data now lives in `data.py`; see data-model.md)*
 - [ ] **T015** [P] Constants and configuration in `custom_components/saxo_portfolio/const.py`
-- [ ] **T016** [P] Saxo API client wrapper in `custom_components/saxo_portfolio/api/saxo_client.py`
+- [ ] **T016** [P] Saxo API client (direct aiohttp calls over HA's shared session, no SDK) in `custom_components/saxo_portfolio/api/saxo_client.py`
 - [ ] **T017** DataUpdateCoordinator implementation in `custom_components/saxo_portfolio/coordinator.py`
 
 ### Home Assistant Integration Files
@@ -78,10 +80,10 @@
 - [ ] **T023** [P] Application credentials platform in `custom_components/saxo_portfolio/application_credentials.py`
 
 ## Phase 3.4: Integration and Authentication
-- [ ] **T024** OAuth token storage and refresh logic in coordinator
+- [ ] **T024** OAuth token storage and refresh logic in coordinator *(proactive refresh at half the token lifetime, reauthentication with the same-account rule; ADR 0005)*
 - [ ] **T025** Rate limiting and error handling in API client
 - [ ] **T026** Sensor state management and Home Assistant device registry
-- [ ] **T027** Dynamic update intervals (market hours vs after hours)
+- [ ] **T027** Market-hours-aware update intervals (5 min market hours / 30 min after hours; fixed, not user-configurable)
 
 ## Phase 3.5: HACS Compliance and Documentation
 - [ ] **T028** [P] HACS configuration in `hacs.json`
@@ -193,6 +195,6 @@ Task: "GitHub repository configuration (topics, description, issues)"
 - Verify all contract/integration tests FAIL before implementing (RED phase of TDD)
 - Commit after each task completion
 - Home Assistant integration follows single project structure
-- OAuth 2.0 flow uses Home Assistant's built-in framework
-- Dynamic update intervals: 5min (market hours) / 30min (after hours)
+- OAuth 2.0 flow uses Home Assistant's built-in framework with Application Credentials (confidential Code grant, no PKCE)
+- Update intervals: 5 min (market hours) / 30 min (after hours), market-hours aware and not configurable
 - HACS validation requirements incorporated in T028-T030

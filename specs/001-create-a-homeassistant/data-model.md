@@ -1,201 +1,82 @@
 # Data Model: Saxo Portfolio Home Assistant Integration
 
-## Core Entities
+> Rewritten to match the code (`custom_components/saxo_portfolio/data.py`, `positions.py`, `sensor.py`). The original v1 model (Portfolio/Account aggregation, `unrealized_pnl`, `positions_count`, multi-account totals, currency conversion, account and position limits) was never implemented and is superseded.
 
-### Portfolio Entity
-**Purpose**: Represents a complete Saxo investment portfolio
-**Attributes**:
-- `portfolio_id`: Unique identifier for the portfolio
-- `total_value`: Total portfolio value in base currency (float)
-- `cash_balance`: Available cash balance (float)
-- `currency`: Base currency code (string, e.g., "USD", "EUR")
-- `unrealized_pnl`: Unrealized profit/loss (float)
-- `margin_available`: Available margin for trading (float)
-- `positions_count`: Number of open positions (integer)
-- `last_updated`: Timestamp of last data refresh (datetime)
+## Scope
+- One config entry = one Saxo client (unique ID is the Saxo `ClientKey`). Several clients are added as separate entries; nothing is aggregated or currency-converted across entries.
+- One `SaxoCoordinator` (DataUpdateCoordinator) per entry. Runtime state is `entry.runtime_data = SaxoRuntimeData(coordinator)`.
+- `coordinator.data` is a `SaxoPortfolioData` (or `None` before the first update). Sensors read typed attributes; they never index by string key.
+- Parsing lives outside the coordinator: balance in `data.py`, client details and performance in `performance.py` (`PerformanceFetcher`), net positions in `positions.py` (`PositionsFetcher`).
 
-**Validation Rules**:
-- `total_value` >= 0
-- `cash_balance` can be negative (margin accounts)
-- `currency` must be valid ISO 4217 code
-- `positions_count` >= 0
-- `last_updated` must be within last 24 hours for active portfolios
+## Typed coordinator data (`data.py`, frozen slotted dataclasses)
 
-**State Transitions**:
-- `Active` → `Refreshing` (during data updates)
-- `Refreshing` → `Active` (successful update)
-- `Refreshing` → `Error` (failed update)
-- `Error` → `Refreshing` (retry attempt)
+### SaxoPortfolioData
+| Field | Type | Notes |
+|-------|------|-------|
+| `balance` | `BalanceData` | From `/port/v1/balances/me`; refreshed every update |
+| `last_updated` | `datetime` | Time of the last successful update |
+| `performance` | `PerformanceData` | Defaults to all `None`; cached for 2 h |
+| `client` | `ClientInfo` | Defaults to `"unknown"` values |
 
-### Account Entity
-**Purpose**: Individual Saxo trading account within a portfolio
-**Attributes**:
-- `account_id`: Saxo account identifier (string)
-- `account_key`: Saxo account key for API calls (string)
-- `account_type`: Type of account (string: "Normal", "Margin", "ISA")
-- `client_key`: Client key for account access (string)
-- `active`: Account active status (boolean)
-- `base_currency`: Account base currency (string)
-- `name`: Display name for account (string)
+`field_names` lists the field names only (for diagnostics, never values).
 
-**Validation Rules**:
-- `account_id` must be unique within integration
-- `account_type` must be one of allowed values
-- `base_currency` must be valid ISO 4217 code
-- `active` accounts must have valid API credentials
+### BalanceData
+| Field | Type | Default |
+|-------|------|---------|
+| `cash_balance` | `float \| None` | `0.0` |
+| `currency` | `str` | `"USD"` (the real value is the account currency) |
+| `total_value` | `float \| None` | `0.0` |
+| `non_margin_positions_value` | `float \| None` | `0.0` |
 
-**Relationships**:
-- `Portfolio` 1:N `Account` (portfolio can have multiple accounts)
-- `Account` 1:N `Position` (account can have multiple positions)
+`from_api()` builds it from the balances response. A missing field reads as `0.0`; a value is `None` only when the API returned something that is not a number. `has_any_value` is true when at least one figure is numeric.
 
-### Position Entity
-**Purpose**: Individual investment holding within an account
-**Attributes**:
-- `position_id`: Unique position identifier (string)
-- `account_id`: Associated account ID (string, foreign key)
-- `symbol`: Investment symbol/ticker (string)
-- `asset_type`: Type of asset (string: "Stock", "FxSpot", "Bond", "Option")
-- `quantity`: Number of units held (float)
-- `open_price`: Average opening price (float)
-- `current_price`: Current market price (float)
-- `market_value`: Current market value of position (float)
-- `unrealized_pnl`: Unrealized profit/loss (float)
-- `pnl_percentage`: P&L as percentage (float)
-- `currency`: Position currency (string)
-- `status`: Position status (string: "Open", "Closed", "Pending")
+### PerformanceData
+Every field is `None` until fetched successfully at least once, so Home Assistant never records a fake `0.0` in long-term statistics.
 
-**Validation Rules**:
-- `quantity` > 0 for open positions
-- `open_price` > 0
-- `current_price` > 0 for active positions
-- `market_value` = `quantity` × `current_price` (with currency conversion)
-- `pnl_percentage` = (`current_price` - `open_price`) / `open_price` × 100
-- `symbol` must be valid for the given `asset_type`
+| Field | Source |
+|-------|--------|
+| `ytd_earnings_percentage` | v3 `BalancePerformance.AccumulatedProfitLoss`. A currency amount despite the historical name; backs the Accumulated Profit/Loss sensor |
+| `investment_performance_percentage` | v4 all-time `ReturnFraction * 100` |
+| `ytd_investment_performance_percentage` | v4 year-to-date `ReturnFraction * 100` |
+| `month_investment_performance_percentage` | v4 `StandardPeriod=Month` (rolling ~28 days) |
+| `quarter_investment_performance_percentage` | v4 `StandardPeriod=Quarter` (rolling ~90 days) |
+| `cash_transfer_balance` | v4 all-time `Balance.CashTransfer`, latest value |
+| `ytd_profit_loss` | v4 year-to-date `Balance.YearlyProfitLoss` |
+| `ytd_cash_transfer` | v4 year-to-date `Balance.CashTransfer` |
 
-**Relationships**:
-- `Account` 1:N `Position`
-- `Position` relates to market data updates
+Only a complete fetch refreshes the cache timestamp; a partial one keeps the last good values and retries on the next update. Performance-API failures never block balance data (ADR 0003).
 
-### Sensor Entity
-**Purpose**: Home Assistant sensor representation of financial data
-**Attributes**:
-- `sensor_id`: Unique sensor identifier (string)
-- `entity_id`: Home Assistant entity ID (string)
-- `friendly_name`: Display name in Home Assistant (string)
-- `sensor_type`: Type of sensor (enum: see below)
-- `unit_of_measurement`: Measurement unit (string)
-- `device_class`: Home Assistant device class (string)
-- `state_class`: Home Assistant state class (string)
-- `value`: Current sensor value (float/string)
-- `attributes`: Additional sensor attributes (dict)
-- `last_updated`: Last update timestamp (datetime)
+### ClientInfo
+`client_id`, `account_id`, `client_name` (all `str`, default `"unknown"`), from `/port/v1/clients/me` and the account details. `client_id` forms the entity prefix.
 
-**Sensor Types**:
-- `portfolio_total_value`: Total portfolio value
-- `portfolio_cash_balance`: Available cash
-- `portfolio_unrealized_pnl`: Unrealized profit/loss
-- `portfolio_positions_count`: Number of positions
-- `account_balance`: Individual account balance
-- `position_value`: Individual position value
-- `position_pnl`: Individual position P&L
+## Positions (`positions.py`, opt-in)
+Fetched from `/port/v1/netpositions/me` only when "Enable Position Sensors" is on; cached separately from `SaxoPortfolioData`.
 
-**Validation Rules**:
-- `sensor_id` must be unique within Home Assistant instance
-- `entity_id` follows Home Assistant naming conventions
-- `sensor_type` must be from allowed enum values
-- `unit_of_measurement` must match sensor type requirements
-- Financial values must include currency in attributes
+### PositionData
+`position_id: str`, `symbol: str`, `description: str`, `asset_type: str`, `amount: float`, `current_price: float`, `market_value: float`, `profit_loss: float`, `uic: int`, `currency: str = "USD"`. `generate_slug(symbol, asset_type)` yields e.g. `aapl_stock`, `eur_usd_fxspot` for the unique ID suffix.
 
-## Data Flow Relationships
+### PositionsCache
+`positions: dict[str, PositionData]` (keyed by slug), `last_updated: datetime | None`, `position_ids: list[str]`. `has_market_data_access()` derives the Market Data Access diagnostic from the first raw position (`CurrentPriceType`, `CalculationReliability`).
 
-### Portfolio → Account → Position Hierarchy
-```
-Portfolio (1)
-├── total_value (calculated from all accounts)
-├── cash_balance (sum of account cash)
-└── positions_count (sum of all positions)
+## Entities
+Entity IDs are `<platform>.saxo_<clientid>_<translation_key>` (unique ID `saxo_<clientid>_<key>`, lower-cased; all use `_attr_has_entity_name` and translation keys). Examples use Client ID `123456`.
 
-Account (N)
-├── account_balance (individual account total)
-├── positions (list of positions in account)
-└── currency (account base currency)
+| Group | Entities | State class |
+|-------|----------|-------------|
+| Balance | `cash_balance`, `total_value`, `non_margin_positions_value`, `cash_transfer_balance`, `ytd_cash_transfer` | `TOTAL` |
+| Performance | `accumulated_profit_loss`, `investment_performance`, `ytd_investment_performance`, `month_investment_performance`, `quarter_investment_performance`, `ytd_profit_loss` | `MEASUREMENT` |
+| Diagnostic sensors | `client_id`, `account_id`, `name`, `token_expiry`, `market_status`, `last_update`, `timezone`; `market_data_access` only with position sensors | n/a |
+| Buttons | `button.saxo_123456_refresh`, `button.saxo_123456_reauthenticate` | n/a |
+| Positions (opt-in) | one per open position, named "Position `<symbol>`" (unique ID `saxo_123456_position_<slug>`); state is the current price, attributes include market value and profit/loss | `MEASUREMENT` |
 
-Position (N)
-├── market_value (quantity × current_price)
-├── unrealized_pnl (current_value - cost_basis)
-└── pnl_percentage ((current_price - open_price) / open_price)
-```
+Monetary device class is deliberately not used because HA only allows `TOTAL` for it. The device is named "Saxo `<clientid>` Portfolio".
 
-### Data Aggregation Rules
-1. **Portfolio Total Value** = Σ(Account Values) converted to base currency
-2. **Portfolio Cash Balance** = Σ(Account Cash Balances) converted to base currency  
-3. **Portfolio Unrealized P&L** = Σ(Position Unrealized P&L) converted to base currency
-4. **Portfolio Positions Count** = Σ(Active Positions across all accounts)
+## Availability and state
+- Sticky availability: sensors keep their last value through transient failures and go unavailable only after `max(15 min, 3 x update_interval)` of consecutive failures (ADR 0002).
+- Update cadence is market-hours aware: 5 min during market hours, 30 min after (15 min in "Any" timezone mode); not user-configurable (ADR 0004).
+- Rate limiting: 0.5 s between batched API calls and a 0-30 s random start stagger across entries.
 
-### Currency Conversion
-- All portfolio-level values displayed in user's preferred currency
-- Account-level values in account's base currency
-- Position-level values in position's trading currency
-- Conversion rates updated with market data
-
-## State Management
-
-### Entity States
-**Portfolio States**:
-- `Active`: Normal operation, data current
-- `Refreshing`: Data update in progress
-- `Stale`: Data older than refresh interval
-- `Error`: Update failed, previous data shown
-- `Unavailable`: No data available (initial load or auth failure)
-
-**Sensor States**:
-- Numeric value for financial data
-- `unavailable` during initial load
-- `unknown` for calculation errors
-- Previous value maintained during temporary failures
-
-### Data Consistency Rules
-1. **Atomic Updates**: All related sensors update together
-2. **Rollback on Failure**: Maintain previous state if update fails
-3. **Timestamp Validation**: Reject data older than current state
-4. **Currency Consistency**: All related values use consistent exchange rates
-
-## Validation and Constraints
-
-### Business Rules
-1. **Account Limits**: Maximum 10 accounts per integration instance
-2. **Position Limits**: Maximum 100 positions per account
-3. **Update Frequency**: Minimum 1 minute between updates
-4. **Data Retention**: Historical data not stored (Home Assistant handles statistics)
-
-### Data Quality Checks
-1. **Value Validation**: All monetary values must be finite numbers
-2. **Consistency Checks**: Portfolio totals match sum of account values
-3. **Timestamp Validation**: Updates must be newer than previous data
-4. **Currency Validation**: All currencies must be valid ISO codes
-
-### Error Handling
-1. **Partial Updates**: Accept partial data if some accounts/positions fail
-2. **Graceful Degradation**: Show cached data during API failures
-3. **User Notification**: Surface authentication and configuration errors
-4. **Logging**: Detailed error logging for troubleshooting
-
-## Home Assistant Integration Specifics
-
-### Entity Registry
-- All sensors registered with unique IDs
-- Entities survive integration reloads
-- Device registry entry for the Saxo Portfolio integration
-- Entity categories: "diagnostic" for technical sensors, default for user data
-
-### Configuration Storage
-- OAuth tokens in Home Assistant's credential store
-- User preferences in integration config data
-- No sensitive data in entity attributes
-- Configuration validation on startup
-
-### Update Coordination
-- Single DataUpdateCoordinator instance per integration
-- All sensors share the same data fetch cycle
-- Rate limiting applied at coordinator level
-- Error states propagated to all dependent sensors
+## Configuration storage
+- App Key and App Secret live in Home Assistant Application Credentials, not in the entry. The entry holds the OAuth token, `auth_implementation`, `entity_prefix` (Client ID) and the timezone; options hold `timezone` and `enable_position_sensors`.
+- Tokens refresh proactively at half their lifetime. Reauthentication keeps the entry and must use the same Saxo account (ADR 0005).
+- No sensitive data (tokens, client IDs, balances) in logs; diagnostics report field names only.

@@ -5,6 +5,16 @@ info:
   version: 1.0.0
 
 # This contract defines the internal APIs and interfaces for the Home Assistant integration
+#
+# NOTE: Originally written before implementation. Updated to match the code
+# (custom_components/saxo_portfolio/), README and docs/adr/. Where a schema is
+# marked "Superseded" it is kept only for history. In particular:
+#   - Auth is the confidential Authorization Code grant (no PKCE) via Home
+#     Assistant Application Credentials (ADR 0001, ADR 0005).
+#   - Coordinator data is the typed SaxoPortfolioData dataclass (see data-model.md).
+#   - Entity IDs are built from the Saxo Client ID: sensor.saxo_<clientid>_<key>
+#     (README uses 123456 as the example Client ID).
+#   - One config entry per Saxo client; there is no account aggregation.
 
 components:
   schemas:
@@ -31,20 +41,25 @@ components:
           example: "Saxo Portfolio"
         data:
           type: object
-          description: Configuration data including OAuth tokens
+          description: >-
+            Configuration data. The App Key and App Secret are NOT stored in
+            the entry; they live in Home Assistant Application Credentials and
+            are referenced through auth_implementation. The unique ID of the
+            entry is the Saxo ClientKey.
           properties:
+            auth_implementation:
+              type: string
+              description: Application Credentials implementation used for this entry
             token:
               $ref: '#/components/schemas/OAuthToken'
-            app_key:
+            entity_prefix:
               type: string
-              description: Saxo application key
-            app_secret:
-              type: string  
-              description: Saxo application secret
-            base_url:
+              description: Saxo ClientId used in entity IDs (CONF_ENTITY_PREFIX)
+              example: "123456"
+            timezone:
               type: string
-              description: Saxo API base URL
-              example: "https://gateway.saxobank.com/openapi"
+              description: Market timezone that drives the update interval (also changeable in options)
+              example: "America/New_York"
 
     OAuthToken:
       type: object
@@ -75,7 +90,13 @@ components:
 
     CoordinatorData:
       type: object
-      description: Data structure managed by the DataUpdateCoordinator
+      description: >-
+        Superseded: the coordinator now holds a typed SaxoPortfolioData
+        (data.py) with balance, performance, client and last_updated; it is
+        None before the first update. Positions are cached separately
+        (positions.py) and only fetched when position sensors are enabled.
+        There is no accounts list. See data-model.md. The schema below is the
+        original v1 design.
       required:
         - portfolio
         - accounts
@@ -99,7 +120,11 @@ components:
 
     PortfolioData:
       type: object
-      description: Aggregated portfolio information for Home Assistant sensors
+      description: >-
+        Superseded by BalanceData and PerformanceData in data.py (fields
+        cash_balance, currency, total_value, non_margin_positions_value, and
+        the performance metrics). unrealized_pnl, positions_count and
+        margin_available do not exist. Original v1 design below.
       required:
         - total_value
         - cash_balance
@@ -142,7 +167,10 @@ components:
 
     AccountData:
       type: object
-      description: Individual account data for sensors
+      description: >-
+        Superseded: no per-account data model exists; account identity is
+        exposed as ClientInfo (client_id, account_id, client_name). Original
+        v1 design below.
       required:
         - account_id
         - account_key
@@ -181,7 +209,11 @@ components:
 
     PositionData:
       type: object
-      description: Individual position data for sensors
+      description: >-
+        Superseded: the real PositionData (positions.py) has position_id,
+        symbol, description, asset_type, amount, current_price, market_value,
+        profit_loss, uic and currency. There is no account_id, open_price or
+        pnl_percentage. Original v1 design below.
       required:
         - position_id
         - account_id
@@ -251,7 +283,7 @@ components:
         entity_id:
           type: string
           description: Home Assistant entity ID
-          example: "sensor.saxo_portfolio_total_value"
+          example: "sensor.saxo_123456_total_value"
         state:
           type: string
           description: Current sensor state (numeric value as string)
@@ -263,19 +295,22 @@ components:
             friendly_name:
               type: string
               description: Display name for the sensor
-              example: "Portfolio Total Value"
+              example: "Saxo 123456 Portfolio Total Value"
             unit_of_measurement:
               type: string
               description: Unit of measurement
               example: "USD"
             device_class:
               type: string
-              description: Home Assistant device class
-              example: "monetary"
+              description: >-
+                Home Assistant device class (balance sensors set none, because
+                HA only allows state_class total for monetary sensors)
             state_class:
               type: string
-              description: Home Assistant state class
-              example: "measurement"
+              description: >-
+                Home Assistant state class: total for balance sensors,
+                measurement for performance and position sensors
+              example: "total"
             currency:
               type: string
               description: Currency code for financial sensors
@@ -339,15 +374,16 @@ components:
             fields:
               type: object
               properties:
-                entity_id:
+                config_entry_id:
                   type: object
                   properties:
                     description:
                       type: string
-                      example: "Entity ID to refresh (optional)"
+                      example: "Config entry to refresh (optional; all entries when omitted)"
                     example:
                       type: string
-                      example: "sensor.saxo_portfolio_total_value"
+                      example: "01234567890abcdef"
+              # A refresh button entity also exists: button.saxo_123456_refresh
 
     ApiError:
       type: object
@@ -369,7 +405,7 @@ components:
         message:
           type: string
           description: Human-readable error message
-          example: "OAuth token has expired, please reconfigure integration"
+          example: "OAuth token has expired, please reauthenticate the integration"
         details:
           type: object
           description: Additional error details
@@ -441,6 +477,10 @@ components:
           returns:
             $ref: '#/components/schemas/ConfigFlowData'
         async_step_oauth:
-          description: Handle OAuth authorization step
+          description: >-
+            Handle OAuth authorization step. Credentials are validated against
+            the API before the entry is created. Reauthentication
+            (async_step_reauth, or the reauthenticate button) must sign in
+            with the same Saxo account (ClientKey) or it aborts.
           returns:
             $ref: '#/components/schemas/ConfigFlowData'
