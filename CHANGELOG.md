@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.1] - 2026-10-05
+
+Bug-fix release with internal refactoring. No breaking changes.
+
+### Fixed
+- **Frankfurt market hours**: `Europe/Frankfurt` is not a valid time zone, so Frankfurt users were always treated as after-hours. Stored entries migrate automatically to `Europe/Berlin`. An unknown market time zone is now logged once as a warning and no longer overwrites the configured value.
+- **Coordinator update timeout** is now enforced. Token refresh retries and 429 backoff could stall an update for minutes.
+- **`Retry-After` handling**: seconds and HTTP-date values are parsed, malformed values no longer raise, and the header is used as-is without an extra backoff multiplier. Malformed token-error bodies no longer break logging.
+- **Reauthentication only starts on 401 or 400 `invalid_grant`**. Other 400 responses are deferred and retried.
+- **Incomplete performance fetches back off 15 minutes** before retrying, instead of re-issuing several API calls on every poll.
+- **Timezone changes apply live** and notify the Timezone sensor. Token-only updates are ignored for unknown time zones.
+- **Setup retries** when the first refresh fails, and rate-limit state is kept across token refreshes.
+- **YTD sensors**: Investment Performance is *unknown* instead of 0% when Saxo returns no key figures, and YTD Profit/Loss matches the correct year across New Year.
+- **Logging**: new positions are logged as a count at INFO (slugs at DEBUG), and remaining exception text in logs is masked.
+
+### Changed
+- `sensor.py` split into a `sensors` package with shared value-sensor logic, plus coordinator interval and constant cleanups. No behaviour change.
+- Added architecture decision records, a `quality_scale.yaml` self-assessment and reconciled spec documents.
+- CI actions bumped to checkout v6 and setup-uv v7 (Node 24).
+
 ## [2.9.0] - 2026-09-28
 
 Stable release of the 2.9.0 betas. This section summarises what changed since 2.8.0; the beta sections below have the details.
