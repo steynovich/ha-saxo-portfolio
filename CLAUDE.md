@@ -18,7 +18,7 @@
 - API response parsing lives outside `coordinator.py`: balance in `data.py`, client details + performance in `performance.py` (`PerformanceFetcher`), net positions in `positions.py` (`PositionsFetcher`). The coordinator only schedules, keeps the token valid and assembles the data.
 - `SaxoApiClient` uses HA's shared websession (`async_get_clientsession(hass)`) — no per-integration session lifecycle.
 - Update cadence is market-hours aware: 5 min during market hours, 30 min after (`DEFAULT_UPDATE_INTERVAL_MARKET_HOURS` / `DEFAULT_UPDATE_INTERVAL_AFTER_HOURS`).
-- Performance data is cached for 2 h (`PERFORMANCE_UPDATE_INTERVAL`, in `PerformanceFetcher`); performance-API failures must not block balance data (graceful degradation). Only a complete fetch refreshes the cache timestamp; a partial one keeps last good values and retries next update.
+- Performance data is cached for 2 h (`PERFORMANCE_UPDATE_INTERVAL`, in `PerformanceFetcher`); performance-API failures must not block balance data (graceful degradation). Only a complete fetch refreshes the cache timestamp; a partial one keeps last good values and retries after `PERFORMANCE_RETRY_INTERVAL` (15 min).
 
 ### Availability & resilience
 - Sticky availability: sensors stay available during transient failures and only go unavailable after `max(15 min, 3 × update_interval)` of consecutive failures (`AVAILABILITY_FAILURE_*` constants in `const.py`, applied in `sensor.py`).

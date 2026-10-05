@@ -226,7 +226,7 @@ class TestStartupFailureThenRecovery:
         with _after(PERFORMANCE_RETRY_INTERVAL + timedelta(seconds=1)):
             await _fetch(fetcher, _client())
         assert fetcher.last_updated is not None
-        assert fetcher._retry_not_before is None
+        assert fetcher.should_update() is False  # fresh cache, no backoff left
 
     async def test_timeout_does_not_refresh_timestamp(self):
         fetcher = _fetcher()
@@ -245,6 +245,7 @@ class TestStartupFailureThenRecovery:
             await _fetch(fetcher, client)
 
         assert fetcher.last_updated is None
+        assert fetcher.should_update() is False  # a timeout backs off too
 
 
 class TestFailureAfterGoodFetch:
