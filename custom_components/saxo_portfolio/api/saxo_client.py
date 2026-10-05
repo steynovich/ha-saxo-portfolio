@@ -12,6 +12,8 @@ import logging
 import math
 import re
 import time
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import aiohttp
@@ -104,6 +106,25 @@ def _summarize_error_body(error_text: str | None) -> str:
         if isinstance(error_code, str) and _ERROR_CODE_RE.match(error_code):
             return f"ErrorCode={error_code}"
     return f"error body redacted, {len(error_text)} chars"
+
+
+DEFAULT_RETRY_AFTER_SECONDS = 60
+
+
+def _parse_retry_after(value: str | None) -> int:
+    """Parse a Retry-After header: delta-seconds, else HTTP-date, else default."""
+    if value is None:
+        return DEFAULT_RETRY_AFTER_SECONDS
+    value = value.strip()
+    if value.isascii() and value.isdigit():
+        return int(value)
+    try:
+        when = parsedate_to_datetime(value)
+    except TypeError, ValueError:
+        return DEFAULT_RETRY_AFTER_SECONDS
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    return max(0, math.ceil((when - datetime.now(UTC)).total_seconds()))
 
 
 class RateLimiter:
@@ -341,7 +362,7 @@ class SaxoApiClient:
 
         Raises RateLimitError when no retries remain.
         """
-        retry_after = int(response.headers.get("Retry-After", 60))
+        retry_after = _parse_retry_after(response.headers.get("Retry-After"))
         rate_limit_reset = response.headers.get("X-RateLimit-Reset")
 
         if attempt == 0:
@@ -366,7 +387,9 @@ class SaxoApiClient:
         if attempt >= MAX_RETRIES - 1:
             raise RateLimitError(f"{ERROR_RATE_LIMITED} (reset: {rate_limit_reset})")
 
-        return float(min(retry_after * (RETRY_BACKOFF_FACTOR**attempt), 300))
+        # Retry-After is the server's own instruction, so it is not multiplied
+        # by the exponential factor; only capped.
+        return float(min(retry_after, 300))
 
     @staticmethod
     def _compute_timeout_backoff(attempt: int) -> float:

@@ -540,11 +540,26 @@ class TestProactiveRefreshToken:
         call_kwargs = coord.hass.config_entries.async_update_entry.call_args
         assert call_kwargs[1]["data"]["token"] == new_token
 
-    async def test_400_raises_auth_failed(self):
-        """HTTP 400 from Saxo triggers reauthentication."""
+    async def test_400_without_invalid_grant_is_deferred(self):
+        """A 400 that is not invalid_grant must not force reauthentication."""
         coord = _bare_coordinator()
         coord._oauth_session.implementation = MagicMock()
-        error = aiohttp.ClientResponseError(MagicMock(), (), status=400)
+        error = aiohttp.ClientResponseError(
+            MagicMock(), (), status=400, message="temporarily_unavailable"
+        )
+        coord._oauth_session.implementation.async_refresh_token = AsyncMock(
+            side_effect=error
+        )
+        await coord._proactive_refresh_token()
+        coord.hass.config_entries.async_update_entry.assert_not_called()
+
+    async def test_400_invalid_grant_raises_auth_failed(self):
+        """HTTP 400 invalid_grant from Saxo triggers reauthentication."""
+        coord = _bare_coordinator()
+        coord._oauth_session.implementation = MagicMock()
+        error = aiohttp.ClientResponseError(
+            MagicMock(), (), status=400, message="invalid_grant"
+        )
         coord._oauth_session.implementation.async_refresh_token = AsyncMock(
             side_effect=error
         )
