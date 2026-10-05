@@ -211,24 +211,28 @@ class TestApiClientProperty:
             c2 = coord.api_client
             assert c1 is c2
 
-    def test_recreates_client_on_token_change(
+    def test_token_change_keeps_client_and_rate_limit_state(
         self, mock_hass, mock_config_entry, mock_oauth_session
     ):
-        """Token change triggers creation of a new API client."""
+        """A rotated access token reaches the same client, keeping its limiter."""
         coord = _make_coordinator(mock_hass, mock_config_entry, mock_oauth_session)
         with patch(
             "custom_components.saxo_portfolio.coordinator.async_get_clientsession",
             return_value=MagicMock(),
         ):
             c1 = coord.api_client
+            c1._rate_limiter.set_rate_limited_until(60)
+            limiter = c1._rate_limiter
             # Simulate token change
             mock_oauth_session.token = {
                 **mock_oauth_session.token,
                 "access_token": "new_token",
             }
             c2 = coord.api_client
-            assert c2 is not c1
+            assert c2 is c1
             assert c2.access_token == "new_token"
+            assert c2._rate_limiter is limiter
+            assert c2._rate_limiter._rate_limited_until > 0
 
     def test_no_access_token_raises(
         self, mock_hass, mock_config_entry, mock_oauth_session
@@ -1267,3 +1271,48 @@ class TestAsyncUpdateIntervalIfNeeded:
         with patch.object(coord, "_is_market_hours", return_value=False):
             await coord.async_update_interval_if_needed()
         assert coord.update_interval == DEFAULT_UPDATE_INTERVAL_AFTER_HOURS
+
+
+# ---------------------------------------------------------------------------
+# async_apply_options (timezone change without restart)
+# ---------------------------------------------------------------------------
+
+
+class TestApplyOptions:
+    """A changed market timezone applies to the running coordinator."""
+
+    @pytest.mark.asyncio
+    async def test_new_timezone_is_applied(
+        self, mock_hass, mock_config_entry, mock_oauth_session
+    ) -> None:
+        coord = _make_coordinator(
+            mock_hass, mock_config_entry, mock_oauth_session, timezone="any"
+        )
+        coord.async_request_refresh = AsyncMock()
+        assert coord.timezone == "any"
+        assert coord.update_interval == DEFAULT_UPDATE_INTERVAL_ANY
+
+        mock_config_entry.data = {**mock_config_entry.data, "timezone": "Europe/London"}
+        with patch.object(coord, "_is_market_hours", return_value=True):
+            await coord.async_apply_options()
+
+        assert coord.timezone == "Europe/London"
+        assert coord.update_interval == DEFAULT_UPDATE_INTERVAL_MARKET_HOURS
+        coord.async_request_refresh.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_market_hours_cache_is_dropped(
+        self, mock_hass, mock_config_entry, mock_oauth_session
+    ) -> None:
+        coord = _make_coordinator(
+            mock_hass, mock_config_entry, mock_oauth_session, timezone="Asia/Tokyo"
+        )
+        coord.async_request_refresh = AsyncMock()
+        coord._market_hours_cache = True
+        coord._market_hours_cache_time = datetime.now()
+
+        mock_config_entry.data = {**mock_config_entry.data, "timezone": "any"}
+        await coord.async_apply_options()
+
+        assert coord.is_market_hours is False
+        assert coord.update_interval == DEFAULT_UPDATE_INTERVAL_ANY

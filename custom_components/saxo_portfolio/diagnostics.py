@@ -25,6 +25,12 @@ from .const import (
 )
 from .coordinator import SaxoCoordinator
 from .data import SaxoPortfolioData
+from .token_expiry import (
+    TOKEN_EXPIRY_CRITICAL_SECONDS,
+    TOKEN_EXPIRY_WARNING_SECONDS,
+    token_expiry_status,
+    token_seconds_remaining,
+)
 
 REDACT_KEYS = {
     "access_token",
@@ -91,13 +97,12 @@ def _format_token_status(token_data: dict[str, Any]) -> dict[str, Any]:
         "token_type": token_data.get("token_type", "Unknown"),
     }
 
-    if "expires_at" not in token_data:
+    current_time = time.time()
+    time_until_expiry = token_seconds_remaining(token_data, current_time)
+    if time_until_expiry is None:
         return token_status
 
-    current_time = time.time()
     expires_at = token_data["expires_at"]
-    time_until_expiry = expires_at - current_time
-
     expiry_datetime = datetime.fromtimestamp(expires_at)
     current_datetime = datetime.fromtimestamp(current_time)
 
@@ -110,16 +115,17 @@ def _format_token_status(token_data: dict[str, Any]) -> dict[str, Any]:
             "expires_in_minutes": round(time_until_expiry / 60, 1),
             "expires_in_hours": round(time_until_expiry / 3600, 2),
             "is_expired": time_until_expiry <= 0,
-            "needs_refresh_soon": time_until_expiry <= 300,  # 5 minutes
-            "needs_refresh_urgent": time_until_expiry <= 60,  # 1 minute
+            "needs_refresh_soon": time_until_expiry <= TOKEN_EXPIRY_WARNING_SECONDS,
+            "needs_refresh_urgent": time_until_expiry <= TOKEN_EXPIRY_CRITICAL_SECONDS,
         }
     )
 
-    if time_until_expiry <= 0:
+    status = token_expiry_status(time_until_expiry)
+    if status == "expired":
         token_status["status"] = "EXPIRED"
-    elif time_until_expiry <= 60:
+    elif status == "critical":
         token_status["status"] = "CRITICAL - Expires in less than 1 minute"
-    elif time_until_expiry <= 300:
+    elif status == "warning":
         token_status["status"] = "WARNING - Expires in less than 5 minutes"
     elif time_until_expiry <= 3600:
         token_status["status"] = (

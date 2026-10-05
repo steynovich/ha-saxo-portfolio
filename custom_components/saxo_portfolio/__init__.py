@@ -121,51 +121,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: SaxoConfigEntry) -> bool
     )
 
     try:
-        # Create OAuth2 session for automatic token management
         implementation = (
             await config_entry_oauth2_flow.async_get_config_entry_implementation(
                 hass, entry
             )
         )
-        oauth_session = config_entry_oauth2_flow.OAuth2Session(
-            hass, entry, implementation
-        )
+    except config_entry_oauth2_flow.ImplementationUnavailableError as err:
+        raise ConfigEntryNotReady("OAuth implementation unavailable") from err
 
-        # Create the coordinator
-        coordinator = SaxoCoordinator(hass, entry, oauth_session)
+    oauth_session = config_entry_oauth2_flow.OAuth2Session(hass, entry, implementation)
+    coordinator = SaxoCoordinator(hass, entry, oauth_session)
 
-        # Perform initial refresh to validate configuration
-        await coordinator.async_refresh()
+    # Raises ConfigEntryNotReady on a transient failure (HA retries the setup)
+    # and ConfigEntryAuthFailed on rejected credentials (HA starts reauth).
+    await coordinator.async_config_entry_first_refresh()
 
-        # Store coordinator in runtime data
-        entry.runtime_data = SaxoRuntimeData(coordinator=coordinator)
+    entry.runtime_data = SaxoRuntimeData(coordinator=coordinator)
 
-        # Set up platforms
-        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-        # Mark setup as complete to enable reload logic for skipped sensors
-        coordinator.mark_setup_complete()
+    # Enables the reload logic for sensors skipped due to an unknown client name
+    coordinator.mark_setup_complete()
 
-        # Add update listener for options changes
-        entry.async_on_unload(entry.add_update_listener(async_options_updated))
+    entry.async_on_unload(entry.add_update_listener(async_options_updated))
 
-        _LOGGER.info("Successfully set up Saxo Portfolio integration")
-        return True
-
-    except Exception as e:
-        _LOGGER.error(
-            "Failed to set up Saxo Portfolio integration: %s",
-            type(e).__name__,
-        )
-
-        # Re-raise as ConfigEntryNotReady if it's a temporary issue
-        if "auth" in str(e).lower() or "token" in str(e).lower():
-            raise ConfigEntryNotReady("Authentication error") from e
-        elif "network" in str(e).lower() or "timeout" in str(e).lower():
-            raise ConfigEntryNotReady("Network error") from e
-        else:
-            # For other errors, let the config entry fail
-            return False
+    _LOGGER.info("Successfully set up Saxo Portfolio integration")
+    return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: SaxoConfigEntry) -> bool:
@@ -185,24 +166,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: SaxoConfigEntry) -> boo
 
 
 async def async_options_updated(hass: HomeAssistant, entry: SaxoConfigEntry) -> None:
-    """Handle options update.
+    """Handle a config entry update.
 
-    Note: This is also called when config entry data is updated (e.g., token refresh).
-    We skip reload for token-only updates as the coordinator handles token changes internally.
+    Also called for token-only updates; the coordinator ignores those because
+    it only reacts to a changed market timezone. A change to the position
+    sensors setting reloads the entry from the options flow.
     """
-    _LOGGER.debug(
-        "Config entry updated for %s, checking if reload needed", entry.entry_id
-    )
-
-    # If coordinator exists and is running, it will handle token updates automatically
-    # Only reload for actual configuration changes (timezone, etc.)
-    if hasattr(entry, "runtime_data") and entry.runtime_data:
-        _LOGGER.debug(
-            "Coordinator exists and will handle token updates automatically, skipping reload"
-        )
+    if getattr(entry, "runtime_data", None):
+        await entry.runtime_data.coordinator.async_apply_options()
         return
 
-    # If no coordinator, this is a configuration change that needs reload
     _LOGGER.debug(
         "No active coordinator, triggering reload for entry %s", entry.entry_id
     )

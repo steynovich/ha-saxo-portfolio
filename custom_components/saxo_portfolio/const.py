@@ -44,6 +44,12 @@ API_NET_POSITIONS_ENDPOINT: Final = "/port/v1/netpositions/me"
 DEFAULT_UPDATE_INTERVAL_MARKET_HOURS: Final = timedelta(minutes=5)
 DEFAULT_UPDATE_INTERVAL_AFTER_HOURS: Final = timedelta(minutes=30)
 DEFAULT_TIMEOUT: Final = 30  # seconds
+
+# Sticky availability (docs/adr/0002): sensors go unavailable after
+# max(FLOOR, MULTIPLIER x update interval) of consecutive failures
+AVAILABILITY_FAILURE_FLOOR: Final = timedelta(minutes=15)
+AVAILABILITY_FAILURE_INTERVAL_MULTIPLIER: Final = 3
+AVAILABILITY_FALLBACK_UPDATE_INTERVAL: Final = DEFAULT_UPDATE_INTERVAL_MARKET_HOURS
 DEFAULT_CURRENCY: Final = "USD"
 
 # Rate limiting

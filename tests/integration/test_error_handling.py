@@ -338,22 +338,23 @@ class TestErrorHandlingAndRecovery:
     async def test_integration_setup_failure_handling(
         self, mock_hass, mock_config_entry, mock_oauth_session
     ):
-        """Test that async_setup_entry returns False when setup fails.
+        """Test that an unavailable OAuth implementation retries the setup."""
+        from homeassistant.exceptions import ConfigEntryNotReady
+        from homeassistant.helpers.config_entry_oauth2_flow import (
+            ImplementationUnavailableError,
+        )
 
-        async_setup_entry wraps its body in a try/except. For non-auth/non-network
-        errors it returns False to indicate setup failure.
-        """
         from custom_components.saxo_portfolio import async_setup_entry
 
-        # Mock that async_get_config_entry_implementation raises a generic error.
-        # The except block returns False for errors that are not auth/network related.
-        with patch(
-            "custom_components.saxo_portfolio.config_entry_oauth2_flow"
-            ".async_get_config_entry_implementation",
-            side_effect=Exception("No implementation found"),
+        with (
+            patch(
+                "custom_components.saxo_portfolio.config_entry_oauth2_flow"
+                ".async_get_config_entry_implementation",
+                side_effect=ImplementationUnavailableError("no implementation"),
+            ),
+            pytest.raises(ConfigEntryNotReady),
         ):
-            result = await async_setup_entry(mock_hass, mock_config_entry)
-            assert result is False
+            await async_setup_entry(mock_hass, mock_config_entry)
 
     @pytest.mark.asyncio
     async def test_concurrent_error_handling(

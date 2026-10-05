@@ -25,6 +25,9 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     ATTRIBUTION,
+    AVAILABILITY_FAILURE_FLOOR,
+    AVAILABILITY_FAILURE_INTERVAL_MULTIPLIER,
+    AVAILABILITY_FALLBACK_UPDATE_INTERVAL,
     DEVICE_MANUFACTURER,
     DEVICE_MODEL,
     DOMAIN,
@@ -34,6 +37,11 @@ from .const import (
 from .coordinator import SaxoCoordinator
 from .data import DEFAULT_CURRENCY, UNKNOWN, SaxoPortfolioData
 from .models import mask_sensitive_data
+from .token_expiry import (
+    TOKEN_EXPIRY_WARNING_SECONDS,
+    token_expiry_status,
+    token_seconds_remaining,
+)
 
 type ValueFn = Callable[[SaxoPortfolioData], float | None]
 
@@ -171,17 +179,16 @@ class SaxoSensorBase(CoordinatorEntity[SaxoCoordinator], SensorEntity):
             last_success = dt_util.as_utc(last_success)
         time_since_success = current_time - last_success
 
-        # Allow for up to 3 update cycles before marking unavailable
-        # Use the longer of 15 minutes or 3x the current update interval
-        update_interval_seconds = (
-            self.coordinator.update_interval.total_seconds()
-            if self.coordinator.update_interval
-            else 300  # Default to 5 minutes
+        update_interval = (
+            self.coordinator.update_interval or AVAILABILITY_FALLBACK_UPDATE_INTERVAL
         )
-        max_failure_time = max(15 * 60, 3 * update_interval_seconds)  # 15 min minimum
+        max_failure_time = max(
+            AVAILABILITY_FAILURE_FLOOR,
+            AVAILABILITY_FAILURE_INTERVAL_MULTIPLIER * update_interval,
+        )
 
         # Stay available if we haven't exceeded the failure threshold
-        if time_since_success.total_seconds() < max_failure_time:
+        if time_since_success < max_failure_time:
             return True
         else:
             # Sustained failure detected
@@ -766,20 +773,14 @@ class SaxoTokenExpirySensor(SaxoDiagnosticSensorBase):
     def native_value(self) -> str | None:
         """Return the token expiry status."""
         assert self.coordinator.config_entry is not None
-        token_data = self.coordinator.config_entry.data.get("token", {})
-        if not token_data or "expires_at" not in token_data:
+        remaining = token_seconds_remaining(
+            self.coordinator.config_entry.data.get("token"), time.time()
+        )
+        if remaining is None:
             return None
 
         # The exact countdown is exposed as the expires_in_seconds attribute
-        time_until_expiry = token_data["expires_at"] - time.time()
-
-        if time_until_expiry <= 0:
-            return "expired"
-        if time_until_expiry <= 60:
-            return "critical"
-        if time_until_expiry <= 300:
-            return "warning"
-        return "valid"
+        return token_expiry_status(remaining)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -790,15 +791,14 @@ class SaxoTokenExpirySensor(SaxoDiagnosticSensorBase):
         """
         assert self.coordinator.config_entry is not None
         attrs: dict[str, Any] = {}
-        token_data = self.coordinator.config_entry.data.get("token", {})
+        remaining = token_seconds_remaining(
+            self.coordinator.config_entry.data.get("token"), time.time()
+        )
 
-        if token_data and "expires_at" in token_data:
-            expires_at = token_data["expires_at"]
-            time_until_expiry = expires_at - time.time()
-
-            attrs["expires_in_seconds"] = int(time_until_expiry)
-            attrs["is_expired"] = time_until_expiry <= 0
-            attrs["needs_refresh"] = time_until_expiry <= 300
+        if remaining is not None:
+            attrs["expires_in_seconds"] = int(remaining)
+            attrs["is_expired"] = remaining <= 0
+            attrs["needs_refresh"] = remaining <= TOKEN_EXPIRY_WARNING_SECONDS
 
         return attrs
 

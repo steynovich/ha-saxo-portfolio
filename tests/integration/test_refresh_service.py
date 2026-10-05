@@ -51,6 +51,7 @@ def coordinators() -> Generator[dict[str, MagicMock]]:
 
     def _make_coordinator(hass: HomeAssistant, entry, oauth_session) -> MagicMock:
         coordinator = MagicMock()
+        coordinator.async_config_entry_first_refresh = AsyncMock()
         coordinator.async_refresh = AsyncMock()
         coordinator.async_shutdown = AsyncMock()
         coordinator.mark_setup_complete = MagicMock()

@@ -139,12 +139,10 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
         if not access_token:
             raise ConfigEntryAuthFailed("No access token available")
 
-        # Recreate client when token changes (lightweight — session is shared)
+        # A rotated token is handed to the existing client so its rate-limit
+        # state (request window, Retry-After) survives token refreshes.
         if self._api_client is not None:
-            current_token = getattr(self._api_client, "access_token", None)
-            if current_token != access_token:
-                _LOGGER.debug("Token changed, creating new API client wrapper")
-                self._api_client = None
+            self._api_client.access_token = access_token
 
         if self._api_client is None:
             from .const import SAXO_API_BASE_URL
@@ -769,6 +767,18 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
 
         """
         return self._is_startup_phase
+
+    async def async_apply_options(self) -> None:
+        """Apply a changed market timezone without reloading the entry."""
+        assert self.config_entry is not None
+        timezone: str = self.config_entry.data.get(CONF_TIMEZONE, DEFAULT_TIMEZONE)
+        if timezone != self._timezone:
+            _LOGGER.info("Market timezone changed to %s", timezone)
+            self._timezone = timezone
+            self._market_hours_cache = None
+            self._market_hours_cache_time = None
+            await self.async_update_interval_if_needed()
+            await self.async_request_refresh()
 
     async def async_update_interval_if_needed(self) -> None:
         """Check and update the refresh interval based on current market status.

@@ -230,10 +230,8 @@ class SaxoApiClient:
 
         url = f"{self.base_url}{endpoint}"
 
-        # Apply rate limiting
-        await self._rate_limiter.wait_if_needed()
-
         for attempt in range(MAX_RETRIES):
+            await self._rate_limiter.wait_if_needed()
             try:
                 async with (
                     asyncio.timeout(API_TIMEOUT_TOTAL),

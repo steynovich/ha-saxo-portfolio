@@ -14,9 +14,14 @@ import pytest
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
     ConfigEntryNotReady,
     HomeAssistantError,
     ServiceValidationError,
+)
+
+from homeassistant.helpers.config_entry_oauth2_flow import (
+    ImplementationUnavailableError,
 )
 
 from custom_components.saxo_portfolio import (
@@ -107,7 +112,7 @@ class TestAsyncSetupEntry:
 
         mock_impl = AsyncMock()
         mock_coordinator = MagicMock()
-        mock_coordinator.async_refresh = AsyncMock()
+        mock_coordinator.async_config_entry_first_refresh = AsyncMock()
         mock_coordinator.mark_setup_complete = MagicMock()
 
         with (
@@ -118,7 +123,7 @@ class TestAsyncSetupEntry:
             result = await async_setup_entry(hass, entry)
 
         assert result is True
-        mock_coordinator.async_refresh.assert_awaited_once()
+        mock_coordinator.async_config_entry_first_refresh.assert_awaited_once()
         mock_coordinator.mark_setup_complete.assert_called_once()
         hass.config_entries.async_forward_entry_setups.assert_awaited_once_with(
             entry, PLATFORMS
@@ -132,76 +137,78 @@ class TestAsyncSetupEntry:
         entry.async_on_unload.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_auth_error_raises_config_entry_not_ready(self) -> None:
-        """Auth-related exception is re-raised as ConfigEntryNotReady."""
+    async def test_first_refresh_failure_retries_setup(self) -> None:
+        """A transient first-refresh failure makes the entry retry later."""
         hass = _make_hass()
         entry = _make_entry()
 
         mock_coordinator = MagicMock()
-        mock_coordinator.async_refresh = AsyncMock(
-            side_effect=Exception("Authentication token invalid")
+        mock_coordinator.async_config_entry_first_refresh = AsyncMock(
+            side_effect=ConfigEntryNotReady("Saxo unreachable")
         )
 
         with (
             patch(SETUP_PATCHES, return_value=AsyncMock()),
             patch(OAUTH_SESSION_PATH),
             patch(COORDINATOR_PATH, return_value=mock_coordinator),
-            pytest.raises(ConfigEntryNotReady, match="Authentication error"),
+            pytest.raises(ConfigEntryNotReady),
+        ):
+            await async_setup_entry(hass, entry)
+
+        hass.config_entries.async_forward_entry_setups.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_first_refresh_auth_failure_propagates(self) -> None:
+        """Authentication failures reach HA so it starts reauthentication."""
+        hass = _make_hass()
+        entry = _make_entry()
+
+        mock_coordinator = MagicMock()
+        mock_coordinator.async_config_entry_first_refresh = AsyncMock(
+            side_effect=ConfigEntryAuthFailed("rejected")
+        )
+
+        with (
+            patch(SETUP_PATCHES, return_value=AsyncMock()),
+            patch(OAUTH_SESSION_PATH),
+            patch(COORDINATOR_PATH, return_value=mock_coordinator),
+            pytest.raises(ConfigEntryAuthFailed),
         ):
             await async_setup_entry(hass, entry)
 
     @pytest.mark.asyncio
-    async def test_network_error_raises_config_entry_not_ready(self) -> None:
-        """Network-related exception is re-raised as ConfigEntryNotReady."""
+    async def test_setup_does_not_depend_on_message_text(self) -> None:
+        """An error mentioning "token" is not reclassified by its message."""
         hass = _make_hass()
         entry = _make_entry()
 
         mock_coordinator = MagicMock()
-        mock_coordinator.async_refresh = AsyncMock(
-            side_effect=Exception("Network timeout occurred")
+        mock_coordinator.async_config_entry_first_refresh = AsyncMock(
+            side_effect=RuntimeError("token network timeout")
         )
 
         with (
             patch(SETUP_PATCHES, return_value=AsyncMock()),
             patch(OAUTH_SESSION_PATH),
             patch(COORDINATOR_PATH, return_value=mock_coordinator),
-            pytest.raises(ConfigEntryNotReady, match="Network error"),
+            pytest.raises(RuntimeError),
         ):
             await async_setup_entry(hass, entry)
 
     @pytest.mark.asyncio
-    async def test_unknown_error_returns_false(self) -> None:
-        """Unrecognized exception causes setup to return False."""
+    async def test_implementation_unavailable_retries_setup(self) -> None:
+        """An unavailable OAuth implementation makes the entry retry."""
         hass = _make_hass()
         entry = _make_entry()
-
-        mock_coordinator = MagicMock()
-        mock_coordinator.async_refresh = AsyncMock(
-            side_effect=Exception("Something completely unexpected")
-        )
 
         with (
-            patch(SETUP_PATCHES, return_value=AsyncMock()),
-            patch(OAUTH_SESSION_PATH),
-            patch(COORDINATOR_PATH, return_value=mock_coordinator),
+            patch(
+                SETUP_PATCHES,
+                side_effect=ImplementationUnavailableError("no implementation"),
+            ),
+            pytest.raises(ConfigEntryNotReady),
         ):
-            result = await async_setup_entry(hass, entry)
-
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_implementation_failure_returns_false(self) -> None:
-        """Failure to get OAuth implementation returns False."""
-        hass = _make_hass()
-        entry = _make_entry()
-
-        with patch(
-            SETUP_PATCHES,
-            side_effect=Exception("No implementation found"),
-        ):
-            result = await async_setup_entry(hass, entry)
-
-        assert result is False
+            await async_setup_entry(hass, entry)
 
     @pytest.mark.asyncio
     async def test_missing_token_in_data(self) -> None:
@@ -210,7 +217,7 @@ class TestAsyncSetupEntry:
         entry = _make_entry(data={"entity_prefix": "saxo"})
 
         mock_coordinator = MagicMock()
-        mock_coordinator.async_refresh = AsyncMock()
+        mock_coordinator.async_config_entry_first_refresh = AsyncMock()
         mock_coordinator.mark_setup_complete = MagicMock()
 
         with (
@@ -305,11 +312,26 @@ class TestAsyncOptionsUpdated:
         """When coordinator exists, reload is skipped (it handles updates)."""
         hass = _make_hass()
         entry = _make_entry()
-        entry.runtime_data = SaxoRuntimeData(coordinator=MagicMock())
+        coordinator = MagicMock()
+        coordinator.async_apply_options = AsyncMock()
+        entry.runtime_data = SaxoRuntimeData(coordinator=coordinator)
 
         await async_options_updated(hass, entry)
 
         hass.config_entries.async_reload.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_with_existing_coordinator_applies_options(self) -> None:
+        """An options change is pushed to the running coordinator."""
+        hass = _make_hass()
+        entry = _make_entry()
+        coordinator = MagicMock()
+        coordinator.async_apply_options = AsyncMock()
+        entry.runtime_data = SaxoRuntimeData(coordinator=coordinator)
+
+        await async_options_updated(hass, entry)
+
+        coordinator.async_apply_options.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_without_coordinator_triggers_reload(self) -> None:

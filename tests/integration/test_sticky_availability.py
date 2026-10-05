@@ -11,6 +11,13 @@ from unittest.mock import Mock
 from datetime import timedelta
 from homeassistant.util import dt as dt_util
 
+from custom_components.saxo_portfolio.const import (
+    AVAILABILITY_FAILURE_FLOOR,
+    AVAILABILITY_FAILURE_INTERVAL_MULTIPLIER,
+    AVAILABILITY_FALLBACK_UPDATE_INTERVAL,
+    DEFAULT_UPDATE_INTERVAL_AFTER_HOURS,
+    DEFAULT_UPDATE_INTERVAL_MARKET_HOURS,
+)
 from custom_components.saxo_portfolio.coordinator import SaxoCoordinator
 from custom_components.saxo_portfolio.sensor import (
     SaxoCashBalanceSensor,
@@ -226,6 +233,52 @@ class TestStickyAvailabilityBehavior:
         )
         assert sensor.available is False, (
             "Should be unavailable beyond 3x update interval threshold"
+        )
+
+    @pytest.mark.asyncio
+    async def test_threshold_floor_applies_to_short_intervals(self, mock_coordinator):
+        """A short interval never shrinks the threshold below the floor."""
+        sensor = SaxoTotalValueSensor(mock_coordinator)
+        mock_coordinator.update_interval = timedelta(minutes=1)
+        mock_coordinator.last_update_success = False
+
+        floor = AVAILABILITY_FAILURE_FLOOR
+        now = dt_util.utcnow()
+        mock_coordinator.last_successful_update_time = (
+            now - floor + timedelta(seconds=30)
+        )
+        assert sensor.available is True
+        mock_coordinator.last_successful_update_time = (
+            now - floor - timedelta(seconds=30)
+        )
+        assert sensor.available is False
+
+    @pytest.mark.asyncio
+    async def test_threshold_multiplies_long_intervals(self, mock_coordinator):
+        """Beyond the floor the threshold is the multiplier times the interval."""
+        sensor = SaxoTotalValueSensor(mock_coordinator)
+        interval = DEFAULT_UPDATE_INTERVAL_AFTER_HOURS
+        mock_coordinator.update_interval = interval
+        mock_coordinator.last_update_success = False
+
+        threshold = AVAILABILITY_FAILURE_INTERVAL_MULTIPLIER * interval
+        assert threshold > AVAILABILITY_FAILURE_FLOOR
+        now = dt_util.utcnow()
+        mock_coordinator.last_successful_update_time = (
+            now - threshold + timedelta(seconds=30)
+        )
+        assert sensor.available is True
+        mock_coordinator.last_successful_update_time = (
+            now - threshold - timedelta(seconds=30)
+        )
+        assert sensor.available is False
+
+    @pytest.mark.asyncio
+    async def test_fallback_interval_derives_from_market_hours_interval(self):
+        """Without an update interval the market-hours interval is assumed."""
+        assert (
+            AVAILABILITY_FALLBACK_UPDATE_INTERVAL
+            == DEFAULT_UPDATE_INTERVAL_MARKET_HOURS
         )
 
     @pytest.mark.asyncio

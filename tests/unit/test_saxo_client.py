@@ -474,6 +474,28 @@ class TestMakeRequest:
         assert result == {"ok": True}
 
     @pytest.mark.asyncio
+    async def test_retries_wait_on_rate_limiter(self):
+        """Every attempt, not only the first, goes through the rate limiter."""
+        resp_200 = _mock_response(200, json_data={"ok": True})
+        session = _session_with_side_effects([TimeoutError(), resp_200])
+        client = _make_client(session=session)
+        client._rate_limiter.wait_if_needed = AsyncMock()
+
+        with (
+            patch(
+                "custom_components.saxo_portfolio.api.saxo_client.asyncio.timeout",
+                side_effect=_noop_timeout,
+            ),
+            patch(
+                "custom_components.saxo_portfolio.api.saxo_client.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await client._make_request("/test")
+
+        assert client._rate_limiter.wait_if_needed.await_count == 2
+
+    @pytest.mark.asyncio
     async def test_timeout_max_retries_raises(self):
         """TimeoutError on all attempts should raise APIError."""
         side_effects = [TimeoutError() for _ in range(MAX_RETRIES)]
