@@ -388,40 +388,43 @@ class SaxoCoordinator(DataUpdateCoordinator[SaxoPortfolioData]):
         try:
             await self._apply_initial_stagger_offset()
 
-            # Ensure OAuth token is valid (refresh if needed)
-            await self._ensure_token_valid()
+            # Bound the actual work (token refresh incl. retries, API calls) by an
+            # overall timeout. The stagger sleep above is deliberately outside it.
+            async with asyncio.timeout(COORDINATOR_UPDATE_TIMEOUT):
+                # Ensure OAuth token is valid (refresh if needed)
+                await self._ensure_token_valid()
 
-            client = self.api_client
-            _LOGGER.debug(
-                "Starting data fetch with client base_url: %s (production)",
-                client.base_url,
-            )
+                client = self.api_client
+                _LOGGER.debug(
+                    "Starting data fetch with client base_url: %s (production)",
+                    client.base_url,
+                )
 
-            fetch_start_time = datetime.now()
+                fetch_start_time = datetime.now()
 
-            # STEP 1: Fetch balance data (REQUIRED)
-            balance = await self._fetch_balance_with_logging(client)
+                # STEP 1: Fetch balance data (REQUIRED)
+                balance = await self._fetch_balance_with_logging(client)
 
-            # STEP 2: Fetch performance data (OPTIONAL - graceful degradation)
-            await self._performance.async_update(client)
+                # STEP 2: Fetch performance data (OPTIONAL - graceful degradation)
+                await self._performance.async_update(client)
 
-            # STEP 3: Fetch positions data (OPTIONAL - only if enabled)
-            await self._positions.async_fetch(client)
+                # STEP 3: Fetch positions data (OPTIONAL - only if enabled)
+                await self._positions.async_fetch(client)
 
-            # STEP 4: Combine balance and performance data
-            result = SaxoPortfolioData(
-                balance=balance,
-                performance=self._performance.metrics,
-                client=self._performance.client,
-                last_updated=datetime.now(),
-            )
+                # STEP 4: Combine balance and performance data
+                result = SaxoPortfolioData(
+                    balance=balance,
+                    performance=self._performance.metrics,
+                    client=self._performance.client,
+                    last_updated=datetime.now(),
+                )
 
-            total_duration = (datetime.now() - fetch_start_time).total_seconds()
-            _LOGGER.debug(
-                "Complete portfolio data fetch completed in %.2fs", total_duration
-            )
+                total_duration = (datetime.now() - fetch_start_time).total_seconds()
+                _LOGGER.debug(
+                    "Complete portfolio data fetch completed in %.2fs", total_duration
+                )
 
-            return result
+                return result
 
         except AuthenticationError as e:
             _LOGGER.error(
