@@ -11,7 +11,7 @@ import pytest
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.saxo_portfolio.data import BalanceData
-from tests.unit.test_coordinator import _bare_coordinator
+from .test_coordinator import _bare_coordinator
 
 _TIMEOUT = "custom_components.saxo_portfolio.coordinator.COORDINATOR_UPDATE_TIMEOUT"
 
