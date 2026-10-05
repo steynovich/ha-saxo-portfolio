@@ -6,7 +6,7 @@
 [![HACS Action](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hacs.yml/badge.svg)](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hacs.yml)
 [![Hassfest](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hassfest.yml/badge.svg)](https://github.com/steynovich/ha-saxo-portfolio/actions/workflows/hassfest.yml)
 
-A Home Assistant integration that monitors your Saxo Bank portfolio through the Saxo OpenAPI. It meets the Platinum tier of the Home Assistant Quality Scale. It signs in with OAuth 2.0, updates more often while your market is open, and names entities after your Saxo Client ID. You get eleven portfolio sensors, up to eight diagnostic sensors, a manual refresh button and a reauthenticate button.
+A Home Assistant integration that monitors your Saxo Bank portfolio through the Saxo OpenAPI. It signs in with OAuth 2.0, updates more often while your market is open, and names entities after your Saxo Client ID. You get eleven portfolio sensors, up to eight diagnostic sensors, a manual refresh button and a reauthenticate button.
 
 ## Features
 
