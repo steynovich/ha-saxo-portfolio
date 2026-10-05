@@ -62,6 +62,15 @@ RETRY_BACKOFF_FACTOR: Final = 2
 DEFAULT_RETRY_AFTER_SECONDS: Final = 60  # when a 429 has no usable Retry-After
 RETRY_AFTER_MAX_SECONDS: Final = 300  # cap on a single 429 wait
 
+# Default access-token lifetime when the token carries no expires_in
+TOKEN_DEFAULT_EXPIRES_IN: Final = 1200  # seconds
+
+# Coordinator internals
+MARKET_HOURS_CACHE_TTL: Final = 1.0  # seconds a market-hours check stays cached
+TIMEOUT_WARNING_THROTTLE: Final = 300  # seconds between repeated timeout warnings
+STARTUP_SUCCESSFUL_UPDATES: Final = 3  # successful updates that end the startup phase
+INITIAL_UPDATE_STAGGER_MAX: Final = 30  # seconds, max random start offset per account
+
 # Market hours (Eastern Time)
 MARKET_OPEN_HOUR: Final = 9
 MARKET_OPEN_MINUTE: Final = 30
@@ -73,6 +82,8 @@ MARKET_WEEKDAYS: Final = [0, 1, 2, 3, 4]  # Monday through Friday
 
 # Timezone configuration
 CONF_TIMEZONE: Final = "timezone"
+# Timezone option that disables market-hours-aware scheduling
+TIMEZONE_ANY: Final = "any"
 DEFAULT_TIMEZONE: Final = "America/New_York"
 
 # Position sensors configuration
@@ -90,7 +101,7 @@ TIMEZONE_OPTIONS: Final = {
     "Asia/Hong_Kong": "Hong Kong (HKEX)",
     "Asia/Singapore": "Singapore (SGX)",
     "Australia/Sydney": "Sydney (ASX)",
-    "any": "Any - Disable intelligent scheduling",
+    TIMEZONE_ANY: "Any - Disable intelligent scheduling",
 }
 
 # Market hours per timezone (local time)

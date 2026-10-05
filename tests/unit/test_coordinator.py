@@ -1164,13 +1164,6 @@ class TestGetters:
         coord._last_successful_update = now
         assert coord.last_successful_update_time is now
 
-    def test_is_startup_phase(self):
-        """Startup phase property reflects internal flag."""
-        coord = _bare_coordinator()
-        assert coord.is_startup_phase is True
-        coord._is_startup_phase = False
-        assert coord.is_startup_phase is False
-
 
 # ---------------------------------------------------------------------------
 # mark_sensors_initialized / mark_setup_complete
@@ -1292,6 +1285,31 @@ class TestFetchBalanceWithLogging:
 # ---------------------------------------------------------------------------
 # async_update_interval_if_needed
 # ---------------------------------------------------------------------------
+
+
+class TestTargetInterval:
+    """Tests for _target_interval."""
+
+    def test_any_timezone(self):
+        """Any timezone always uses the fixed interval, ignoring market hours."""
+        coord = _bare_coordinator()
+        coord._timezone = "any"
+        with patch.object(coord, "_is_market_hours", return_value=True):
+            assert coord._target_interval() == DEFAULT_UPDATE_INTERVAL_ANY
+
+    def test_market_open(self):
+        """Open market uses the market-hours interval."""
+        coord = _bare_coordinator()
+        coord._timezone = "America/New_York"
+        with patch.object(coord, "_is_market_hours", return_value=True):
+            assert coord._target_interval() == DEFAULT_UPDATE_INTERVAL_MARKET_HOURS
+
+    def test_after_hours(self):
+        """Closed market uses the after-hours interval."""
+        coord = _bare_coordinator()
+        coord._timezone = "America/New_York"
+        with patch.object(coord, "_is_market_hours", return_value=False):
+            assert coord._target_interval() == DEFAULT_UPDATE_INTERVAL_AFTER_HOURS
 
 
 class TestAsyncUpdateIntervalIfNeeded:
